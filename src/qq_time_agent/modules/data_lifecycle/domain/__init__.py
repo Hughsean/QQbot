@@ -1,0 +1,1 @@
+"""Data lifecycle domain model."""

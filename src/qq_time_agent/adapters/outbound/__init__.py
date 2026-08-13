@@ -1,0 +1,1 @@
+"""Outbound protocol adapters."""

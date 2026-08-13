@@ -1,0 +1,1 @@
+"""Official QQ Bot adapter."""

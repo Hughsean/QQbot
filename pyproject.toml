@@ -1,0 +1,84 @@
+[project]
+name = "qq-time-agent"
+version = "0.1.0"
+description = "Single-owner QQ time management agent"
+readme = "docs/README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "alembic>=1.15,<2",
+  "cryptography>=44,<47",
+  "fastapi>=0.115,<1",
+  "httpx>=0.28,<1",
+  "langgraph>=1,<2",
+  "msal>=1.31,<2",
+  "openai>=1.68,<3",
+  "pgvector>=0.3,<1",
+  "psycopg[binary]>=3.2,<4",
+  "pyjwt[crypto]>=2.10,<3",
+  "pydantic>=2.10,<3",
+  "pydantic-settings>=2.8,<3",
+  "qq-botpy>=1.2.1,<2",
+  "sqlalchemy>=2.0,<3",
+  "uvicorn[standard]>=0.34,<1",
+]
+
+[dependency-groups]
+dev = [
+  "mypy>=1.15,<2",
+  "pytest>=8.3,<10",
+  "pytest-asyncio>=0.25,<2",
+  "pytest-cov>=6,<8",
+  "ruff>=0.11,<1",
+]
+
+[project.scripts]
+qq-time-agent-web = "qq_time_agent.bootstrap.web:main"
+qq-time-agent-worker = "qq_time_agent.bootstrap.worker:main"
+qq-time-agent-qq = "qq_time_agent.bootstrap.qq:main"
+qq-time-agent-replay-tombstones = "qq_time_agent.bootstrap.restore:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/qq_time_agent"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "C90", "RUF", "S"]
+ignore = ["S101"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["S105", "S106", "S107"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+mypy_path = "src"
+plugins = ["pydantic.mypy"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--strict-config --strict-markers --tb=short"
+asyncio_mode = "auto"
+markers = [
+  "integration: requires local Docker infrastructure",
+  "sandbox: requires explicitly enabled external sandbox credentials",
+]
+
+[tool.coverage.run]
+branch = true
+source = ["qq_time_agent"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+fail_under = 80

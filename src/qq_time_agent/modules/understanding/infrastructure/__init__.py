@@ -1,0 +1,1 @@
+"""Understanding persistence adapters."""
