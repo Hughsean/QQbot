@@ -75,29 +75,52 @@ uv.lock             完整、可复现的依赖锁
 
 ## 5. LangGraph 使用范式
 
-本项目不采用“让一个 ReAct Agent 自由调用所有工具”的开放式架构。采用可审计的受限状态图：
+本项目不采用“让一个 ReAct Agent 自由调用所有工具”的开放式架构。当前实际运行的
+`UnderstandingWorkflow` 是可审计的受限状态图：
 
-```text
-Ingest Reference
-→ Deterministic Trust Gate
-→ Router（结构化分类）
-→ Event Extractor / Task Extractor
-→ Deterministic Schema & Policy Validator
-→ 必要时 Evaluator/Retry（有次数上限）
-→ Scheduling Use Case
-→ 可选 Retrieval（只读、带来源）
-→ Human-in-the-loop Interrupt
-→ Confirmation Gate
-→ Actions（图外受控副作用）
+```mermaid
+flowchart TD
+    START((START))
+    RECOVER{按 checkpoint.phase 恢复}
+    CLASSIFY[classify]
+    CLASSIFIED{分类路由}
+    EXTRACT[extract_candidate]
+    EXTRACTED{是否取得候选草稿}
+    VALIDATE[validate_candidate]
+    PERSIST[persist_decision]
+    APPLY[apply_disposition]
+    END((END))
+
+    START --> RECOVER
+    RECOVER -- START --> CLASSIFY
+    RECOVER -- CLASSIFIED且需提取 --> EXTRACT
+    RECOVER -- CLASSIFIED且已终止 --> PERSIST
+    RECOVER -- DECIDED --> APPLY
+    RECOVER -- COMPLETE --> END
+    CLASSIFY --> CLASSIFIED
+    CLASSIFIED -- EVENT或TASK --> EXTRACT
+    CLASSIFIED -- 无关或需复核 --> PERSIST
+    EXTRACT --> EXTRACTED
+    EXTRACTED -- 有草稿 --> VALIDATE
+    EXTRACTED -- 模型输出非法 --> PERSIST
+    VALIDATE --> PERSIST
+    PERSIST --> APPLY
+    APPLY --> END
 ```
+
+Scheduling、QQ 确认、Actions、Agenda 和 Reminder 是图外的独立应用用例/Worker，不伪装成
+开放式 Planner 或 Executor 节点。以后只有在多轮确认确实需要独立恢复状态机时，才新增单独的
+确认图，不把全部生命周期合并为巨型 Graph。
 
 使用的成熟范式：
 
 - Routing：按 Event、Task、无关信息和需人工复核分流。
-- Prompt Chaining：提取后进行独立验证，不让单次模型输出直接生效。
-- Evaluator-Optimizer：仅在低置信度时进行有限次数复核。
-- Human-in-the-loop：在内部日程写入前持久化并中断，等待用户确认。
-- Durable Execution：使用 checkpointer 恢复等待或失败的工作流。
+- Prompt Chaining：分类、提取和确定性验证分成显式节点，不让单次模型输出直接生效。
+- Bounded Model Use：每条内容最多一次分类和一次提取；低分类置信度只切换 Reasoning 路由，
+  不形成无界自循环。
+- Human-in-the-loop：当前由版本化 Proposal 与 QQ 确认用例在图外实现。
+- Durable Execution：Workflow 自有 checkpoint 在 `CLASSIFIED`、`DECIDED` 和 `COMPLETE`
+  边界恢复；不持久化正文或未验证模型 JSON。
 - Read-only Tools：模型最多访问经过裁剪的只读上下文，不获得写权限。
 
 约束：
@@ -142,8 +165,10 @@ AI Gateway 只持久化 use case、Prompt 版本、路由、模型、token 数�
 
 Understanding 工作流使用 LangGraph `StateGraph`，最大递归步数为 8、每条内容最多两次模型
 调用。Workflow 自有持久化检查点只保存 Inbox ID、阶段、分类、Candidate ID、置信度、复核原因
-和调用次数；不保存正文，也不替代 Understanding 候选事实。进程在候选落库后中断时，恢复只
-补 Inbox 状态，不再次调用模型。
+和调用次数；不保存正文，也不替代 Understanding 候选事实。`CLASSIFIED` 恢复会跳过第二次分类；
+合法 Candidate 落库并进入 `DECIDED` 后恢复只补 Inbox 状态，不再次调用模型；`COMPLETE` 重放
+直接结束。提取草稿只在单次 Graph 调用的有界内存状态中存在，若进程在验证前终止则安全重做
+一次提取。
 
 ## 7. QQ 官方 SDK Adapter
 

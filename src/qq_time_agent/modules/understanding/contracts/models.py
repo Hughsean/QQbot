@@ -55,6 +55,50 @@ class CandidateQueryPort(Protocol):
 
 
 @dataclass(frozen=True, slots=True)
+class ClassificationDecision:
+    inbox_item_id: UUID
+    kind: CandidateKind
+    candidate_id: UUID | None
+    confidence: float
+    review_reason: str | None
+    model_calls: int
+
+    @property
+    def requires_extraction(self) -> bool:
+        return (
+            self.kind in {CandidateKind.EVENT, CandidateKind.TASK}
+            and self.candidate_id is None
+            and self.review_reason is None
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class CandidateDraft:
+    kind: CandidateKind
+    title: str
+    starts_at: datetime | None
+    ends_at: datetime | None
+    deadline: datetime | None
+    timezone: str
+    location: str | None
+    participants: tuple[str, ...]
+    estimated_duration_minutes: int | None
+    priority: str | None
+    allowed_windows: tuple[str, ...]
+    confidence: float
+    assumptions: tuple[str, ...]
+    evidence: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class ExtractionDecision:
+    draft: CandidateDraft | None
+    confidence: float
+    review_reason: str | None
+    model_calls: int
+
+
+@dataclass(frozen=True, slots=True)
 class UnderstandingResult:
     inbox_item_id: UUID
     kind: CandidateKind
@@ -65,4 +109,15 @@ class UnderstandingResult:
 
 
 class UnderstandingUseCase(Protocol):
-    async def understand(self, inbox_item_id: UUID) -> UnderstandingResult: ...
+    async def classify(self, inbox_item_id: UUID) -> ClassificationDecision: ...
+
+    async def extract_candidate(
+        self,
+        inbox_item_id: UUID,
+        classification_kind: CandidateKind,
+        classification_confidence: float,
+    ) -> ExtractionDecision: ...
+
+    async def validate_and_save_candidate(
+        self, inbox_item_id: UUID, draft: CandidateDraft
+    ) -> UnderstandingResult: ...

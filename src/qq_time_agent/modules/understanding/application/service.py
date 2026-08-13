@@ -1,7 +1,7 @@
 """Classification, extraction, local validation, and low-confidence policy."""
 
 import hashlib
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from uuid import UUID
 
@@ -12,8 +12,11 @@ from qq_time_agent.modules.ai_gateway.contracts import (
     ModelRoute,
     StructuredModelPort,
 )
-from qq_time_agent.modules.inbox.contracts import InboxSourcePort
-from qq_time_agent.modules.normalization.contracts import NormalizedContentQueryPort
+from qq_time_agent.modules.inbox.contracts import InboxSourcePort, InboxSourceView
+from qq_time_agent.modules.normalization.contracts import (
+    NormalizedContentQueryPort,
+    NormalizedContentView,
+)
 from qq_time_agent.modules.understanding.application.ports import CandidateRepository
 from qq_time_agent.modules.understanding.application.prompts import (
     classification_request,
@@ -23,7 +26,13 @@ from qq_time_agent.modules.understanding.application.schemas import (
     ClassificationOutput,
     ExtractionOutput,
 )
-from qq_time_agent.modules.understanding.contracts import CandidateKind, UnderstandingResult
+from qq_time_agent.modules.understanding.contracts import (
+    CandidateDraft,
+    CandidateKind,
+    ClassificationDecision,
+    ExtractionDecision,
+    UnderstandingResult,
+)
 from qq_time_agent.modules.understanding.domain.candidates import Candidate
 
 CONFIDENCE_THRESHOLD = 0.75
@@ -56,26 +65,42 @@ class UnderstandingService:
         self._temporal = temporal
 
     async def understand(self, inbox_item_id: UUID) -> UnderstandingResult:
+        classification = await self.classify(inbox_item_id)
+        if not classification.requires_extraction:
+            return _classification_result(classification)
+        extraction = await self.extract_candidate(
+            inbox_item_id, classification.kind, classification.confidence
+        )
+        model_calls = classification.model_calls + extraction.model_calls
+        if extraction.draft is None:
+            return _review(
+                inbox_item_id,
+                extraction.confidence,
+                extraction.review_reason or "invalid_model_output",
+                model_calls,
+            )
+        result = await self.validate_and_save_candidate(inbox_item_id, extraction.draft)
+        return replace(result, model_calls=model_calls)
+
+    async def classify(self, inbox_item_id: UUID) -> ClassificationDecision:
         existing = await self._repository.get_for_inbox(inbox_item_id)
         if existing is not None:
-            return _candidate_result(existing, 0)
-        content = await self._content.get(inbox_item_id)
-        source = await self._sources.get_source(inbox_item_id)
-        if content is None or source is None or source.deleted:
-            raise LookupError("active normalized Inbox content does not exist")
+            return ClassificationDecision(
+                inbox_item_id, existing.kind, existing.candidate_id, existing.confidence, None, 0
+            )
+        content, source = await self._load_content(inbox_item_id)
         try:
             classification = await self._classify(content.subject, content.body, source.occurred_at)
         except (ValidationError, ModelFailure):
-            return _review(inbox_item_id, 0, "model_unavailable_or_invalid", 1)
+            return _classification_review(inbox_item_id, 0, "model_unavailable_or_invalid")
         if classification.kind == "IRRELEVANT":
             if classification.confidence < CONFIDENCE_THRESHOLD:
-                return _review(
+                return _classification_review(
                     inbox_item_id,
                     classification.confidence,
                     "low_classification_confidence",
-                    1,
                 )
-            return UnderstandingResult(
+            return ClassificationDecision(
                 inbox_item_id,
                 CandidateKind.IRRELEVANT,
                 None,
@@ -84,29 +109,68 @@ class UnderstandingService:
                 1,
             )
         if classification.kind == "NEEDS_REVIEW" or classification.temporal_ambiguity:
-            return _review(inbox_item_id, classification.confidence, "classification_ambiguous", 1)
+            return _classification_review(
+                inbox_item_id, classification.confidence, "classification_ambiguous"
+            )
+        return ClassificationDecision(
+            inbox_item_id,
+            CandidateKind(classification.kind),
+            None,
+            classification.confidence,
+            None,
+            1,
+        )
+
+    async def extract_candidate(
+        self,
+        inbox_item_id: UUID,
+        classification_kind: CandidateKind,
+        classification_confidence: float,
+    ) -> ExtractionDecision:
+        if classification_kind not in {CandidateKind.EVENT, CandidateKind.TASK}:
+            raise ValueError("only Event and Task classifications can be extracted")
+        content, source = await self._load_content(inbox_item_id)
         route = (
             ModelRoute.REASONING
-            if classification.confidence < CONFIDENCE_THRESHOLD
+            if classification_confidence < CONFIDENCE_THRESHOLD
             else ModelRoute.FAST
         )
         try:
             extracted = await self._extract(
                 content.subject, content.body, source.occurred_at, route
             )
+        except (ValidationError, ModelFailure):
+            return ExtractionDecision(None, classification_confidence, "invalid_model_output", 1)
+        draft = _draft(extracted)
+        return ExtractionDecision(draft, draft.confidence, None, 1)
+
+    async def validate_and_save_candidate(
+        self, inbox_item_id: UUID, draft: CandidateDraft
+    ) -> UnderstandingResult:
+        content, _ = await self._load_content(inbox_item_id)
+        try:
             candidate = _candidate(
                 inbox_item_id,
                 content.source_ref or f"inbox:{inbox_item_id}:{content.source_hash}",
-                extracted,
+                draft,
                 content.subject + "\n" + content.body,
                 self._temporal.default_event_duration_minutes,
             )
-        except (ValidationError, ValueError, ModelFailure):
-            return _review(inbox_item_id, classification.confidence, "invalid_model_output", 2)
+        except ValueError:
+            return _review(inbox_item_id, draft.confidence, "invalid_model_output", 0)
         if candidate.confidence < CONFIDENCE_THRESHOLD:
-            return _review(inbox_item_id, candidate.confidence, "low_confidence", 2)
+            return _review(inbox_item_id, candidate.confidence, "low_confidence", 0)
         candidate = await self._repository.add(candidate)
-        return _candidate_result(candidate, 2)
+        return _candidate_result(candidate, 0)
+
+    async def _load_content(
+        self, inbox_item_id: UUID
+    ) -> tuple[NormalizedContentView, InboxSourceView]:
+        content = await self._content.get(inbox_item_id)
+        source = await self._sources.get_source(inbox_item_id)
+        if content is None or source is None or source.deleted:
+            raise LookupError("active normalized Inbox content does not exist")
+        return content, source
 
     async def _classify(
         self, subject: str, body: str, reference_time: datetime
@@ -141,7 +205,7 @@ class UnderstandingService:
 def _candidate(
     inbox_item_id: UUID,
     source_ref: str | None,
-    value: ExtractionOutput,
+    value: CandidateDraft,
     body: str,
     default_event_duration_minutes: int,
 ) -> Candidate:
@@ -173,6 +237,44 @@ def _candidate(
         assumptions,
         value.evidence,
         (source_ref,),
+    )
+
+
+def _draft(value: ExtractionOutput) -> CandidateDraft:
+    return CandidateDraft(
+        CandidateKind(value.kind),
+        value.title,
+        value.starts_at,
+        value.ends_at,
+        value.deadline,
+        value.timezone,
+        value.location,
+        value.participants,
+        value.estimated_duration_minutes,
+        value.priority,
+        value.allowed_windows,
+        value.confidence,
+        value.assumptions,
+        value.evidence,
+    )
+
+
+def _classification_result(value: ClassificationDecision) -> UnderstandingResult:
+    return UnderstandingResult(
+        value.inbox_item_id,
+        value.kind,
+        value.candidate_id,
+        value.confidence,
+        value.review_reason,
+        value.model_calls,
+    )
+
+
+def _classification_review(
+    inbox_item_id: UUID, confidence: float, reason: str
+) -> ClassificationDecision:
+    return ClassificationDecision(
+        inbox_item_id, CandidateKind.NEEDS_REVIEW, None, confidence, reason, 1
     )
 
 

@@ -82,13 +82,16 @@ async def test_stage4_owned_tables_are_idempotent_and_content_free(
 
     checkpoints = SqlWorkflowCheckpointRepository(sessions)
     await checkpoints.save(
+        WorkflowCheckpoint(inbox_item_id, "CLASSIFIED", "EVENT", None, 0.9, None, 1, 1)
+    )
+    await checkpoints.save(
         WorkflowCheckpoint(
-            inbox_item_id, "DECIDED", "EVENT", candidate.candidate_id, 0.9, None, 2, 1
+            inbox_item_id, "DECIDED", "EVENT", candidate.candidate_id, 0.9, None, 2, 2
         )
     )
     await checkpoints.save(
         WorkflowCheckpoint(
-            inbox_item_id, "COMPLETE", "EVENT", candidate.candidate_id, 0.9, None, 2, 2
+            inbox_item_id, "COMPLETE", "EVENT", candidate.candidate_id, 0.9, None, 2, 3
         )
     )
     assert (await checkpoints.get(inbox_item_id)).phase == "COMPLETE"  # type: ignore[union-attr]

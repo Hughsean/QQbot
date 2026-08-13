@@ -95,12 +95,14 @@ IMAP/MIME 对象在 Adapter 内转换后销毁。
 ### UnderstandingPort
 
 ```text
-classify(normalizedContent, trustContext) -> Classification
-extractEvent(normalizedContent, temporalContext) -> EventCandidate
-extractTask(normalizedContent, temporalContext) -> TaskCandidate
+classify(inboxItemId) -> ClassificationDecision
+extractCandidate(inboxItemId, classificationKind, classificationConfidence) -> ExtractionDecision
+validateAndSaveCandidate(inboxItemId, candidateDraft) -> UnderstandingResult
 ```
 
-输出必须包含置信度、依据字段和显式假设。
+`ClassificationDecision` 必须包含分类、置信度、复核原因和已有 Candidate 引用；只有 Event/Task
+且尚无 Candidate 的结果可以进入提取。`ExtractionDecision` 只携带 Provider 中立的有界草稿、
+置信度和复核原因，不能携带 Provider DTO。输出必须包含依据字段和显式假设。
 
 阶段 4 的实现使用 DeepSeek JSON Output，但 Provider JSON 必须先转换并经过本地 Pydantic
 schema（拒绝额外字段）、时间/时区、证据、来源和信任校验。`MEDIUM` 优先级只在 Adapter
@@ -111,6 +113,10 @@ Action、Agenda 或 Notification 工具。
 Event 缺少持续时间时使用强类型配置的默认值并追加显式假设；Task deadline 不得填入 Event
 的开始/结束字段。置信度低于 0.75、时间含糊、schema/证据非法或模型不可用时进入
 `NEEDS_REVIEW`，不会静默形成候选。
+
+Workflow 依次执行 `classify`、`extract_candidate`、`validate_candidate`、`persist_decision` 和
+`apply_disposition`。checkpoint 仅在 `CLASSIFIED`、`DECIDED`、`COMPLETE` 持久化控制状态；候选
+草稿不持久化，合法 Candidate 仍由 Understanding 模块在自己的事务中保存。
 
 ### AgendaQueryPort
 
