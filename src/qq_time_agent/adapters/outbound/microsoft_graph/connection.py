@@ -19,6 +19,8 @@ from qq_time_agent.modules.connections.application.ports import (
     ProviderTokens,
 )
 
+__all__ = ["MicrosoftGraphConnectionAdapter", "msal"]
+
 SCOPES = ["User.Read", "Mail.Read", "email"]
 
 

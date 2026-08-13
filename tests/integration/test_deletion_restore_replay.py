@@ -63,7 +63,7 @@ async def test_tombstone_replay_removes_content_restored_from_old_backup(
     clock = Clock(now)
     connection_id = uuid4()
     external_id = f"restore-{uuid4()}"
-    source_ref = f"mail:{connection_id}:{external_id}"
+    source_ref = f"qq-mail:{connection_id}:{external_id}"
     knowledge = SqlKnowledgeRepository(sessions)
     coordinator = DeletionCoordinator(
         SqlTombstoneRepository(sessions, clock),
@@ -141,7 +141,7 @@ async def _restore_source(
                 inbox_item_id=item_id,
                 connection_id=connection_id,
                 user_id="owner",
-                source_type="MICROSOFT_MAIL",
+                source_type="QQ_MAIL",
                 ingress_type="SYNC",
                 trust_level="T2",
                 external_id=external_id,
@@ -223,7 +223,7 @@ async def _restore_source(
         IndexedSource(
             uuid4(),
             source_ref,
-            "MICROSOFT_MAIL",
+            "QQ_MAIL",
             "v1",
             now,
             "T2",

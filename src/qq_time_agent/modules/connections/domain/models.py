@@ -9,6 +9,7 @@ from uuid import UUID, uuid4
 
 class ConnectionProvider(StrEnum):
     MICROSOFT = "MICROSOFT"
+    QQ_MAIL = "QQ_MAIL"
 
 
 class ConnectionStatus(StrEnum):
@@ -59,6 +60,11 @@ class ExternalConnection:
     def require_reauthorization(self) -> None:
         if self.status is not ConnectionStatus.DISCONNECTED:
             self.status = ConnectionStatus.REAUTH_REQUIRED
+            self.version += 1
+
+    def mark_degraded(self) -> None:
+        if self.status in {ConnectionStatus.ACTIVE, ConnectionStatus.DEGRADED}:
+            self.status = ConnectionStatus.DEGRADED
             self.version += 1
 
     def restart_authorization(self) -> None:

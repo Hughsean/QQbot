@@ -39,7 +39,7 @@ async def test_pgvector_extension_and_migration_are_active(engine: AsyncEngine) 
             select(text("version_num")).select_from(text("alembic_version"))
         )
     assert extension is not None
-    assert revision == "0010_tombstone_idempotency"
+    assert revision == "0012_inbox_deletion_fence"
 
     health = await DatabaseReadinessProbe(engine).check()
     assert health.available and health.vector_enabled
@@ -64,6 +64,30 @@ async def test_job_enqueue_and_concurrent_lease_are_idempotent(engine: AsyncEngi
     await queue.complete(lease[0], now)
     async with sessions.begin() as session:
         await session.execute(delete(JobRow).where(JobRow.job_id == first))
+
+
+@pytest.mark.asyncio
+async def test_qq_mail_jobs_retry_and_disconnect_cancellation(engine: AsyncEngine) -> None:
+    sessions = async_sessionmaker(engine, expire_on_commit=False)
+    queue = SqlJobQueue(sessions)
+    now = datetime(2026, 8, 13, tzinfo=UTC)
+    connection_id = uuid4()
+    request = JobRequest(
+        "qq-mail-sync",
+        {"connection_id": str(connection_id)},
+        f"qq-mail-sync:{connection_id}:integration",
+        now,
+    )
+    job_id = await queue.enqueue(request)
+    lease = (await queue.lease_due(now, "worker-qq", 1, timedelta(minutes=1)))[0]
+    await queue.fail(lease, now, "TransientProvider", now + timedelta(seconds=30))
+    retry = await queue.status(job_id)
+    assert retry is not None and retry.status == "RETRY_WAIT"
+    assert await queue.cancel_pending_for_connection(connection_id, now) == 1
+    cancelled = await queue.status(job_id)
+    assert cancelled is not None and cancelled.status == "CANCELLED"
+    async with sessions.begin() as session:
+        await session.execute(delete(JobRow).where(JobRow.job_id == job_id))
 
 
 @pytest.mark.asyncio

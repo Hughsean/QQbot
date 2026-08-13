@@ -86,7 +86,7 @@ Schema Validation
 | 数据 | 保留时间 | 到期行为 |
 |---|---:|---|
 | 内部日程、任务、个人笔记 | 直到所有者主动删除 | 删除关联提醒、索引和派生数据 |
-| Outlook 邮件正文、QQ 来源文本及对应 RAG chunk/vector | 365 天 | 先停止检索，再异步物理删除 |
+| Outlook/QQ 邮箱正文、QQ 来源文本及对应 RAG chunk/vector | 365 天 | 先停止检索，再异步物理删除 |
 | 已主动删除来源的在线数据 | 最长 24 小时 | 立即标记不可检索，24 小时内物理清除 |
 | DeepSeek 完整请求和回答 | 不持久化 | 请求结束后不写数据库或日志 |
 | DeepSeek 调用模型、token、耗时、状态和错误分类 | 180 天 | 聚合指标可保留，逐次明细删除 |
@@ -128,6 +128,9 @@ Schema Validation
 ## 9. 所有者授权与删除说明
 
 - Microsoft 连接只请求委托 `User.Read` 与 `Mail.Read`；断开会停止同步并删除本地 refresh token。当前所有者已经明确断开，系统状态保持 `DISCONNECTED`，不会自动重连。
+- QQ 邮箱只使用 `imap.qq.com:993` 的证书校验 TLS 与邮箱生成的 IMAP 授权码。授权码不是 QQ
+  登录密码，只以密文保存；断开会取消待执行同步、删除授权码，并按连接来源逐项记录 tombstone，
+  删除 Inbox、Normalization、Understanding、Workflow、Proposal 与 Knowledge 派生数据。
 - QQ 直接消息是 T1 主人输入；`转发:`、`笔记:` 内容固定降为 T2 数据。邮件、转发或 RAG 片段不能触发确认、删除或任何工具。
 - 创建/修改/撤销日程均需主人确认；已确认日程的提醒属于创建时授予的有限自动发送权限。
 - 主人删除资料使用 `删除资料 <source_ref> 确认删除`。删除立即使在线 Inbox、Normalization 和 Knowledge 派生数据消失，并记录可重放 tombstone；在线最长 24 小时是故障重试上限，不是正常等待时间。

@@ -67,6 +67,46 @@ async def test_vault_database_never_contains_plaintext_and_rotation_keeps_refere
 
 
 @pytest.mark.asyncio
+async def test_qq_mail_connection_persists_only_encrypted_credential_reference(
+    engine: AsyncEngine,
+) -> None:
+    config = load_runtime_config()
+    sessions = async_sessionmaker(engine, expire_on_commit=False)
+    clock = FixedClock(datetime(2026, 8, 13, tzinfo=UTC))
+    vault = VaultService(
+        SqlCredentialRepository(sessions),
+        AesGcmCredentialCipher(config.credential_encryption_key),
+        clock,
+    )
+    repository = SqlConnectionRepository(sessions)
+    secret = "synthetic-qq-mail-authorization-code"
+    reference = await vault.store(secret, CredentialKind.IMAP_AUTH_CODE)
+    connection = ExternalConnection.start(f"integration-{uuid4()}", ConnectionProvider.QQ_MAIL)
+    connection.activate(
+        "synthetic-owner@qq.com",
+        "s***@qq.com",
+        frozenset({"Mail.Read"}),
+        reference.credential_id,
+    )
+    await repository.add(connection)
+    try:
+        loaded = await repository.get(connection.connection_id)
+        assert loaded is not None and loaded.provider is ConnectionProvider.QQ_MAIL
+        assert loaded.credential_ref == reference.credential_id
+        async with sessions() as session:
+            credential = await session.get(CredentialRow, reference.credential_id)
+            row = await session.get(ConnectionRow, connection.connection_id)
+            assert credential is not None and secret.encode() not in credential.ciphertext
+            assert row is not None and not hasattr(row, "authorization_code")
+    finally:
+        async with sessions.begin() as session:
+            await session.execute(
+                delete(ConnectionRow).where(ConnectionRow.connection_id == connection.connection_id)
+            )
+        await vault.delete(reference)
+
+
+@pytest.mark.asyncio
 async def test_oauth_transaction_claim_is_atomic_one_time_and_session_bound(
     engine: AsyncEngine,
 ) -> None:

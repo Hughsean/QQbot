@@ -1,12 +1,10 @@
-"""Idempotent periodic enqueue for the single owner's Microsoft connection."""
+"""Idempotent periodic enqueue for one provider connection."""
 
 from typing import Protocol
 
 from qq_time_agent.contracts.clock import Clock
 from qq_time_agent.contracts.jobs import JobQueue, JobRequest
 from qq_time_agent.modules.connections.contracts import ConnectionStatusView
-
-MAIL_SYNC_JOB = "microsoft-mail-sync"
 
 
 class ConnectionStatusLookup(Protocol):
@@ -20,6 +18,7 @@ class PeriodicMailSyncScheduler:
         queue: JobQueue,
         clock: Clock,
         interval_seconds: int,
+        job_kind: str = "microsoft-mail-sync",
     ) -> None:
         if interval_seconds < 60:
             raise ValueError("mail sync interval must be at least 60 seconds")
@@ -27,6 +26,9 @@ class PeriodicMailSyncScheduler:
         self._queue = queue
         self._clock = clock
         self._interval_seconds = interval_seconds
+        if job_kind not in {"microsoft-mail-sync", "qq-mail-sync"}:
+            raise ValueError("unsupported mail sync job kind")
+        self._job_kind = job_kind
 
     async def enqueue_due(self) -> None:
         connection = await self._connections.status("owner")
@@ -36,9 +38,9 @@ class PeriodicMailSyncScheduler:
         bucket = int(now.timestamp()) // self._interval_seconds
         await self._queue.enqueue(
             JobRequest(
-                MAIL_SYNC_JOB,
+                self._job_kind,
                 {"connection_id": str(connection.connection_id)},
-                f"mail-sync:{connection.connection_id}:{bucket}",
+                f"{self._job_kind}:{connection.connection_id}:{bucket}",
                 now,
             )
         )

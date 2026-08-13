@@ -5,23 +5,19 @@
 邮箱 Provider 必须实现统一端口，不允许上层感知 Microsoft Graph、Gmail API 或 IMAP 细节。
 
 ```text
-beginAuthorization()
-completeAuthorization()
-refreshAuthorization()
+connectOrAuthorize()
 getAccountProfile()
-listRecentMessages()
-getMessage()
-getAttachments()
-syncChanges()
+acquireMailCredential()
+syncChanges(accountId, credentialHandle, opaqueCursor, since)
 disconnect()
 ```
 
 统一消息模型至少包含：
 
-- Provider 消息 ID 和线程 ID。
+- Provider 消息 ID、跨游标重置去重键和线程 ID。
 - 发件人、收件人、主题和原始时间。
 - 文本正文和 HTML 正文引用。
-- 附件元数据。
+- 附件文件名、Content-Type 和声明大小元数据；不包含附件字节。
 - 会议邀请和 MIME 类型。
 - 同步版本或变更标识。
 
@@ -75,12 +71,23 @@ Microsoft 应用不得创建或配置客户端密码；历史密码必须在 Ent
 
 ## 3. QQ 邮箱 IMAP（P1）
 
-- 使用 `imap.qq.com:993` 和 TLS。
-- 用户只提交 QQ 邮箱授权码，不提交 QQ 登录密码。
-- 授权码由 Credential Vault 加密保存。
-- 使用 IMAP UID/UIDVALIDITY 作为同步依据。
-- 首版采用定时轮询，不依赖永久 IDLE 长连接。
-- IMAP Adapter 不得向上暴露文件夹命名、MIME 库类型或连接对象。
+- 只允许本机回环页面中已认证的唯一所有者连接、查询状态、重新认证和明确确认断开。
+- 固定使用 `imap.qq.com:993`、TLS、系统受信 CA、主机名和证书校验；禁止明文、STARTTLS
+  降级、跳过证书验证或切换任意 Host/Port。
+- 用户提交完整 QQ 邮箱地址和邮箱设置中生成的 IMAP 授权码；不接收、不要求、不保存 QQ
+  登录密码。授权码只进入 Credential Vault，Connections 仅保存 `credential_ref`。
+- 连接时立即执行只读 TLS 登录和 `INBOX` 选择验证；支持 `ACTIVE`、`DEGRADED`、
+  `REAUTH_REQUIRED`、`DISCONNECTED`。认证失败进入 `REAUTH_REQUIRED`，网络/超时/服务端临时
+  错误有限重试，断开删除凭据并取消待执行同步 Job。
+- 默认只读同步 `INBOX`。首次同步按 `MAIL_INITIAL_LOOKBACK_DAYS` 搜索，后续游标包含
+  `UIDVALIDITY + last UID`。Provider 消息 ID 包含邮箱不可逆标识、文件夹、UIDVALIDITY 和 UID。
+- UIDVALIDITY 变化时从配置回看窗口安全重扫；Inbox 另以 Message-ID，缺失时以确定性邮件指纹
+  去重，因此不会因新 UID 命名空间重复创建已有业务记录，也不会跳过窗口内邮件。
+- 首版复用数据库 Job Queue 与 `MAIL_SYNC_INTERVAL_SECONDS` 定时轮询，不实现永久 IMAP IDLE。
+- IMAP Adapter 先读取 header 与 `BODYSTRUCTURE`，只按 MIME part 读取正文；附件只保存文件名、
+  Content-Type 和声明大小，不下载、不解析、不索引附件内容。
+- `imaplib`、`email.message`、BODYSTRUCTURE、UID、文件夹与连接对象只存在于 Adapter 内；阻塞
+  IMAP 调用通过工作线程隔离。上层只接收统一 Mail Provider 模型和不可解释游标。
 
 ## 4. Gmail（P1）
 
@@ -95,5 +102,5 @@ Microsoft 应用不得创建或配置客户端密码；历史密码必须在 Ent
 - 邮件正文永远是 T2 外部内容。
 - 邮件中的“忽略规则”“调用工具”“删除日程”等文字只作为正文。
 - HTML 邮件先清洗，禁止执行脚本、远程资源和内嵌表单。
-- 附件在独立隔离流程中解析，并限制大小、类型和资源消耗。
+- QQ 邮箱首版附件只保存元数据；附件内容处理仍不在范围内。
 - 发送给 AI 前按用例最小化内容，去除不需要的签名、历史引用和跟踪元素。

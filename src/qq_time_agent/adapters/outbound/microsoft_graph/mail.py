@@ -57,11 +57,16 @@ class MicrosoftGraphMailAdapter:
         self._jitter = jitter
 
     async def fetch_page(
-        self, access_token: CredentialHandle, cursor_url: str | None, since: datetime
+        self,
+        mail_credential: CredentialHandle,
+        account_id: str,
+        cursor_url: str | None,
+        since: datetime,
     ) -> MailDeltaPage:
+        del account_id
         _require_aware(since)
         url, params = _request(cursor_url, since)
-        token = access_token.reveal(self._clock.now())
+        token = mail_credential.reveal(self._clock.now())
         response = await self._get(url, token, params)
         try:
             payload = response.json()
@@ -74,10 +79,13 @@ class MicrosoftGraphMailAdapter:
             raise MailProviderError("PermanentProvider") from exc
         return MailDeltaPage(changes, continuation, complete)
 
-    async def fetch_content(self, access_token: CredentialHandle, change: MailChange) -> MailChange:
+    async def fetch_content(
+        self, mail_credential: CredentialHandle, account_id: str, change: MailChange
+    ) -> MailChange:
+        del account_id
         if change.removed:
             raise ValueError("removed mail has no content")
-        token = access_token.reveal(self._clock.now())
+        token = mail_credential.reveal(self._clock.now())
         message_id = quote(change.external_id, safe="")
         response = await self._get(
             f"{GRAPH_ORIGIN}/v1.0/me/messages/{message_id}",

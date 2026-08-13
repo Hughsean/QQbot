@@ -57,7 +57,7 @@ async def test_graph_mail_maps_delta_page_without_provider_dto_leak() -> None:
 
     client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
     adapter = MicrosoftGraphMailAdapter(FixedClock(), client)
-    page = await adapter.fetch_page(_handle(), None, datetime(2026, 8, 6, tzinfo=UTC))
+    page = await adapter.fetch_page(_handle(), "account-id", None, datetime(2026, 8, 6, tzinfo=UTC))
     assert page.round_complete
     assert page.changes[0].sender.address == "sender@example.test"
     assert page.changes[1].removed
@@ -71,7 +71,7 @@ async def test_graph_mail_maps_delta_page_without_provider_dto_leak() -> None:
     content_adapter = MicrosoftGraphMailAdapter(
         FixedClock(), httpx.AsyncClient(transport=httpx.MockTransport(content_handler))
     )
-    complete = await content_adapter.fetch_content(_handle(), page.changes[0])
+    complete = await content_adapter.fetch_content(_handle(), "account-id", page.changes[0])
     assert complete.body == "Friday 17:00"
 
 
@@ -80,7 +80,7 @@ async def test_graph_mail_rejects_untrusted_cursor_and_classifies_auth() -> None
     adapter = MicrosoftGraphMailAdapter(FixedClock(), httpx.AsyncClient())
     with pytest.raises(ValueError, match="untrusted"):
         await adapter.fetch_page(
-            _handle(), "https://evil.example/cursor", datetime(2026, 8, 6, tzinfo=UTC)
+            _handle(), "account-id", "https://evil.example/cursor", datetime(2026, 8, 6, tzinfo=UTC)
         )
     await adapter.close()
 
@@ -91,7 +91,7 @@ async def test_graph_mail_rejects_untrusted_cursor_and_classifies_auth() -> None
         FixedClock(), httpx.AsyncClient(transport=httpx.MockTransport(unauthorized))
     )
     with pytest.raises(MailProviderError, match="Authentication"):
-        await adapter.fetch_page(_handle(), None, datetime(2026, 8, 6, tzinfo=UTC))
+        await adapter.fetch_page(_handle(), "account-id", None, datetime(2026, 8, 6, tzinfo=UTC))
 
 
 @pytest.mark.asyncio
@@ -121,7 +121,7 @@ async def test_graph_mail_honors_bounded_retry_after_with_jitter() -> None:
         sleep=sleep,
         jitter=lambda: 0.25,
     )
-    page = await adapter.fetch_page(_handle(), None, datetime(2026, 8, 6, tzinfo=UTC))
+    page = await adapter.fetch_page(_handle(), "account-id", None, datetime(2026, 8, 6, tzinfo=UTC))
     assert page.round_complete
     assert attempts == 2
     assert delays == [2.25]
@@ -150,13 +150,16 @@ async def test_graph_mail_accepts_documented_and_live_inbox_delta_paths_only() -
     live_cursor = (
         "https://graph.microsoft.com/v1.0/me/mailFolders('inbox')/messages/delta?$deltatoken=live"
     )
-    page = await adapter.fetch_page(_handle(), live_cursor, datetime(2026, 8, 6, tzinfo=UTC))
+    page = await adapter.fetch_page(
+        _handle(), "account-id", live_cursor, datetime(2026, 8, 6, tzinfo=UTC)
+    )
     assert page.round_complete
     assert seen == ["/v1.0/me/mailFolders('inbox')/messages/delta"]
 
     with pytest.raises(ValueError, match="unexpected"):
         await adapter.fetch_page(
             _handle(),
+            "account-id",
             "https://graph.microsoft.com/v1.0/me/mailFolders/archive/messages/delta?token=x",
             datetime(2026, 8, 6, tzinfo=UTC),
         )

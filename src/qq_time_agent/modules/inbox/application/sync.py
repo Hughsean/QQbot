@@ -4,12 +4,14 @@ from datetime import timedelta
 from uuid import UUID
 
 from qq_time_agent.contracts.clock import Clock
+from qq_time_agent.contracts.source import SourceType
 from qq_time_agent.modules.connections.contracts import ConnectionSyncPort
 from qq_time_agent.modules.credentials.contracts import CredentialHandle
 from qq_time_agent.modules.data_lifecycle.contracts import DeletionRequestPort
 from qq_time_agent.modules.inbox.application.ports import InboxRepository
 from qq_time_agent.modules.inbox.application.service import InboxService
 from qq_time_agent.modules.inbox.contracts import (
+    InboxSourceDeletedError,
     MailChange,
     MailProvider,
     MailProviderError,
@@ -31,6 +33,7 @@ class MailSyncService:
         clock: Clock,
         lookback_days: int,
         deletion: DeletionRequestPort | None = None,
+        source_type: SourceType = SourceType.MICROSOFT_MAIL,
     ) -> None:
         if lookback_days < 1:
             raise ValueError("mail lookback must be positive")
@@ -42,6 +45,7 @@ class MailSyncService:
         self._clock = clock
         self._lookback_days = lookback_days
         self._deletion = deletion
+        self._source_type = source_type
 
     async def synchronize(self, connection_id: UUID) -> MailSyncResult:
         try:
@@ -49,6 +53,8 @@ class MailSyncService:
         except MailProviderError as exc:
             if exc.failure_class == "Authentication":
                 await self._connections.mark_sync_reauth_required(connection_id)
+            elif exc.failure_class in {"TransientProvider", "RateLimit", "PageLimit"}:
+                await self._connections.mark_sync_degraded(connection_id)
             raise
 
     async def _run(self, connection_id: UUID) -> MailSyncResult:
@@ -58,10 +64,13 @@ class MailSyncService:
         created = duplicates = deleted = pages = 0
         round_complete = False
         while pages < MAX_PAGES_PER_RUN:
-            page = await self._provider.fetch_page(grant.access_token, cursor, since)
-            page_counts = await self._apply_page(
-                connection_id, grant.user_id, grant.access_token, page.changes
+            page = await self._provider.fetch_page(
+                grant.mail_credential, grant.account_id, cursor, since
             )
+            page_counts = await self._apply_page(
+                connection_id, grant.user_id, grant.account_id, grant.mail_credential, page.changes
+            )
+            await self._connections.ensure_sync_available(connection_id)
             created += page_counts[0]
             duplicates += page_counts[1]
             deleted += page_counts[2]
@@ -82,7 +91,8 @@ class MailSyncService:
         self,
         connection_id: UUID,
         user_id: str,
-        access_token: CredentialHandle,
+        account_id: str,
+        mail_credential: CredentialHandle,
         changes: tuple[MailChange, ...],
     ) -> tuple[int, int, int]:
         created = duplicates = deleted = 0
@@ -104,10 +114,20 @@ class MailSyncService:
                 if existing.status in {"RECEIVED", "FAILED_RETRYABLE"}:
                     await self._normalize_with_failure(existing.inbox_item_id)
                 continue
-            complete_change = await self._provider.fetch_content(access_token, change)
-            result = await self._inbox.ingest_mail(
-                connection_id, user_id, complete_change, self._clock.now()
+            complete_change = await self._provider.fetch_content(
+                mail_credential, account_id, change
             )
+            try:
+                result = await self._inbox.ingest_mail(
+                    connection_id,
+                    user_id,
+                    complete_change,
+                    self._clock.now(),
+                    self._source_type,
+                )
+            except InboxSourceDeletedError:
+                deleted += 1
+                continue
             if not result.created:
                 duplicates += 1
             if result.status not in {"RECEIVED", "FAILED_RETRYABLE"}:

@@ -12,6 +12,10 @@ PROVIDER_LOCATIONS = {
     "msal": "/adapters/outbound/microsoft_graph/",
     "openai": "/adapters/outbound/ai/",
 }
+STANDARD_PROVIDER_LOCATIONS = {
+    "email": "/adapters/outbound/qq_mail/",
+    "imaplib": "/adapters/outbound/qq_mail/",
+}
 DOMAIN_FORBIDDEN = {
     "alembic",
     "botpy",
@@ -71,6 +75,16 @@ def test_provider_sdks_are_contained_in_matching_adapters() -> None:
         for provider in imports & PROVIDER_LOCATIONS.keys():
             normalized = path.as_posix()
             if PROVIDER_LOCATIONS[provider] not in normalized:
+                violations.append(f"{path.relative_to(ROOT)} imports {provider}")
+    assert violations == []
+
+
+def test_imap_and_mime_objects_are_contained_in_qq_mail_adapter() -> None:
+    violations: list[str] = []
+    for path in SOURCE.rglob("*.py"):
+        imports = {name.split(".")[0] for name in _imports(path)}
+        for provider in imports & STANDARD_PROVIDER_LOCATIONS.keys():
+            if STANDARD_PROVIDER_LOCATIONS[provider] not in path.as_posix():
                 violations.append(f"{path.relative_to(ROOT)} imports {provider}")
     assert violations == []
 

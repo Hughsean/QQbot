@@ -10,6 +10,7 @@ class CredentialKind(StrEnum):
     OAUTH_FLOW = "OAUTH_FLOW"
     REFRESH_TOKEN = "REFRESH_TOKEN"  # noqa: S105 - enum label, not a credential
     ACCESS_TOKEN = "ACCESS_TOKEN"  # noqa: S105 - enum label, not a credential
+    IMAP_AUTH_CODE = "IMAP_AUTH_CODE"
 
 
 class CredentialRef:

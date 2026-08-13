@@ -4,9 +4,12 @@ from datetime import datetime
 from typing import Annotated, Protocol
 from uuid import UUID
 
-from fastapi import APIRouter, Cookie, Header, HTTPException, status
+from fastapi import APIRouter, Cookie, Header, HTTPException, Request, status
 
-from qq_time_agent.adapters.inbound.http.microsoft_oauth import OWNER_COOKIE
+from qq_time_agent.adapters.inbound.http.microsoft_oauth import (
+    OWNER_COOKIE,
+    _require_loopback_request,
+)
 from qq_time_agent.adapters.inbound.http.owner_session import (
     OwnerAuthenticationError,
     OwnerSessionSigner,
@@ -16,7 +19,7 @@ from qq_time_agent.contracts.jobs import JobQueue, JobRequest, JobStatusView
 from qq_time_agent.modules.connections.contracts import ConnectionStatusView
 from qq_time_agent.modules.inbox.contracts import InboxSourceView
 
-MAIL_SYNC_JOB = "microsoft-mail-sync"
+MAIL_SYNC_JOBS = {"MICROSOFT": "microsoft-mail-sync", "QQ_MAIL": "qq-mail-sync"}
 
 
 class ConnectionLookup(Protocol):
@@ -28,7 +31,7 @@ class InboxSourceLookup(Protocol):
 
 
 def mail_sync_router(
-    connections: ConnectionLookup,
+    connections: ConnectionLookup | tuple[ConnectionLookup, ...],
     inbox: InboxSourceLookup,
     queue: JobQueue,
     signer: OwnerSessionSigner,
@@ -42,11 +45,13 @@ def mail_sync_router(
     @router.post("/api/v1/connections/{connection_id}/sync", status_code=status.HTTP_202_ACCEPTED)
     async def enqueue_sync(
         connection_id: UUID,
+        request: Request,
         owner_cookie: Annotated[str | None, Cookie(alias=OWNER_COOKIE)] = None,
         owner_header: Annotated[str | None, Header(alias="X-Owner-Session")] = None,
     ) -> JobStatusView:
+        _require_loopback_request(request)
         owner_id = _authenticate(signer, owner_header or owner_cookie or "")
-        view = await connections.status(owner_id)
+        view = await _find_connection(connections, owner_id, connection_id)
         if view is None or view.connection_id != connection_id:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "connection not found")
         if view.status not in {"ACTIVE", "DEGRADED"}:
@@ -54,9 +59,11 @@ def mail_sync_router(
         now = clock.now()
         job_id = await queue.enqueue(
             JobRequest(
-                MAIL_SYNC_JOB,
+                MAIL_SYNC_JOBS[view.provider],
                 {"connection_id": str(connection_id)},
-                _idempotency_key(connection_id, now, interval_seconds),
+                _idempotency_key(
+                    MAIL_SYNC_JOBS[view.provider], connection_id, now, interval_seconds
+                ),
                 now,
             )
         )
@@ -68,21 +75,25 @@ def mail_sync_router(
     @router.get("/api/v1/sync-jobs/{job_id}", response_model=JobStatusView)
     async def sync_status(
         job_id: UUID,
+        request: Request,
         owner_cookie: Annotated[str | None, Cookie(alias=OWNER_COOKIE)] = None,
         owner_header: Annotated[str | None, Header(alias="X-Owner-Session")] = None,
     ) -> JobStatusView:
+        _require_loopback_request(request)
         _authenticate(signer, owner_header or owner_cookie or "")
         result = await queue.status(job_id)
-        if result is None or result.kind != MAIL_SYNC_JOB:
+        if result is None or result.kind not in MAIL_SYNC_JOBS.values():
             raise HTTPException(status.HTTP_404_NOT_FOUND, "sync job not found")
         return result
 
     @router.get("/api/v1/inbox/{inbox_item_id}/source", response_model=InboxSourceView)
     async def inbox_source(
         inbox_item_id: UUID,
+        request: Request,
         owner_cookie: Annotated[str | None, Cookie(alias=OWNER_COOKIE)] = None,
         owner_header: Annotated[str | None, Header(alias="X-Owner-Session")] = None,
     ) -> InboxSourceView:
+        _require_loopback_request(request)
         _authenticate(signer, owner_header or owner_cookie or "")
         result = await inbox.source(inbox_item_id)
         if result is None:
@@ -99,6 +110,19 @@ def _authenticate(signer: OwnerSessionSigner, token: str) -> str:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "owner authentication required") from exc
 
 
-def _idempotency_key(connection_id: UUID, now: datetime, interval_seconds: int) -> str:
+async def _find_connection(
+    lookups: ConnectionLookup | tuple[ConnectionLookup, ...],
+    user_id: str,
+    connection_id: UUID,
+) -> ConnectionStatusView | None:
+    values = lookups if isinstance(lookups, tuple) else (lookups,)
+    for lookup in values:
+        view = await lookup.status(user_id)
+        if view is not None and view.connection_id == connection_id:
+            return view
+    return None
+
+
+def _idempotency_key(kind: str, connection_id: UUID, now: datetime, interval_seconds: int) -> str:
     bucket = int(now.timestamp()) // interval_seconds
-    return f"mail-sync:{connection_id}:{bucket}"
+    return f"{kind}:{connection_id}:{bucket}"

@@ -49,6 +49,8 @@ class MicrosoftConnectionProvider(Protocol):
 
 
 class ConnectionRepository(Protocol):
+    async def add(self, connection: ExternalConnection) -> None: ...
+
     async def add_authorization(
         self, connection: ExternalConnection, transaction: OAuthTransaction
     ) -> None: ...

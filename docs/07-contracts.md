@@ -51,6 +51,22 @@ GET  /api/v1/inbox/{inbox_item_id}/source
 错误分类和更新时间，不返回 job payload、增量游标或邮件正文。来源追溯视图返回来源类型、
 Provider 消息 ID、线程 ID、发件人掩码、主题、原始时间、处理状态和删除标记。
 
+### QQ 邮箱 IMAP
+
+```text
+GET  /qq-mail/owner-start
+GET  /qq-mail/connect
+POST /api/v1/connections/qq-mail
+GET  /api/v1/connections/qq-mail/status
+POST /api/v1/connections/qq-mail/disconnect
+```
+
+- 全部接口只接受回环 Host 和已签名所有者会话；写接口要求同源 CSRF。
+- connect body 只接收完整 QQ 邮箱地址与秘密授权码，不接收 QQ 登录密码、Host、Port 或 TLS
+  开关。授权码不得进入 URL、响应、日志、异常或 Job payload。
+- connect 可用于首次连接及 `REAUTH_REQUIRED`/`DISCONNECTED` 后重新认证；活动连接重复提交被拒绝。
+- disconnect 需要连接 ID 和显式确认，取消该连接待执行 Job、删除凭据，再触发连接来源删除传播。
+
 ## 2. 模块契约
 
 ### InboxCommandPort
@@ -63,6 +79,18 @@ markFailed(itemId, failureClass, expectedVersion)
 ```
 
 `ingest` 必须根据 Provider 唯一键幂等。
+
+### 统一 MailProvider
+
+```text
+MailAccessGrant(connection_id, user_id, account_id, mail_credential)
+fetchPage(mailCredential, accountId, opaqueCursor, since) -> MailDeltaPage
+fetchContent(mailCredential, accountId, change) -> MailChange
+```
+
+`MailChange` 同时包含 Provider 唯一键和跨游标重置去重键。QQ Provider 唯一键必须包含邮箱不可逆
+标识、INBOX、UIDVALIDITY 和 UID；统一层把 cursor 当作不透明字符串，不解释 UID。Provider DTO、
+IMAP/MIME 对象在 Adapter 内转换后销毁。
 
 ### UnderstandingPort
 
@@ -213,7 +241,7 @@ Data Lifecycle 只能调用公开清理端口，禁止直接访问其他模块 R
 
 ```json
 {
-  "source_type": "QQ_DIRECT | QQ_FORWARD | MICROSOFT_MAIL | ...",
+  "source_type": "QQ_DIRECT | QQ_FORWARD | MICROSOFT_MAIL | QQ_MAIL | ...",
   "ingress_type": "DIRECT | FORWARDED | SYNC | WEBHOOK | UPLOAD",
   "external_id": "provider-stable-id",
   "thread_id": "optional-thread-id",

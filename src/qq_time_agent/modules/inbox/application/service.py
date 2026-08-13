@@ -4,7 +4,7 @@ import hashlib
 from datetime import datetime
 from uuid import NAMESPACE_URL, UUID, uuid5
 
-from qq_time_agent.contracts.source import SourceEnvelope
+from qq_time_agent.contracts.source import IngressType, SourceEnvelope, SourceType, TrustLevel
 from qq_time_agent.modules.inbox.application.ports import InboxRepository
 from qq_time_agent.modules.inbox.contracts import (
     InboxContentView,
@@ -25,9 +25,11 @@ class InboxService:
         user_id: str,
         change: MailChange,
         received_at: datetime,
+        source_type: SourceType = SourceType.MICROSOFT_MAIL,
     ) -> IngestResult:
-        body_text = change.body if change.body_content_type.lower() == "text" else ""
-        body_html = change.body if change.body_content_type.lower() == "html" else None
+        content_type = change.body_content_type.lower()
+        body_text = change.body if content_type in {"text", "text/plain"} else ""
+        body_html = change.body if content_type in {"html", "text/html"} else None
         content_hash = hashlib.sha256(
             (change.subject + "\0" + change.body).encode("utf-8")
         ).hexdigest()
@@ -41,6 +43,10 @@ class InboxService:
             change.occurred_at,
             received_at,
             content_hash,
+            source_type,
+            IngressType.SYNC,
+            TrustLevel.T2,
+            change.dedupe_key,
         )
         return await self._repository.ingest(
             envelope,
@@ -55,6 +61,14 @@ class InboxService:
             change.internet_message_id,
             change.change_key,
             change.has_attachments,
+            tuple(
+                {
+                    "filename": item.filename,
+                    "content_type": item.content_type,
+                    "declared_size": item.declared_size,
+                }
+                for item in change.attachments
+            ),
         )
 
     async def ingest_qq(self, envelope: SourceEnvelope, content: str) -> IngestResult:
@@ -86,6 +100,7 @@ class InboxService:
             None,
             None,
             False,
+            (),
         )
 
     async def mark_normalized(self, inbox_item_id: UUID) -> None:

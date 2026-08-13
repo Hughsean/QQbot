@@ -34,6 +34,7 @@ class MailEnvelope:
     source_type: SourceType = SourceType.MICROSOFT_MAIL
     ingress_type: IngressType = IngressType.SYNC
     trust_level: TrustLevel = TrustLevel.T2
+    dedupe_key: str | None = None
 
     def __post_init__(self) -> None:
         required = (self.user_id, self.external_id, self.sender_id, self.content_hash)

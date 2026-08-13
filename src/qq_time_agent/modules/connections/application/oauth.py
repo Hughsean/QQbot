@@ -13,7 +13,11 @@ from qq_time_agent.modules.connections.application.ports import (
     MicrosoftConnectionProvider,
     OAuthProviderError,
 )
-from qq_time_agent.modules.connections.contracts import ConnectionStatusView, MailAccessGrant
+from qq_time_agent.modules.connections.contracts import (
+    ConnectionStatusView,
+    ConnectionUnavailableError,
+    MailAccessGrant,
+)
 from qq_time_agent.modules.connections.domain.models import (
     ConnectionProvider,
     ConnectionStatus,
@@ -151,7 +155,7 @@ class MicrosoftConnectionService:
     async def acquire_mail_access(self, connection_id: UUID) -> MailAccessGrant:
         connection = await self._require_connection(connection_id)
         if connection.status not in {ConnectionStatus.ACTIVE, ConnectionStatus.DEGRADED}:
-            raise ValueError("connection is not available for mail synchronization")
+            raise ConnectionUnavailableError("connection is not available for mail synchronization")
         if connection.credential_ref is None:
             raise ValueError("connection has no refresh credential")
         reference = CredentialRef(connection.credential_ref)
@@ -161,13 +165,28 @@ class MicrosoftConnectionService:
         except OAuthProviderError as exc:
             if exc.failure_class == "Authentication":
                 await self._mark_reauthorization(connection)
+            elif exc.failure_class in {"TransientProvider", "RateLimit"}:
+                connection.mark_degraded()
+                await self._save(connection)
             raise
         if tokens.refresh_token is not None:
             await self._vault.replace(reference, tokens.refresh_token.get_secret_value())
         handle = CredentialHandle(
             tokens.access_token.get_secret_value(), CredentialKind.ACCESS_TOKEN, tokens.expires_at
         )
-        return MailAccessGrant(connection.connection_id, connection.user_id, handle)
+        if connection.provider_account_id is None:
+            raise ValueError("connection has no provider account")
+        return MailAccessGrant(
+            connection.connection_id,
+            connection.user_id,
+            connection.provider_account_id,
+            handle,
+        )
+
+    async def ensure_sync_available(self, connection_id: UUID) -> None:
+        connection = await self._require_connection(connection_id)
+        if connection.status not in {ConnectionStatus.ACTIVE, ConnectionStatus.DEGRADED}:
+            raise ConnectionUnavailableError("connection is not available for mail synchronization")
 
     async def mark_sync_succeeded(self, connection_id: UUID, completed_at: datetime) -> None:
         connection = await self._require_connection(connection_id)
@@ -181,6 +200,11 @@ class MicrosoftConnectionService:
     async def mark_sync_reauth_required(self, connection_id: UUID) -> None:
         connection = await self._require_connection(connection_id)
         await self._mark_reauthorization(connection)
+
+    async def mark_sync_degraded(self, connection_id: UUID) -> None:
+        connection = await self._require_connection(connection_id)
+        connection.mark_degraded()
+        await self._save(connection)
 
     async def _exchange_and_activate(
         self,

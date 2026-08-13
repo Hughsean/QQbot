@@ -25,6 +25,10 @@ class SqlConnectionRepository:
     def __init__(self, sessions: async_sessionmaker[AsyncSession]) -> None:
         self._sessions = sessions
 
+    async def add(self, connection: ExternalConnection) -> None:
+        async with self._sessions.begin() as session:
+            session.add(ConnectionRow(**_connection_values(connection)))
+
     async def add_authorization(
         self, connection: ExternalConnection, transaction: OAuthTransaction
     ) -> None:

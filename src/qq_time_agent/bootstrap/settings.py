@@ -16,6 +16,8 @@ from qq_time_agent.bootstrap.config_models import (
     OllamaConfig,
     OwnerConfig,
     QqConfig,
+    QqMailConfig,
+    QqMailSandboxConfig,
     RetentionConfig,
     RuntimeConfig,
     ScheduleConfig,
@@ -42,6 +44,11 @@ class EnvironmentSettings(BaseSettings):
     qq_bot_sandbox: bool = True
     microsoft_tenant: str = "common"
     microsoft_client_id: SecretStr
+    qq_mail_imap_host: str = "imap.qq.com"
+    qq_mail_imap_port: int = Field(default=993, ge=1, le=65535)
+    qq_mail_timeout_seconds: float = Field(default=20, gt=0, le=120)
+    qq_mail_max_retries: int = Field(default=2, ge=0, le=5)
+    qq_mail_page_size: int = Field(default=50, ge=1, le=100)
     deepseek_api_key: SecretStr
     deepseek_base_url: str = "https://api.deepseek.com"
     deepseek_fast_model: str = "deepseek-v4-flash"
@@ -97,7 +104,23 @@ class EnvironmentSettings(BaseSettings):
             raise ValueError("RAG retrieval weights must sum to 1")
         if self.persist_llm_payloads:
             raise ValueError("PERSIST_LLM_PAYLOADS must remain false")
+        if self.qq_mail_imap_host != "imap.qq.com" or self.qq_mail_imap_port != 993:
+            raise ValueError("QQ Mail IMAP must use imap.qq.com:993")
         return self
+
+
+class QqMailSandboxSettings(BaseSettings):
+    """Loaded only by an explicitly opted-in real QQ Mail sandbox test."""
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        extra="ignore",
+        case_sensitive=False,
+        hide_input_in_errors=True,
+    )
+
+    qq_mail_sandbox_address: SecretStr
+    qq_mail_sandbox_auth_code: SecretStr
 
 
 def load_runtime_config() -> RuntimeConfig:
@@ -105,6 +128,14 @@ def load_runtime_config() -> RuntimeConfig:
 
     settings = EnvironmentSettings()
     return _to_runtime_config(settings)
+
+
+def load_qq_mail_sandbox_config() -> QqMailSandboxConfig:
+    settings = QqMailSandboxSettings()
+    return QqMailSandboxConfig(
+        settings.qq_mail_sandbox_address,
+        settings.qq_mail_sandbox_auth_code,
+    )
 
 
 def _to_runtime_config(value: EnvironmentSettings) -> RuntimeConfig:
@@ -128,6 +159,13 @@ def _to_runtime_config(value: EnvironmentSettings) -> RuntimeConfig:
             value.microsoft_tenant,
             value.microsoft_client_id,
             f"http://localhost:{value.app_listen_port}/oauth/microsoft/callback",
+        ),
+        qq_mail=QqMailConfig(
+            value.qq_mail_imap_host,
+            value.qq_mail_imap_port,
+            value.qq_mail_timeout_seconds,
+            value.qq_mail_max_retries,
+            value.qq_mail_page_size,
         ),
         deepseek=DeepSeekConfig(
             value.deepseek_api_key,

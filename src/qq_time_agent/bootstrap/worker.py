@@ -13,7 +13,7 @@ from qq_time_agent.adapters.inbound.workers.data_lifecycle_schedule import DataL
 from qq_time_agent.adapters.inbound.workers.knowledge import KnowledgeIndexJobHandler
 from qq_time_agent.adapters.inbound.workers.knowledge_schedule import KnowledgeIndexScheduler
 from qq_time_agent.adapters.inbound.workers.mail_schedule import PeriodicMailSyncScheduler
-from qq_time_agent.adapters.inbound.workers.mail_sync import MicrosoftMailSyncJobHandler
+from qq_time_agent.adapters.inbound.workers.mail_sync import MailSyncJobHandler
 from qq_time_agent.adapters.inbound.workers.runner import JobRunner
 from qq_time_agent.adapters.inbound.workers.scheduling import SchedulingJobHandler
 from qq_time_agent.adapters.inbound.workers.scheduling_schedule import SchedulingScheduler
@@ -28,11 +28,13 @@ from qq_time_agent.adapters.outbound.ollama.embedding import OllamaEmbeddingAdap
 from qq_time_agent.adapters.outbound.persistence.database import create_database_engine
 from qq_time_agent.adapters.outbound.persistence.jobs import SqlJobQueue
 from qq_time_agent.adapters.outbound.persistence.retention import OperationalExpiryAdapter
+from qq_time_agent.adapters.outbound.qq_mail.imap import QqMailImapAdapter
 from qq_time_agent.bootstrap.logging import configure_logging
 from qq_time_agent.bootstrap.runtime import configure_event_loop_policy
 from qq_time_agent.bootstrap.settings import load_runtime_config
 from qq_time_agent.contracts.clock import SystemClock
 from qq_time_agent.contracts.jobs import JobLease
+from qq_time_agent.contracts.source import SourceType
 from qq_time_agent.modules.agenda.application.service import AgendaService
 from qq_time_agent.modules.agenda.infrastructure.repository import SqlAgendaRepository
 from qq_time_agent.modules.ai_gateway.application.service import AIGatewayService
@@ -42,6 +44,7 @@ from qq_time_agent.modules.audit.application.service import AuditService
 from qq_time_agent.modules.audit.infrastructure.repository import SqlAuditRepository
 from qq_time_agent.modules.audit.infrastructure.retention import AuditExpiryAdapter
 from qq_time_agent.modules.connections.application.oauth import MicrosoftConnectionService
+from qq_time_agent.modules.connections.application.qq_mail import QqMailConnectionService
 from qq_time_agent.modules.connections.infrastructure.repository import SqlConnectionRepository
 from qq_time_agent.modules.credentials.application.vault import VaultService
 from qq_time_agent.modules.credentials.infrastructure.cipher import AesGcmCredentialCipher
@@ -57,8 +60,14 @@ from qq_time_agent.modules.identity.contracts import UserPreferencesView
 from qq_time_agent.modules.identity.infrastructure.repository import (
     SqlUserPreferencesRepository,
 )
+from qq_time_agent.modules.inbox.application.connection_deletion import (
+    ConnectionSourceDeletionService,
+)
 from qq_time_agent.modules.inbox.application.service import InboxService
 from qq_time_agent.modules.inbox.application.sync import MailSyncService
+from qq_time_agent.modules.inbox.infrastructure.connection_deletion import (
+    SqlConnectionInboxDeletionRepository,
+)
 from qq_time_agent.modules.inbox.infrastructure.purge import InboxPurgeAdapter
 from qq_time_agent.modules.inbox.infrastructure.repository import SqlInboxRepository
 from qq_time_agent.modules.inbox.infrastructure.retention import InboxExpiredSourceAdapter
@@ -106,13 +115,15 @@ def build_worker() -> tuple[JobRunner, AsyncEngine, tuple[AsyncClosable, ...]]:
     deepseek = DeepSeekStructuredAdapter(config.deepseek)
     ollama = OllamaEmbeddingAdapter(config.ollama)
     audit = AuditService(SqlAuditRepository(sessions))
+    connection_repository = SqlConnectionRepository(sessions)
+    vault = VaultService(
+        SqlCredentialRepository(sessions),
+        AesGcmCredentialCipher(config.credential_encryption_key),
+        clock,
+    )
     connections = MicrosoftConnectionService(
-        SqlConnectionRepository(sessions),
-        VaultService(
-            SqlCredentialRepository(sessions),
-            AesGcmCredentialCipher(config.credential_encryption_key),
-            clock,
-        ),
+        connection_repository,
+        vault,
         graph_connection,
         clock,
         audit=audit,
@@ -133,6 +144,18 @@ def build_worker() -> tuple[JobRunner, AsyncEngine, tuple[AsyncClosable, ...]]:
         ),
         clock,
         timedelta(hours=config.retention.source_deletion_hours),
+        audit,
+    )
+    qq_mail = QqMailImapAdapter(config.qq_mail, clock)
+    qq_connections = QqMailConnectionService(
+        connection_repository,
+        vault,
+        qq_mail,
+        queue,
+        ConnectionSourceDeletionService(
+            SqlConnectionInboxDeletionRepository(sessions), deletion, clock
+        ),
+        clock,
         audit,
     )
     retention = RetentionCoordinator(
@@ -159,7 +182,7 @@ def build_worker() -> tuple[JobRunner, AsyncEngine, tuple[AsyncClosable, ...]]:
         config.ollama.dimensions,
         config.ollama.index_version,
     )
-    sync_service = MailSyncService(
+    microsoft_sync = MailSyncService(
         connections,
         inbox,
         inbox_repository,
@@ -168,6 +191,17 @@ def build_worker() -> tuple[JobRunner, AsyncEngine, tuple[AsyncClosable, ...]]:
         clock,
         config.mail_initial_lookback_days,
         deletion,
+    )
+    qq_sync = MailSyncService(
+        qq_connections,
+        inbox,
+        inbox_repository,
+        NormalizationService(normalization_repository),
+        qq_mail,
+        clock,
+        config.mail_initial_lookback_days,
+        deletion,
+        SourceType.QQ_MAIL,
     )
     model = AIGatewayService(
         deepseek, SqlInvocationRepository(sessions), clock, config.deepseek.max_concurrency
@@ -209,7 +243,8 @@ def build_worker() -> tuple[JobRunner, AsyncEngine, tuple[AsyncClosable, ...]]:
         clock,
     )
     handlers: dict[str, Callable[[JobLease], Awaitable[None]]] = {
-        "microsoft-mail-sync": MicrosoftMailSyncJobHandler(sync_service),
+        "microsoft-mail-sync": MailSyncJobHandler(microsoft_sync),
+        "qq-mail-sync": MailSyncJobHandler(qq_sync),
         "understanding-run": UnderstandingJobHandler(workflow),
         "scheduling-propose": SchedulingJobHandler(
             scheduling, candidate_queries, inbox, inbox_repository
@@ -219,8 +254,11 @@ def build_worker() -> tuple[JobRunner, AsyncEngine, tuple[AsyncClosable, ...]]:
         ),
         "data-lifecycle-sweep": DataLifecycleJobHandler(deletion, retention),
     }
-    mail_scheduler = PeriodicMailSyncScheduler(
+    microsoft_mail_scheduler = PeriodicMailSyncScheduler(
         connections, queue, clock, config.mail_sync_interval_seconds
+    )
+    qq_mail_scheduler = PeriodicMailSyncScheduler(
+        qq_connections, queue, clock, config.mail_sync_interval_seconds, "qq-mail-sync"
     )
     understanding_scheduler = UnderstandingScheduler(inbox, queue, clock)
     scheduling_scheduler = SchedulingScheduler(candidate_queries, queue, clock)
@@ -230,14 +268,15 @@ def build_worker() -> tuple[JobRunner, AsyncEngine, tuple[AsyncClosable, ...]]:
     lifecycle_scheduler = DataLifecycleScheduler(queue, clock)
 
     async def schedule_due() -> None:
-        await mail_scheduler.enqueue_due()
+        await microsoft_mail_scheduler.enqueue_due()
+        await qq_mail_scheduler.enqueue_due()
         await understanding_scheduler.enqueue_due()
         await scheduling_scheduler.enqueue_due()
         await knowledge_scheduler.enqueue_due()
         await lifecycle_scheduler.enqueue_due()
 
     runner = JobRunner(queue, handlers, clock, f"worker-{uuid4()}", before_poll=schedule_due)
-    return runner, engine, (graph_connection, graph_mail, deepseek, ollama)
+    return runner, engine, (graph_connection, graph_mail, qq_mail, deepseek, ollama)
 
 
 async def run_worker() -> None:

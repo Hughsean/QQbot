@@ -110,7 +110,7 @@ def _client(
             FakeConnections(connection), FakeInbox(source), MemoryQueue(clock), signer, clock, 300
         )
     )
-    return TestClient(app), token, connection_id, inbox_item_id
+    return TestClient(app, base_url="http://localhost:8000"), token, connection_id, inbox_item_id
 
 
 def test_sync_http_requires_owner_and_enqueues_idempotently() -> None:

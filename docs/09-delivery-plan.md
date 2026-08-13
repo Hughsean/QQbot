@@ -109,3 +109,21 @@
 - 不得通过统一清理任务跨模块直接删表；所有删除必须调用数据所有模块的清理端口。
 - 不得为赶进度让 Provider DTO 或 SDK 穿透模块边界。
 - 所有环境都不得关闭所有者 QQ 身份白名单；测试其他身份必须使用隔离的假 Provider。
+
+## 阶段 9：QQ 邮箱只读 IMAP 扩展
+
+前置条件：阶段 8 已完成，所有者明确决定启用 QQ 邮箱扩展；Microsoft 已保持本机公共客户端
+PKCE，禁止恢复公网入口、SSH 反向隧道、公网回调或客户端密码。
+
+交付物：
+
+- 本机所有者连接、状态、重新认证和确认断开；授权码经 Credential Vault 加密。
+- `imap.qq.com:993` 强制证书校验 TLS，只读 INBOX 定时轮询。
+- UIDVALIDITY/UID 不透明游标、稳定 Provider 唯一键、游标重置二次幂等和错误分类。
+- header、multipart text/html 与附件元数据映射，附件内容不下载。
+- 统一 Inbox、Normalization、Understanding、RAG、保留与 tombstone 删除传播。
+- 单元、契约、PostgreSQL/Worker 集成与显式真实 QQ 邮箱两轮沙箱。
+
+完成标准：真实沙箱 TLS 登录和两轮增量同步通过，第二轮不重复创建 InboxItem；UIDVALIDITY
+变化测试无遗漏/重复；断开后凭据、待执行任务和所有连接来源派生数据清理；Microsoft、QQ Bot、
+Agenda、Reminder、RAG 全量门禁无回归。

@@ -84,6 +84,18 @@ async def test_periodic_scheduler_skips_unavailable_connection() -> None:
     assert queue.requests == {}
 
 
+@pytest.mark.asyncio
+async def test_scheduler_reuses_interval_for_qq_mail_job_kind() -> None:
+    queue = MemoryQueue()
+    scheduler = PeriodicMailSyncScheduler(
+        FakeConnections(_view("ACTIVE")), queue, FixedClock(), 300, "qq-mail-sync"
+    )
+    await scheduler.enqueue_due()
+    request = next(iter(queue.requests.values()))
+    assert request.kind == "qq-mail-sync"
+    assert request.idempotency_key.startswith("qq-mail-sync:")
+
+
 def test_periodic_scheduler_rejects_too_small_interval() -> None:
     with pytest.raises(ValueError, match="at least 60"):
         PeriodicMailSyncScheduler(FakeConnections(None), MemoryQueue(), FixedClock(), 30)

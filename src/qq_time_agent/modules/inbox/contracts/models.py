@@ -16,6 +16,13 @@ class MailAddress:
 
 
 @dataclass(frozen=True, slots=True)
+class MailAttachmentMetadata:
+    filename: str | None
+    content_type: str
+    declared_size: int | None
+
+
+@dataclass(frozen=True, slots=True)
 class MailChange:
     external_id: str
     thread_id: str | None
@@ -29,6 +36,8 @@ class MailChange:
     change_key: str | None
     has_attachments: bool
     removed: bool = False
+    dedupe_key: str | None = None
+    attachments: tuple[MailAttachmentMetadata, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,11 +49,15 @@ class MailDeltaPage:
 
 class MailProvider(Protocol):
     async def fetch_page(
-        self, access_token: CredentialHandle, cursor_url: str | None, since: datetime
+        self,
+        mail_credential: CredentialHandle,
+        account_id: str,
+        cursor: str | None,
+        since: datetime,
     ) -> MailDeltaPage: ...
 
     async def fetch_content(
-        self, access_token: CredentialHandle, change: MailChange
+        self, mail_credential: CredentialHandle, account_id: str, change: MailChange
     ) -> MailChange: ...
 
 
@@ -52,6 +65,10 @@ class MailProviderError(RuntimeError):
     def __init__(self, failure_class: str) -> None:
         super().__init__(failure_class)
         self.failure_class = failure_class
+
+
+class InboxSourceDeletedError(RuntimeError):
+    """Raised when a disconnected or tombstoned source attempts re-ingestion."""
 
 
 @dataclass(frozen=True, slots=True)

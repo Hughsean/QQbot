@@ -4,17 +4,24 @@ from datetime import datetime
 from typing import cast
 from uuid import UUID, uuid4
 
-from sqlalchemy import select, update
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from qq_time_agent.contracts.source import IngressType, SourceType, TrustLevel
-from qq_time_agent.modules.inbox.contracts import InboxContentView, InboxSourceView, IngestResult
+from qq_time_agent.modules.inbox.contracts import (
+    InboxContentView,
+    InboxSourceDeletedError,
+    InboxSourceView,
+    IngestResult,
+)
 from qq_time_agent.modules.inbox.domain.models import InboxItem, InboxStatus, MailEnvelope
 from qq_time_agent.modules.inbox.infrastructure.tables import (
+    InboxConnectionStateRow,
     InboxItemRow,
     InboxRawContentRow,
+    InboxSourceDeletionRow,
     InboxSyncCursorRow,
 )
 
@@ -34,14 +41,35 @@ class SqlInboxRepository:
         internet_message_id: str | None,
         change_key: str | None,
         has_attachments: bool,
+        attachment_metadata: tuple[dict[str, object], ...],
     ) -> IngestResult:
         raw_content_id = uuid4()
         item = InboxItem.receive(envelope, raw_content_id)
         async with self._sessions.begin() as session:
+            await _lock_connection(session, envelope.connection_id)
+            state = await session.scalar(
+                select(InboxConnectionStateRow)
+                .where(InboxConnectionStateRow.connection_id == envelope.connection_id)
+                .with_for_update(read=True)
+            )
+            deleted_identity = InboxSourceDeletionRow.external_id == envelope.external_id
+            if envelope.dedupe_key is not None:
+                deleted_identity = or_(
+                    deleted_identity,
+                    InboxSourceDeletionRow.dedupe_key == envelope.dedupe_key,
+                )
+            deleted_source = await session.scalar(
+                select(InboxSourceDeletionRow.connection_id).where(
+                    InboxSourceDeletionRow.connection_id == envelope.connection_id,
+                    deleted_identity,
+                )
+            )
+            if (state is not None and state.blocked) or deleted_source is not None:
+                raise InboxSourceDeletedError("Inbox source is blocked from ingestion")
             inserted = await session.scalar(
                 insert(InboxItemRow)
                 .values(**_item_values(item))
-                .on_conflict_do_nothing(constraint="uq_inbox_connection_external")
+                .on_conflict_do_nothing()
                 .returning(InboxItemRow.inbox_item_id)
             )
             if inserted is not None:
@@ -56,6 +84,7 @@ class SqlInboxRepository:
                         internet_message_id=internet_message_id,
                         change_key=change_key,
                         has_attachments=has_attachments,
+                        attachment_metadata=list(attachment_metadata),
                         created_at=envelope.received_at,
                     )
                 )
@@ -65,10 +94,13 @@ class SqlInboxRepository:
                     InboxStatus.RECEIVED.value,
                     _source_ref(envelope.source_type, envelope.connection_id, envelope.external_id),
                 )
+            identity = InboxItemRow.external_id == envelope.external_id
+            if envelope.dedupe_key is not None:
+                identity = or_(identity, InboxItemRow.dedupe_key == envelope.dedupe_key)
             existing = await session.scalar(
                 select(InboxItemRow).where(
                     InboxItemRow.connection_id == envelope.connection_id,
-                    InboxItemRow.external_id == envelope.external_id,
+                    identity,
                 )
             )
             if existing is None:
@@ -164,6 +196,23 @@ class SqlInboxRepository:
 
     async def mark_deleted(self, connection_id: UUID, external_id: str, now: datetime) -> bool:
         async with self._sessions.begin() as session:
+            await _lock_connection(session, connection_id)
+            dedupe_key = await session.scalar(
+                select(InboxItemRow.dedupe_key).where(
+                    InboxItemRow.connection_id == connection_id,
+                    InboxItemRow.external_id == external_id,
+                )
+            )
+            await session.execute(
+                insert(InboxSourceDeletionRow)
+                .values(
+                    connection_id=connection_id,
+                    external_id=external_id,
+                    dedupe_key=dedupe_key,
+                    deleted_at=now,
+                )
+                .on_conflict_do_nothing()
+            )
             result = await session.execute(
                 update(InboxItemRow)
                 .where(
@@ -178,22 +227,30 @@ class SqlInboxRepository:
     async def get_cursor(self, connection_id: UUID) -> str | None:
         async with self._sessions() as session:
             value = await session.scalar(
-                select(InboxSyncCursorRow.cursor_url).where(
+                select(InboxSyncCursorRow.cursor_value).where(
                     InboxSyncCursorRow.connection_id == connection_id
                 )
             )
             return value
 
-    async def save_cursor(self, connection_id: UUID, cursor_url: str, now: datetime) -> None:
-        if not cursor_url.startswith("https://graph.microsoft.com/"):
-            raise ValueError("Inbox cursor must be a Microsoft Graph HTTPS URL")
+    async def save_cursor(self, connection_id: UUID, cursor: str, now: datetime) -> None:
+        if not cursor or len(cursor) > 8192:
+            raise ValueError("Inbox cursor must be a bounded opaque value")
         async with self._sessions.begin() as session:
+            await _lock_connection(session, connection_id)
+            blocked = await session.scalar(
+                select(InboxConnectionStateRow.blocked).where(
+                    InboxConnectionStateRow.connection_id == connection_id
+                )
+            )
+            if blocked:
+                raise InboxSourceDeletedError("Inbox connection is blocked from cursor writes")
             await session.execute(
                 insert(InboxSyncCursorRow)
-                .values(connection_id=connection_id, cursor_url=cursor_url, updated_at=now)
+                .values(connection_id=connection_id, cursor_value=cursor, updated_at=now)
                 .on_conflict_do_update(
                     index_elements=[InboxSyncCursorRow.connection_id],
-                    set_={"cursor_url": cursor_url, "updated_at": now},
+                    set_={"cursor_value": cursor, "updated_at": now},
                 )
             )
 
@@ -218,6 +275,7 @@ class SqlInboxRepository:
                 InboxItemRow.source_type.in_(
                     (
                         SourceType.MICROSOFT_MAIL.value,
+                        SourceType.QQ_MAIL.value,
                         SourceType.QQ_FORWARD.value,
                         SourceType.OWNER_NOTE.value,
                     )
@@ -243,6 +301,7 @@ def _item_values(item: InboxItem) -> dict[str, object]:
         "ingress_type": item.ingress_type.value,
         "trust_level": item.trust_level.value,
         "external_id": envelope.external_id,
+        "dedupe_key": envelope.dedupe_key,
         "thread_id": envelope.thread_id,
         "sender_id": envelope.sender_id,
         "sender_display": envelope.sender_display,
@@ -271,6 +330,7 @@ def _to_item(row: InboxItemRow) -> InboxItem:
         SourceType(row.source_type),
         IngressType(row.ingress_type),
         TrustLevel(row.trust_level),
+        row.dedupe_key,
     )
     return InboxItem(
         row.inbox_item_id,
@@ -293,8 +353,18 @@ def _mask_sender(address: str) -> str:
 def _source_ref(source_type: SourceType, connection_id: UUID, external_id: str) -> str:
     prefix = {
         SourceType.MICROSOFT_MAIL: "mail",
+        SourceType.QQ_MAIL: "qq-mail",
         SourceType.QQ_FORWARD: "qq-forward",
         SourceType.OWNER_NOTE: "owner-note",
         SourceType.QQ_DIRECT: "qq",
     }[source_type]
     return f"{prefix}:{connection_id}:{external_id}"
+
+
+async def _lock_connection(session: AsyncSession, connection_id: UUID) -> None:
+    await session.execute(select(func.pg_advisory_xact_lock(_lock_key(connection_id))))
+
+
+def _lock_key(connection_id: UUID) -> int:
+    value = connection_id.int & ((1 << 63) - 1)
+    return value if value < (1 << 62) else value - (1 << 63)

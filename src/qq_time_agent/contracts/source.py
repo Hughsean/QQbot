@@ -11,6 +11,7 @@ class SourceType(StrEnum):
     QQ_FORWARD = "QQ_FORWARD"
     OWNER_NOTE = "OWNER_NOTE"
     MICROSOFT_MAIL = "MICROSOFT_MAIL"
+    QQ_MAIL = "QQ_MAIL"
 
 
 class IngressType(StrEnum):

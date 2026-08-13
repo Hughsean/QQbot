@@ -23,6 +23,7 @@ class InboxExpiredSourceAdapter:
                         InboxItemRow.source_type.in_(
                             (
                                 SourceType.MICROSOFT_MAIL.value,
+                                SourceType.QQ_MAIL.value,
                                 SourceType.QQ_FORWARD.value,
                             )
                         ),

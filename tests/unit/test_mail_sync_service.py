@@ -34,13 +34,17 @@ class FakeConnections:
     connection_id: UUID
     reauth: bool = False
     sync_completed_at: datetime | None = None
+    degraded: bool = False
 
     async def acquire_mail_access(self, connection_id: UUID) -> MailAccessGrant:
         assert connection_id == self.connection_id
         handle = CredentialHandle(
             "access", CredentialKind.ACCESS_TOKEN, datetime(2026, 8, 14, tzinfo=UTC)
         )
-        return MailAccessGrant(connection_id, "owner", handle)
+        return MailAccessGrant(connection_id, "owner", "account-id", handle)
+
+    async def ensure_sync_available(self, connection_id: UUID) -> None:
+        assert connection_id == self.connection_id
 
     async def mark_sync_succeeded(self, connection_id: UUID, completed_at: datetime) -> None:
         assert connection_id == self.connection_id
@@ -49,6 +53,10 @@ class FakeConnections:
     async def mark_sync_reauth_required(self, connection_id: UUID) -> None:
         assert connection_id == self.connection_id
         self.reauth = True
+
+    async def mark_sync_degraded(self, connection_id: UUID) -> None:
+        assert connection_id == self.connection_id
+        self.degraded = True
 
 
 @dataclass
@@ -71,6 +79,7 @@ class MemoryInboxRepository:
         internet_message_id: str | None,
         change_key: str | None,
         has_attachments: bool,
+        attachment_metadata: tuple[dict[str, object], ...],
     ) -> IngestResult:
         key = (envelope.connection_id, envelope.external_id)
         if key in self.external:
@@ -121,9 +130,9 @@ class MemoryInboxRepository:
     async def get_cursor(self, connection_id: UUID) -> str | None:
         return self.cursor
 
-    async def save_cursor(self, connection_id: UUID, cursor_url: str, now: datetime) -> None:
-        self.cursor = cursor_url
-        self.cursor_writes.append(cursor_url)
+    async def save_cursor(self, connection_id: UUID, cursor: str, now: datetime) -> None:
+        self.cursor = cursor
+        self.cursor_writes.append(cursor)
 
     async def list_normalized(self, limit: int) -> tuple[UUID, ...]:
         return tuple(
@@ -170,16 +179,24 @@ class FakeProvider:
     cursors_seen: list[str | None] = field(default_factory=list)
 
     async def fetch_page(
-        self, access_token: CredentialHandle, cursor_url: str | None, since: datetime
+        self,
+        mail_credential: CredentialHandle,
+        account_id: str,
+        cursor_url: str | None,
+        since: datetime,
     ) -> MailDeltaPage:
-        assert access_token.reveal(datetime(2026, 8, 13, tzinfo=UTC)) == "access"
+        assert account_id == "account-id"
+        assert mail_credential.reveal(datetime(2026, 8, 13, tzinfo=UTC)) == "access"
         self.cursors_seen.append(cursor_url)
         if self.failure is not None:
             raise MailProviderError(self.failure)
         return self.pages.pop(0)
 
-    async def fetch_content(self, access_token: CredentialHandle, change: MailChange) -> MailChange:
-        assert access_token.reveal(datetime(2026, 8, 13, tzinfo=UTC)) == "access"
+    async def fetch_content(
+        self, mail_credential: CredentialHandle, account_id: str, change: MailChange
+    ) -> MailChange:
+        assert account_id == "account-id"
+        assert mail_credential.reveal(datetime(2026, 8, 13, tzinfo=UTC)) == "access"
         if self.content_failure is not None:
             raise MailProviderError(self.content_failure)
         return change
@@ -262,6 +279,7 @@ async def test_content_failure_does_not_create_item_or_advance_cursor() -> None:
 
     assert repository.items == {}
     assert repository.cursor_writes == []
+    assert connections.degraded
 
 
 @pytest.mark.asyncio

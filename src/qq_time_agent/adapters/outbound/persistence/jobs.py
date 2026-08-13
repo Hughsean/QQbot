@@ -103,6 +103,21 @@ class SqlJobQueue:
                 row.updated_at,
             )
 
+    async def cancel_pending_for_connection(
+        self, connection_id: UUID, cancelled_at: datetime
+    ) -> int:
+        async with self._sessions.begin() as session:
+            result = await session.execute(
+                update(JobRow)
+                .where(
+                    JobRow.kind.in_(("microsoft-mail-sync", "qq-mail-sync")),
+                    JobRow.payload["connection_id"].as_string() == str(connection_id),
+                    JobRow.status.in_(("PENDING", "RETRY_WAIT")),
+                )
+                .values(status="CANCELLED", updated_at=cancelled_at)
+            )
+            return int(cast("CursorResult[tuple[()]]", result).rowcount or 0)
+
     async def _finish(
         self,
         lease: JobLease,

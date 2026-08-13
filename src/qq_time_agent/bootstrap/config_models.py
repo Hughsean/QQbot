@@ -44,6 +44,21 @@ class MicrosoftConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class QqMailConfig:
+    host: str
+    port: int
+    timeout_seconds: float
+    max_retries: int
+    page_size: int
+
+
+@dataclass(frozen=True, slots=True)
+class QqMailSandboxConfig:
+    address: SecretStr
+    authorization_code: SecretStr
+
+
+@dataclass(frozen=True, slots=True)
 class DeepSeekConfig:
     api_key: SecretStr
     base_url: str
@@ -93,6 +108,7 @@ class RuntimeConfig:
     qq: QqConfig
     database: DatabaseConfig
     microsoft: MicrosoftConfig
+    qq_mail: QqMailConfig
     deepseek: DeepSeekConfig
     ollama: OllamaConfig
     schedule: ScheduleConfig

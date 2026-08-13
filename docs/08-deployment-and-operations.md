@@ -12,7 +12,7 @@ Windows 生产主机
   → Owner browser → http://127.0.0.1:8000
   → Docker PostgreSQL + pgvector（127.0.0.1:5432）
   → Native Ollama（127.0.0.1:11434）
-  → Microsoft Graph / QQ / DeepSeek（仅出站）
+  → Microsoft Graph / QQ Bot / QQ Mail IMAP / DeepSeek（仅出站）
 ```
 
 腾讯云 Ubuntu 只托管主站静态文件、Caddy HTTPS 和 SSH 管理入口。Agent、Worker、QQ、
@@ -51,6 +51,10 @@ DEFAULT_ITEM_DURATION_MINUTES=30
 DEFAULT_REMINDER_LEAD_MINUTES=15
 MAIL_INITIAL_LOOKBACK_DAYS=7
 MAIL_SYNC_INTERVAL_SECONDS=300
+QQ_MAIL_IMAP_HOST=imap.qq.com
+QQ_MAIL_IMAP_PORT=993
+QQ_MAIL_IMAP_TIMEOUT_SECONDS=20
+QQ_MAIL_IMAP_MAX_ATTEMPTS=3
 DATABASE_HOST=127.0.0.1
 DATABASE_PORT=5432
 DATABASE_NAME=qq_time_agent
@@ -81,6 +85,10 @@ RETENTION_BACKUP_DAYS=30
 SOURCE_DELETION_PURGE_HOURS=24
 PERSIST_LLM_PAYLOADS=false
 ```
+
+`QQ_MAIL_IMAP_HOST` 与端口使用强类型固定值门禁；运行时拒绝非 `imap.qq.com:993`。真实沙箱的
+`QQ_MAIL_SANDBOX_ADDRESS`、`QQ_MAIL_SANDBOX_AUTH_CODE` 只在显式 `--sandbox` 测试中读取，普通
+RuntimeConfig 不加载它们，也不得打印值。
 
 ### 秘密配置
 
@@ -132,7 +140,8 @@ Microsoft 回调 URI 由 `APP_LISTEN_PORT` 派生为
 - 腾讯云不得监听或转发 Agent 的 8000 端口；`agent.hughsean.online` DNS 记录可删除。
 
 邮件同步运行在 Worker 中。Web 的手动同步接口仅返回不含正文和游标的 Job 状态；Worker 每次
-轮询前按 `MAIL_SYNC_INTERVAL_SECONDS` 为 ACTIVE/DEGRADED Microsoft 连接幂等入队。Graph
+轮询前按 `MAIL_SYNC_INTERVAL_SECONDS` 为 ACTIVE/DEGRADED Microsoft 与 QQ 邮箱连接分别幂等
+入队，两者复用同一 Job Queue/间隔而不共享 Provider Adapter。Graph
 限流遵守 `Retry-After` 并使用有界抖动退避；认证失败进入 `REAUTH_REQUIRED`，不会无限重试。
 
 同一 Worker 通过公开 Inbox 查询端口发现 `NORMALIZED` 项并以
@@ -202,6 +211,7 @@ QQ 进程通过 `uv run qq-time-agent-qq` 启动。确认卡片与 Reminder 共�
 - Agent readiness 连续失败。
 - 本机 OAuth 回调错误率异常。
 - Graph 同步持续失败或积压超阈值。
+- QQ IMAP 认证失败、UIDVALIDITY 频繁变化或同步积压超阈值。
 - Credential Vault 解密错误。
 - Action 重复或安全策略拦截异常增加。
 - 到期提醒延迟超过阈值或 QQ 主动消息持续失败。
@@ -214,4 +224,4 @@ QQ 进程通过 `uv run qq-time-agent-qq` 启动。确认卡片与 Reminder 共�
 - Caddy 配置、systemd 单元和部署清单纳入版本管理。
 - 恢复后不得盲目重放日程变更或 QQ 通知；必须根据版本、到期时间和幂等记录逐项判断。
 - 备份按 30 天滚动窗口过期；从旧备份恢复时必须先重放删除记录，避免已删除来源、chunk 和向量重新可见。
-- 2026-08-13 已完成隔离恢复演练：98,119 字节 PostgreSQL custom-format 备份经正式恢复脚本恢复到受限命名的临时数据库，升级到 `0010_tombstone_idempotency`；覆盖前写入的合成墓碑在恢复、合并和重放后仍存在，随后已删除临时库和备份。另有集成测试模拟旧备份恢复 Inbox、Normalization、Knowledge、Candidate、Proposal 和 Workflow checkpoint，验证重放后二次不可检索且派生内容均被删除。恢复脚本另有静态顺序门禁，强制当前墓碑账本导出发生在数据库覆盖之前。
+- 2026-08-13 已完成隔离恢复演练：98,119 字节 PostgreSQL custom-format 备份经正式恢复脚本恢复到受限命名的临时数据库；QQ 邮箱阶段又验证空库从 base 升级到 `0012_inbox_deletion_fence`、完整回滚到 base 并重新构建到 head。覆盖前写入的合成墓碑在恢复、合并和重放后仍存在，随后已删除临时库和备份。另有集成测试模拟旧备份恢复 Inbox、Normalization、Knowledge、Candidate、Proposal 和 Workflow checkpoint，验证重放后二次不可检索且派生内容均被删除。恢复脚本另有静态顺序门禁，强制当前墓碑账本导出发生在数据库覆盖之前。

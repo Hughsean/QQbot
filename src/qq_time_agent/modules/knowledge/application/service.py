@@ -87,7 +87,12 @@ class KnowledgeIndexService:
 def _validate_source(source_ref: str, source_version: str, metadata: SourceMetadata) -> None:
     if not source_ref.strip() or not source_version.strip():
         raise ValueError("Knowledge source reference and version are required")
-    if metadata.source_type not in {"MICROSOFT_MAIL", "QQ_FORWARD", "OWNER_NOTE"}:
+    if metadata.source_type not in {
+        "MICROSOFT_MAIL",
+        "QQ_MAIL",
+        "QQ_FORWARD",
+        "OWNER_NOTE",
+    }:
         raise ValueError("Knowledge source type is not indexable")
     if metadata.trust_level != "T2":
         raise ValueError("Knowledge content must remain T2")

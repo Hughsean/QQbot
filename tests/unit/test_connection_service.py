@@ -17,7 +17,10 @@ from qq_time_agent.modules.connections.application.ports import (
     ProviderProfile,
     ProviderTokens,
 )
-from qq_time_agent.modules.connections.contracts import ConnectionStatusView
+from qq_time_agent.modules.connections.contracts import (
+    ConnectionStatusView,
+    ConnectionUnavailableError,
+)
 from qq_time_agent.modules.connections.domain.models import ExternalConnection, OAuthTransaction
 from qq_time_agent.modules.credentials.application.ports import EncryptedCredential
 from qq_time_agent.modules.credentials.application.vault import VaultService
@@ -58,6 +61,9 @@ class MemoryConnectionRepository:
     transactions: list[OAuthTransaction] = field(default_factory=list)
     fail_add: bool = False
     fail_save: bool = False
+
+    async def add(self, connection: ExternalConnection) -> None:
+        self.connections[connection.connection_id] = connection
 
     async def add_authorization(
         self, connection: ExternalConnection, transaction: OAuthTransaction
@@ -305,7 +311,8 @@ async def test_mail_access_refreshes_rotates_and_returns_expiring_handle() -> No
     active = await _activate(service)
     grant = await service.acquire_mail_access(active.connection_id)
     assert grant.user_id == "owner"
-    assert grant.access_token.reveal(clock.now()) == "access-two"
+    assert grant.mail_credential.reveal(clock.now()) == "access-two"
+    assert grant.account_id == "account-id"
     assert provider.refresh_calls == ["refresh-one"]
     assert len(credentials.records) == 1
 
@@ -315,7 +322,7 @@ async def test_mail_access_guards_state_and_marks_auth_failure() -> None:
     service, connections, _, provider, _ = _service()
     pending = await service.begin("owner")
     connection = next(iter(connections.connections.values()))
-    with pytest.raises(ValueError, match="not available"):
+    with pytest.raises(ConnectionUnavailableError, match="not available"):
         await service.acquire_mail_access(connection.connection_id)
 
     state = parse_qs(urlparse(pending.authorization_url).query)["state"][0]

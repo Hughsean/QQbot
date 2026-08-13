@@ -13,9 +13,14 @@
 | 数据库 | PostgreSQL + pgvector | 关系型事实与 RAG 索引共库、分模块所有权 |
 | 本地基础设施 | Docker Compose | 只管理 PostgreSQL 等基础设施，不容器化开发 `.venv` |
 | 配置 | `.env` + `pydantic-settings` | 强类型 Settings 注入 |
+| QQ 邮箱 | Python 3.12 标准库 `imaplib` + `email` | 仅在 QQ IMAP Adapter；阻塞 I/O 放入工作线程 |
 | 数据校验 | Pydantic 2 | API DTO、配置和 LLM 结构化输出 |
 
 Web 使用 FastAPI + Uvicorn，持久化使用 PostgreSQL + SQLAlchemy 2 + Alembic，异步任务使用数据库 Outbox/Job Worker；第一版不引入 Redis/Celery。
+
+QQ IMAP 不新增第三方依赖：Python 3.12 标准库提供证书校验 `IMAP4_SSL`、MIME header/正文解码
+和维护稳定性；Adapter 自行把 BODYSTRUCTURE/IMAP 响应转换为 Provider 中立 DTO。任何标准库
+IMAP/MIME 对象不得进入公开契约，且所有阻塞操作使用 `asyncio.to_thread` 隔离。
 
 ## 2. Python 版本策略
 
