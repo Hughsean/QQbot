@@ -49,6 +49,12 @@ class KnowledgeChunkRow(KnowledgeBase):
     __table_args__ = (
         UniqueConstraint("source_id", "ordinal", name="uq_knowledge_chunk_ordinal"),
         Index("ix_knowledge_chunk_index", "index_version"),
+        Index(
+            "ix_knowledge_chunk_content_trgm",
+            "content",
+            postgresql_using="gin",
+            postgresql_ops={"content": "gin_trgm_ops"},
+        ),
     )
 
 
@@ -64,3 +70,12 @@ class KnowledgeEmbeddingRow(KnowledgeBase):
     model_digest: Mapped[str] = mapped_column(String(256), nullable=False)
     dimensions: Mapped[int] = mapped_column(Integer, nullable=False)
     embedding: Mapped[list[float]] = mapped_column(Vector(1024), nullable=False)
+
+    __table_args__ = (
+        Index(
+            "ix_knowledge_embedding_hnsw",
+            "embedding",
+            postgresql_using="hnsw",
+            postgresql_ops={"embedding": "vector_cosine_ops"},
+        ),
+    )

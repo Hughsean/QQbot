@@ -38,8 +38,16 @@ async def test_pgvector_extension_and_migration_are_active(engine: AsyncEngine) 
         revision = await connection.scalar(
             select(text("version_num")).select_from(text("alembic_version"))
         )
+        job_constraint = await connection.scalar(
+            text(
+                "SELECT conname FROM pg_constraint "
+                "WHERE conrelid = 'platform_jobs'::regclass "
+                "AND contype = 'u' AND conname = 'uq_platform_jobs_idempotency'"
+            )
+        )
     assert extension is not None
-    assert revision == "0012_inbox_deletion_fence"
+    assert revision == "0013_schema_alignment"
+    assert job_constraint == "uq_platform_jobs_idempotency"
 
     health = await DatabaseReadinessProbe(engine).check()
     assert health.available and health.vector_enabled

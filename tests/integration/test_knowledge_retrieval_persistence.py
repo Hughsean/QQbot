@@ -112,10 +112,15 @@ async def test_versioned_hybrid_search_filters_and_delete_are_atomic(
         hnsw = await session.scalar(
             text("SELECT indexname FROM pg_indexes WHERE indexname='ix_knowledge_embedding_hnsw'")
         )
-        trgm = await session.scalar(
+        trgm_index = await session.scalar(
+            text(
+                "SELECT indexname FROM pg_indexes WHERE indexname='ix_knowledge_chunk_content_trgm'"
+            )
+        )
+        trgm_extension = await session.scalar(
             text("SELECT extversion FROM pg_extension WHERE extname='pg_trgm'")
         )
-        assert hnsw and trgm
+        assert hnsw and trgm_index and trgm_extension
 
     async with sessions.begin() as session:
         await session.execute(
