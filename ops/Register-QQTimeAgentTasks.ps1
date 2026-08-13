@@ -3,7 +3,7 @@ param([switch]$Apply)
 $ErrorActionPreference = "Stop"
 $ProjectRoot = Split-Path -Parent $PSScriptRoot
 $Launcher = Join-Path $PSScriptRoot "Start-QQTimeAgentRole.ps1"
-$roles = @("web", "worker", "qq", "tunnel")
+$roles = @("web", "worker", "qq")
 
 foreach ($role in $roles) {
     $taskName = "QQ Time Agent - $role"

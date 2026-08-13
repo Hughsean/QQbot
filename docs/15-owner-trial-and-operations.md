@@ -19,7 +19,7 @@ QQ 文本约定：
 3. `uv sync --locked` 后执行 `alembic upgrade head`。
 4. 若刚从备份恢复，先执行 `qq-time-agent-replay-tombstones`，再允许服务启动。
 5. 分别启动 `qq-time-agent-web`、`qq-time-agent-worker`、`qq-time-agent-qq`。
-6. 启动 SSH 反向隧道；运行 `ops/Test-QQTimeAgentHealth.ps1`。
+6. 运行 `ops/Test-QQTimeAgentHealth.ps1`。
 
 `ops/Register-QQTimeAgentTasks.ps1` 默认只预览。只有获得生产部署批准后才运行 `-Apply`。
 
@@ -30,7 +30,7 @@ QQ 文本约定：
 - `/health/ready` 连续两次非 200：告警 Web/数据库/Ollama 可用性。
 - `/metrics` 中 `jobs_dead_letter` 或 `reminders_dead_letter` 增长：立即检查脱敏日志。
 - `deletions_pending > 0` 且超过 24 小时：最高优先级隐私告警。
-- 公网回调连续 502：检查 SSH 隧道；QQ 长连接与 Reminder 仍需独立检查。
+- 本机 OAuth 回调失败：确认 Web 进程、8000 端口和 Entra 回调 URI；QQ 长连接与 Reminder 仍需独立检查。
 
 日志文件不得超过 30 天；不复制 `.env`、OAuth 回调 URL 或邮件正文到工单。
 

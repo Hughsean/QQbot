@@ -33,7 +33,6 @@ class EnvironmentSettings(BaseSettings):
     )
 
     app_env: str = "development"
-    app_base_url: str = "https://agent.hughsean.online"
     app_listen_host: str = "127.0.0.1"
     app_listen_port: int = Field(default=8000, ge=1, le=65535)
     app_signing_key: SecretStr
@@ -43,8 +42,6 @@ class EnvironmentSettings(BaseSettings):
     qq_bot_sandbox: bool = True
     microsoft_tenant: str = "common"
     microsoft_client_id: SecretStr
-    microsoft_client_secret: SecretStr
-    microsoft_redirect_uri: str = "https://agent.hughsean.online/oauth/microsoft/callback"
     deepseek_api_key: SecretStr
     deepseek_base_url: str = "https://api.deepseek.com"
     deepseek_fast_model: str = "deepseek-v4-flash"
@@ -114,7 +111,6 @@ def _to_runtime_config(value: EnvironmentSettings) -> RuntimeConfig:
     return RuntimeConfig(
         app=AppConfig(
             value.app_env,
-            value.app_base_url,
             value.app_listen_host,
             value.app_listen_port,
             value.app_signing_key,
@@ -131,8 +127,7 @@ def _to_runtime_config(value: EnvironmentSettings) -> RuntimeConfig:
         microsoft=MicrosoftConfig(
             value.microsoft_tenant,
             value.microsoft_client_id,
-            value.microsoft_client_secret,
-            value.microsoft_redirect_uri,
+            f"http://localhost:{value.app_listen_port}/oauth/microsoft/callback",
         ),
         deepseek=DeepSeekConfig(
             value.deepseek_api_key,

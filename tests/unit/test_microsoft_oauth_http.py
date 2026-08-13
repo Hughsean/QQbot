@@ -58,13 +58,11 @@ def _client() -> tuple[TestClient, FakeConnectionService, str]:
     token = signer.issue("owner")
     service = FakeConnectionService()
     app = FastAPI()
-    app.include_router(
-        microsoft_oauth_router(service, signer, "https://testserver")  # type: ignore[arg-type]
-    )
-    return TestClient(app, base_url="https://testserver"), service, token
+    app.include_router(microsoft_oauth_router(service, signer))  # type: ignore[arg-type]
+    return TestClient(app, base_url="http://localhost:8000"), service, token
 
 
-def test_start_requires_owner_session_and_sets_secure_flow_cookie() -> None:
+def test_start_requires_owner_session_and_sets_loopback_flow_cookie() -> None:
     client, _, token = _client()
     assert client.get("/oauth/microsoft/start", follow_redirects=False).status_code == 401
     exchange = client.post("/api/v1/owner/session", data={"session": token}, follow_redirects=False)
@@ -73,7 +71,7 @@ def test_start_requires_owner_session_and_sets_secure_flow_cookie() -> None:
     response = client.get("/oauth/microsoft/start", follow_redirects=False)
     assert response.status_code == 302
     assert response.headers["location"] == "https://login.example.test/authorize"
-    assert "Secure" in response.headers["set-cookie"]
+    assert "Secure" not in response.headers["set-cookie"]
     assert "HttpOnly" in response.headers["set-cookie"]
 
 
@@ -111,22 +109,38 @@ def test_disconnect_requires_owner_csrf_and_explicit_confirmation() -> None:
 
 def test_owner_bootstrap_page_is_local_only_and_never_places_session_in_url() -> None:
     client, _, _ = _client()
-    assert client.get("/oauth/microsoft/owner-start").status_code == 404
-    local_client = TestClient(client.app, base_url="http://127.0.0.1")
-    response = local_client.get("/oauth/microsoft/owner-start")
+    public_client = TestClient(client.app, base_url="https://agent.example.test")
+    assert public_client.get("/oauth/microsoft/owner-start").status_code == 404
+    response = client.get("/oauth/microsoft/owner-start")
     assert response.status_code == 200
     assert 'method="post"' in response.text
-    assert 'action="/oauth/microsoft/owner-start"' in response.text
+    assert 'action="/api/v1/owner/session"' in response.text
     assert "session=" not in response.text
     assert "document.forms[0].submit()" in response.text
     csp = response.headers["Content-Security-Policy"]
     assert "script-src 'nonce-" in csp
-    assert "form-action 'self' https://testserver https://login.microsoftonline.com" in csp
+    assert "form-action 'self'" in csp
     assert "form-action *" not in csp
     assert response.headers["Cache-Control"] == "no-store"
-    relay = local_client.post(
-        "/oauth/microsoft/owner-start", data={"session": "opaque"}, follow_redirects=False
+
+
+def test_all_oauth_and_connection_routes_reject_non_loopback_host() -> None:
+    client, service, token = _client()
+    public = TestClient(client.app, base_url="https://agent.example.test")
+    assert public.post("/api/v1/owner/session", data={"session": token}).status_code == 404
+    assert public.get("/oauth/microsoft/start").status_code == 404
+    assert public.get("/oauth/microsoft/callback").status_code == 404
+    assert (
+        public.get(
+            "/api/v1/connections/microsoft/status", headers={"X-Owner-Session": token}
+        ).status_code
+        == 404
     )
-    assert relay.status_code == 307
-    assert relay.headers["location"] == "https://testserver/api/v1/owner/session"
-    assert "opaque" not in relay.headers["location"]
+    assert (
+        public.post(
+            "/api/v1/oauth/microsoft/disconnect",
+            json={"connection_id": str(service.connection_id), "confirmed": True},
+            headers={"X-Owner-Session": token, "X-CSRF-Token": "synthetic"},
+        ).status_code
+        == 404
+    )

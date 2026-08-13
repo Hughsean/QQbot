@@ -2,6 +2,10 @@
 
 验证日期：2026-08-13。唯一完成标准：`docs/14-development-goal.md` Verification。
 
+> 历史说明：本报告记录 `9a42246` 的原始 MVP 验证。其后的 ADR-0010 已把 Microsoft OAuth
+> 改为本机公共客户端回环回调，并移除 Agent 公网入口与 SSH 反向隧道；以下公网/隧道条目
+> 仅是历史证据，不再是当前运行要求。
+
 ## 1. 结果
 
 阶段 0 至阶段 8 已按 `docs/09-delivery-plan.md` 顺序完成，本地 MVP、真实沙箱集成和部署制品达到 Verification。未执行生产任务注册、生产部署或真实邮箱破坏性操作。Microsoft 已按所有者确认断开，数据库状态为 `DISCONNECTED`，连接凭据引用和 Vault 记录均为 0。
@@ -37,12 +41,12 @@
 - 尚未完成连续 14 天真实个人试用观察窗；当前聚合样本包含沙箱/合成数据，不能作为长期准确率结论。Gmail、QQ 邮箱和附件扩展继续关闭。
 - Microsoft 当前断开，若恢复邮件能力必须由所有者重新完成浏览器授权。
 - FastAPI 测试依赖链提示 `httpx`/TestClient 弃用警告，不影响当前功能，但后续依赖升级需迁移到兼容测试客户端。
-- Windows 主机离线会使 Web/Worker/QQ/Ollama 和公网回调整体不可用；应按手册配置任务计划、备份轮转和告警。
+- Windows 主机离线会使 Web/Worker/QQ/Ollama 和本机 OAuth 回调整体不可用；应按手册配置任务计划、备份轮转和告警。
 
 ## 6. 生产部署步骤（需要另行批准）
 
-1. 复核 `.env` ACL、数据库/主密钥分离备份、腾讯云 SSH 主机密钥和回环绑定。
+1. 复核 `.env` ACL、数据库/主密钥分离备份和全部本机回环绑定。
 2. `docker compose up -d`、`uv sync --locked`、`alembic upgrade head`，运行健康与沙箱冒烟。
-3. 获得生产批准后运行 `ops/Register-QQTimeAgentTasks.ps1 -Apply`，注册 Web、Worker、QQ、Tunnel 四角色。
-4. 验证本机/公网 readiness、QQ 主动提醒、隧道重连和备份作业；Microsoft 保持断开，除非所有者另行授权。
+3. 获得生产批准后运行 `ops/Register-QQTimeAgentTasks.ps1 -Apply`，注册 Web、Worker、QQ 三角色。
+4. 验证本机 readiness、QQ 主动提醒和备份作业；Microsoft 保持断开，除非所有者另行授权。
 5. 按 `docs/15-owner-trial-and-operations.md` 收集 14 天聚合指标，再决定是否扩展范围。

@@ -1,6 +1,6 @@
 param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet("web", "worker", "qq", "tunnel")]
+    [ValidateSet("web", "worker", "qq")]
     [string]$Role
 )
 
@@ -13,20 +13,11 @@ $commands = @{
     web = Join-Path $ProjectRoot ".venv\Scripts\qq-time-agent-web.exe"
     worker = Join-Path $ProjectRoot ".venv\Scripts\qq-time-agent-worker.exe"
     qq = Join-Path $ProjectRoot ".venv\Scripts\qq-time-agent-qq.exe"
-    tunnel = "ssh"
 }
 $arguments = @{
     web = @()
     worker = @()
     qq = @()
-    tunnel = @(
-        "-NT", "-R", "127.0.0.1:8000:127.0.0.1:8000",
-        "-o", "ExitOnForwardFailure=yes",
-        "-o", "ServerAliveInterval=30",
-        "-o", "ServerAliveCountMax=3",
-        "-o", "StrictHostKeyChecking=yes",
-        "Tencent"
-    )
 }
 
 while ($true) {

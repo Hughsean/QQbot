@@ -1,0 +1,32 @@
+(static_site) {
+	root * /var/www/hughsean
+	encode zstd gzip
+
+	@hidden path_regexp hidden (^|/)\.
+	respond @hidden 404
+
+	@assets path_regexp assets \.(?:css|js|png|jpe?g|gif|webp|avif|svg|ico|woff2?|ttf)$
+	header @assets Cache-Control "public, max-age=2592000, immutable"
+
+	header {
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		Referrer-Policy "strict-origin-when-cross-origin"
+	}
+
+	file_server
+
+	handle_errors {
+		@not_found expression {err.status_code} == 404
+		rewrite @not_found /404.html
+		file_server
+	}
+}
+
+hughsean.online {
+	import static_site
+}
+
+www.hughsean.online {
+	import static_site
+}

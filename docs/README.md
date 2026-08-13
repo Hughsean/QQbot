@@ -33,6 +33,7 @@ QQ Time Agent 是一个仅供项目所有者本人使用、以 QQ 为主要交�
 | [14-development-goal.md](14-development-goal.md) | 新对话 Goal mode 的完整开发结果、约束和完成定义 |
 | [15-owner-trial-and-operations.md](15-owner-trial-and-operations.md) | 所有者试用、授权、监控、备份恢复与扩展门槛 |
 | [16-final-verification-report.md](16-final-verification-report.md) | MVP 最终验证证据、限制和需批准的生产步骤 |
+| [17-local-oauth-migration-report.md](17-local-oauth-migration-report.md) | 本机公共客户端迁移、腾讯云清理与控制台验证证据 |
 | [adr/](adr/) | 已接受的关键架构决策 |
 
 ## 决策优先级
@@ -62,11 +63,11 @@ QQ Time Agent 是一个仅供项目所有者本人使用、以 QQ 为主要交�
 
 ## 当前已确定的运行条件
 
-- 公网域名：`agent.hughsean.online`
-- HTTPS 入口：Caddy，自动管理 Let's Encrypt 证书
-- 应用入口：腾讯云 Caddy 反向代理到云端 `127.0.0.1:8000`，该端口由 Windows 生产主机的 SSH 反向隧道提供
+- Agent HTTP 入口：仅 Windows 本机 `http://127.0.0.1:8000`，不提供公网入口
+- 腾讯云职责：仅托管 `hughsean.online` / `www.hughsean.online` 静态站点和 SSH 管理，不代理 Agent
 - 首个邮箱连接器：Microsoft Graph，委托权限 `Mail.Read`
-- Microsoft OAuth 回调：`https://agent.hughsean.online/oauth/microsoft/callback`
+- Microsoft OAuth 客户端：移动和桌面公共客户端，Authorization Code + PKCE，不使用客户端密码
+- Microsoft OAuth 回调：`http://localhost:8000/oauth/microsoft/callback`，只允许本机回环访问
 - 开发语言：Python 3.12（`qq-botpy 1.2.1` 在 Python 3.14 客户端初始化失败，已按兼容策略降级）
 - 项目与依赖管理：uv、项目内 `.venv`、提交 `uv.lock`
 - Agent 编排：LangGraph，确定性流程为主、受限 Agent 节点为辅
@@ -86,5 +87,5 @@ QQ Time Agent 是一个仅供项目所有者本人使用、以 QQ 为主要交�
   Reminder 持久化租约/重试/推迟/取消，以及真实 QQ 主动提醒恢复验证；阶段 7 已完成
   来源版本、确定性清洗/切块、Ollama 1024 维嵌入、pgvector HNSW + pg_trgm 混合检索、
   DeepSeek 带来源只读回答、删除传播，固定 24 项去敏评估 Recall@10=1.000；阶段 8 已完成
-  分层保留、追加式审计、tombstone 恢复重放、指标、隔离备份恢复演练与 Windows 四进程
-  守护/SSH 隧道制品。尚未执行生产任务注册或生产部署
+  分层保留、追加式审计、tombstone 恢复重放、指标、隔离备份恢复演练与 Windows 三进程
+  守护制品。MVP 后已按 ADR-0010 移除 Agent 公网入口和 SSH 反向隧道依赖；尚未执行生产任务注册或生产部署

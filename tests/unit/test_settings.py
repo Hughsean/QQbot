@@ -1,13 +1,16 @@
 from pydantic import SecretStr, ValidationError
 from pytest import raises
 
-from qq_time_agent.bootstrap.settings import EnvironmentSettings
+from qq_time_agent.bootstrap.settings import EnvironmentSettings, _to_runtime_config
 
 
 def test_settings_accept_safe_loopback_configuration() -> None:
     settings = EnvironmentSettings.model_validate(_values())
     assert settings.rag_embedding_dimensions == 1024
     assert settings.database_password.get_secret_value() == "synthetic-password"
+    assert _to_runtime_config(settings).microsoft.redirect_uri == (
+        "http://localhost:8000/oauth/microsoft/callback"
+    )
 
 
 def test_settings_reject_non_loopback_database() -> None:
@@ -33,14 +36,11 @@ def test_secret_string_does_not_render_value() -> None:
 
 def _values() -> dict[str, object]:
     return {
-        "app_base_url": "https://agent.example.test",
         "app_signing_key": "synthetic-signing-key",
         "owner_qq_openid": "owner-openid",
         "qq_bot_app_id": "sandbox-app",
         "qq_bot_secret": "sandbox-secret",
         "microsoft_client_id": "synthetic-client",
-        "microsoft_client_secret": "synthetic-secret",
-        "microsoft_redirect_uri": "https://agent.example.test/oauth/microsoft/callback",
         "deepseek_api_key": "synthetic-api-key",
         "deepseek_fast_model": "fast-model",
         "deepseek_reasoning_model": "reasoning-model",

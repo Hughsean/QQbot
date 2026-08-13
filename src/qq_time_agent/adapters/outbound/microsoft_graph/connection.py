@@ -156,10 +156,9 @@ class MicrosoftGraphConnectionAdapter:
         authority = f"https://login.microsoftonline.com/{self._config.tenant}"
         return cast(
             "_MsalApplication",
-            msal.ConfidentialClientApplication(
+            msal.PublicClientApplication(
                 self._config.client_id.get_secret_value(),
                 authority=authority,
-                client_credential=self._config.client_secret.get_secret_value(),
                 http_client=_SyncHttpClient(self._timeout_seconds),
             ),
         )

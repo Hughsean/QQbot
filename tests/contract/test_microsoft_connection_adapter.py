@@ -6,6 +6,7 @@ import httpx
 import pytest
 from pydantic import SecretStr
 
+from qq_time_agent.adapters.outbound.microsoft_graph import connection as connection_module
 from qq_time_agent.adapters.outbound.microsoft_graph.connection import (
     SCOPES,
     MicrosoftGraphConnectionAdapter,
@@ -56,8 +57,7 @@ def _config() -> MicrosoftConfig:
     return MicrosoftConfig(
         "common",
         SecretStr("synthetic-client"),
-        SecretStr("synthetic-secret"),
-        "https://agent.example.test/oauth/microsoft/callback",
+        "http://localhost:8000/oauth/microsoft/callback",
     )
 
 
@@ -78,6 +78,9 @@ async def test_adapter_keeps_pkce_nonce_and_provider_dto_inside_boundary() -> No
     assert flow["code_verifier"] == "synthetic-verifier"
     assert flow["nonce"] == "synthetic-nonce"
     assert app.begin_calls[0][0] == SCOPES == ["User.Read", "Mail.Read", "email"]
+    assert app.begin_calls[0][1]["redirect_uri"] == (
+        "http://localhost:8000/oauth/microsoft/callback"
+    )
 
     tokens = await adapter.complete_authorization(
         authorization.flow_state.get_secret_value(),
@@ -85,6 +88,25 @@ async def test_adapter_keeps_pkce_nonce_and_provider_dto_inside_boundary() -> No
     )
     assert tokens.refresh_token is not None
     assert "synthetic-refresh" not in repr(tokens)
+
+
+@pytest.mark.asyncio
+async def test_adapter_builds_public_client_without_client_credential(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app = FakeMsalApplication({})
+    calls: list[tuple[str, dict[str, object]]] = []
+
+    def public_client(client_id: str, **kwargs: object) -> FakeMsalApplication:
+        calls.append((client_id, kwargs))
+        return app
+
+    monkeypatch.setattr(connection_module.msal, "PublicClientApplication", public_client)
+    adapter = MicrosoftGraphConnectionAdapter(_config(), FixedClock())
+    await adapter.begin_authorization("synthetic-state")
+    await adapter.close()
+    assert calls[0][0] == "synthetic-client"
+    assert "client_credential" not in calls[0][1]
 
 
 @pytest.mark.asyncio

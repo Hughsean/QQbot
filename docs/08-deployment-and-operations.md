@@ -4,22 +4,21 @@
 
 ```text
 hughsean.online / www.hughsean.online
-  → Caddy
+  → 腾讯云 Caddy
   → /var/www/hughsean 静态站点
 
-agent.hughsean.online
-  → 腾讯云 Caddy
-  → 腾讯云 127.0.0.1:8000
-  → SSH reverse tunnel
-  → Windows 生产主机 127.0.0.1:8000 QQ Time Agent
-
 Windows 生产主机
-  → Python Web/Worker（项目 .venv）
+  → Python Web/Worker/QQ（项目 .venv）
+  → Owner browser → http://127.0.0.1:8000
   → Docker PostgreSQL + pgvector（127.0.0.1:5432）
   → Native Ollama（127.0.0.1:11434）
+  → Microsoft Graph / QQ / DeepSeek（仅出站）
 ```
 
-腾讯云 Ubuntu 只作为公网 HTTPS 和 SSH 中继，Caddy 已启用并自动管理证书。Agent、Worker、PostgreSQL 和 Ollama 均运行在 Windows 生产主机。Windows 主机、Agent 或 SSH 隧道离线时，`agent.hughsean.online` 返回 502；QQ WebSocket 主链路为出站连接，不依赖隧道，但 OAuth 回调依赖隧道在线。
+腾讯云 Ubuntu 只托管主站静态文件、Caddy HTTPS 和 SSH 管理入口。Agent、Worker、QQ、
+PostgreSQL 和 Ollama 均运行在 Windows 生产主机。Agent 没有公网 HTTP 入口；QQ WebSocket、
+Microsoft Graph 和 DeepSeek 均由本机发起出站连接。OAuth 回调只在授权浏览器所在的 Windows
+主机回环地址完成，不依赖腾讯云、DNS、Caddy、证书或 SSH 隧道。
 
 ## 2. 进程边界
 
@@ -39,7 +38,6 @@ Web 和 Worker 来自同一代码库和项目 `.venv`，使用不同进程角色
 ### 非秘密配置
 
 ```text
-APP_BASE_URL=https://agent.hughsean.online
 APP_LISTEN_HOST=127.0.0.1
 APP_LISTEN_PORT=8000
 APP_ENV=development
@@ -59,7 +57,6 @@ DATABASE_NAME=qq_time_agent
 DATABASE_USER=qq_time_agent
 MICROSOFT_TENANT=common
 MICROSOFT_CLIENT_ID=
-MICROSOFT_REDIRECT_URI=https://agent.hughsean.online/oauth/microsoft/callback
 DEEPSEEK_BASE_URL=https://api.deepseek.com
 DEEPSEEK_FAST_MODEL=deepseek-v4-flash
 DEEPSEEK_REASONING_MODEL=deepseek-v4-pro
@@ -88,7 +85,6 @@ PERSIST_LLM_PAYLOADS=false
 ### 秘密配置
 
 ```text
-MICROSOFT_CLIENT_SECRET
 DATABASE_PASSWORD
 CREDENTIAL_ENCRYPTION_KEY
 APP_SIGNING_KEY
@@ -98,6 +94,9 @@ DEEPSEEK_API_KEY
 ```
 
 `MICROSOFT_CLIENT_ID`、`OWNER_QQ_OPENID` 和 `QQ_BOT_APP_ID` 不是密码，但包含应用或个人身份信息，仍按敏感部署配置管理。秘密配置不提交 Git，不写入镜像，不出现在启动命令参数中。
+
+Microsoft 回调 URI 由 `APP_LISTEN_PORT` 派生为
+`http://localhost:{APP_LISTEN_PORT}/oauth/microsoft/callback`，不允许通过 `.env` 改成公网地址。
 
 ### `.env` 注入规则
 
@@ -113,7 +112,7 @@ DEEPSEEK_API_KEY
 
 ### Windows 生产主机
 
-- Python Web、Worker 和 SSH 隧道使用 Windows 任务计划程序或等价服务管理器登录后自启、失败重启。
+- Python Web、Worker 和 QQ 使用 Windows 任务计划程序或等价服务管理器登录后自启、失败重启。
 - Docker Desktop/Engine 和 PostgreSQL Compose 项目必须自动启动并带健康检查。
 - 数据库端口只绑定 `127.0.0.1`；Ollama 保持回环监听。
 - `.env` 的 ACL 只允许当前生产用户和管理员读取。
@@ -122,15 +121,15 @@ DEEPSEEK_API_KEY
 - PostgreSQL 部署必须启用 `vector` 扩展；迁移负责创建向量列和索引。
 - 首次连接 Microsoft 时从本机打开
   `http://127.0.0.1:8000/oauth/microsoft/owner-start`；该引导页只允许回环访问，
-  所有者会话先通过同源 POST 再以 307 转发到公网 HTTPS 入口，不得复制签名值或改用
-  查询参数链接。
+  所有者会话通过同源 POST 建立，Microsoft 完成后返回本机
+  `http://localhost:8000/oauth/microsoft/callback`。不得复制签名值或改用查询参数链接。
 
-### 腾讯云中继
+### 腾讯云静态站点
 
 - Caddy 和 SSHD 继续由 systemd 管理；腾讯云不保存应用 `.env`、数据库备份或模型。
-- SSH 远端转发只绑定 `127.0.0.1:8000`，禁止 `0.0.0.0` 和 `GatewayPorts` 公网暴露。
-- 隧道使用密钥认证、固定主机密钥、`ExitOnForwardFailure=yes`、keepalive 和失败重连。
-- 推荐隧道命令语义：`ssh -NT -R 127.0.0.1:8000:127.0.0.1:8000 Tencent`；完整稳定性参数由部署脚本统一提供。
+- Caddy 只保留 `hughsean.online` 与 `www.hughsean.online` 静态站点，不包含
+  `agent.hughsean.online`、`reverse_proxy 127.0.0.1:8000` 或其他 Agent 路由。
+- 腾讯云不得监听或转发 Agent 的 8000 端口；`agent.hughsean.online` DNS 记录可删除。
 
 邮件同步运行在 Worker 中。Web 的手动同步接口仅返回不含正文和游标的 Job 状态；Worker 每次
 轮询前按 `MAIL_SYNC_INTERVAL_SECONDS` 为 ACTIVE/DEGRADED Microsoft 连接幂等入队。Graph
@@ -147,12 +146,12 @@ DEEPSEEK_API_KEY
 QQ 进程通过 `uv run qq-time-agent-qq` 启动。确认卡片与 Reminder 共用已经在线的官方 QQ
 长连接；Proposal 通知失败按 Proposal 独立隔离并在下次轮询重试，不能阻塞 Reminder。Reminder
 即使 DeepSeek、Graph 或主 Worker 不可用仍独立领取、校验 Agenda 版本并发送。Windows 任务计划
-必须分别守护 Web、Worker、QQ 和 SSH 隧道四个进程角色。
+必须分别守护 Web、Worker 和 QQ 三个进程角色。
 
 仓库 `ops/` 提供以下制品：
 
-- `Register-QQTimeAgentTasks.ps1` 默认 dry-run；生产批准后才允许加 `-Apply` 注册四个登录自启任务。
-- `Start-QQTimeAgentRole.ps1` 有界间隔重启 Web、Worker、QQ 或反向隧道，日志写入被 Git 忽略的 `logs/`。
+- `Register-QQTimeAgentTasks.ps1` 默认 dry-run；生产批准后才允许加 `-Apply` 注册三个登录自启任务。
+- `Start-QQTimeAgentRole.ps1` 有界间隔重启 Web、Worker 或 QQ，日志写入被 Git 忽略的 `logs/`。
 - `Test-QQTimeAgentHealth.ps1` 检查本机 readiness 和无内容标签的 `/metrics`。
 - `Backup-QQTimeAgent.ps1` 生成 PostgreSQL custom-format 备份和 SHA-256 文件。
 - `Restore-QQTimeAgent.ps1` 要求精确确认短语；覆盖前先导出当前 tombstone 账本，恢复后在服务保持停止时迁移数据库、合并该账本并强制重放；服务只能在 readiness 通过后启动。
@@ -166,7 +165,7 @@ QQ 进程通过 `uv run qq-time-agent-qq` 启动。确认卡片与 Reminder 共�
 - 已验证 `qwen3-embedding:4b` 可生成 1024 维有限值向量；首次冷启动约 55 秒。
 - 默认 embedding 并发为 1，模型 keep-alive 30 分钟，避免频繁冷启动；批量索引不得阻塞 Reminder Worker。
 - PostgreSQL 安装在本机 Docker 中；不得安装到腾讯云中继，也不得开放 LAN/公网端口。
-- Windows 生产主机离线意味着 Agent 整体服务离线；任务计划和监控必须把主机/隧道可用性作为告警项。
+- Windows 生产主机离线意味着 Agent 整体服务离线；任务计划和监控必须把本机进程可用性作为告警项。
 
 ## 6. 发布流程
 
@@ -178,7 +177,7 @@ QQ 进程通过 `uv run qq-time-agent-qq` 启动。确认卡片与 Reminder 共�
 → 部署 Worker
 → 部署 Web
 → readiness 通过
-→ QQ 沙箱、提醒、OAuth/Graph、Ollama 和 RAG 冒烟测试
+→ QQ 沙箱、提醒、本机 OAuth/Graph、Ollama 和 RAG 冒烟测试
 ```
 
 ## 7. 可观测性
@@ -201,8 +200,7 @@ QQ 进程通过 `uv run qq-time-agent-qq` 启动。确认卡片与 Reminder 共�
 ### 告警
 
 - Agent readiness 连续失败。
-- OAuth 回调错误率异常。
-- 客户端凭据临近到期。
+- 本机 OAuth 回调错误率异常。
 - Graph 同步持续失败或积压超阈值。
 - Credential Vault 解密错误。
 - Action 重复或安全策略拦截异常增加。

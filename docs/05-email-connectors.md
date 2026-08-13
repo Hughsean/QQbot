@@ -32,26 +32,26 @@ disconnect()
 - 应用名称：Hughsean QQ Time Agent。
 - 账户范围：组织目录账号和个人 Microsoft 账号。
 - OAuth 租户段：`common`。
-- 回调地址：`https://agent.hughsean.online/oauth/microsoft/callback`。
+- 应用类型：移动和桌面公共客户端，允许 public client flow。
+- 回调地址：`http://localhost:8000/oauth/microsoft/callback`。
 - 权限类型：委托权限。
 - Graph 权限：`User.Read`、`Mail.Read`。
 - OAuth scopes：`openid profile email offline_access User.Read Mail.Read`。
 
 ### 授权流程
 
-1. 所有者从 Windows 本机回环地址打开 `/oauth/microsoft/owner-start`；短期签名会话先由
-   隐藏同源 POST 提交，再以 HTTP 307 原样转发到公网 HTTPS，换取 `Secure`、`HttpOnly`
-   所有者 Cookie；页面使用 CSP nonce 受控脚本自动提交并保留按钮回退，不把会话放入 URL。
+1. 所有者从 Windows 本机打开 `http://127.0.0.1:8000/oauth/microsoft/owner-start`；
+   短期签名会话由隐藏同源 POST 换取 `HttpOnly` 所有者 Cookie，不把会话放入 URL。
 2. `/oauth/microsoft/start` 验证所有者 Cookie，生成 `state`、`nonce` 和 PKCE verifier。
 3. 临时授权事务绑定用户、浏览器会话和过期时间。
 4. 用户在 Microsoft 页面登录并同意权限。
 5. 回调验证 `state`、错误参数和一次性使用状态。
-6. 后端使用授权码、PKCE verifier 和客户端凭据换取 token。
+6. 本机公共客户端使用授权码和 PKCE verifier 换取 token，不发送客户端密码。
 7. 验证 ID token 的签名、issuer、audience、nonce 和时间声明。
 8. Credential Vault 加密保存 refresh token。
 9. Connections 保存 Provider 账号标识和 ACTIVE 状态。
 
-客户端密码只存在于服务器凭据存储，不进入数据库普通配置表和源代码。
+Microsoft 应用不得创建或配置客户端密码；历史密码必须在 Entra 中撤销。
 
 ### 邮件同步
 

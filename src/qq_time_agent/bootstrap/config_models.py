@@ -10,7 +10,6 @@ from pydantic import SecretStr
 @dataclass(frozen=True, slots=True)
 class AppConfig:
     environment: str
-    base_url: str
     listen_host: str
     listen_port: int
     signing_key: SecretStr
@@ -41,7 +40,6 @@ class DatabaseConfig:
 class MicrosoftConfig:
     tenant: str
     client_id: SecretStr
-    client_secret: SecretStr
     redirect_uri: str
 
 

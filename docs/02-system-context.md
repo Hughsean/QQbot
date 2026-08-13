@@ -98,17 +98,19 @@ Reminder Worker 租约领取到期提醒
 
 ```text
 Internet
-  → Caddy :80/:443
-    → 腾讯云 127.0.0.1:8000
-      → 加密 SSH 反向隧道
-        → Windows App 127.0.0.1:8000
-          → Docker PostgreSQL + pgvector 127.0.0.1:5432
-          → Ollama 127.0.0.1:11434
-          → Microsoft Graph / QQ / DeepSeek（仅出站）
+  ← Windows App → Microsoft Graph / QQ / DeepSeek（仅出站）
+
+Owner browser
+  → Windows App 127.0.0.1:8000
+    → Docker PostgreSQL + pgvector 127.0.0.1:5432
+    → Ollama 127.0.0.1:11434
+
+hughsean.online / www.hughsean.online
+  → 腾讯云 Caddy → 静态站点（与 Agent 隔离）
 ```
 
-- Caddy 负责 TLS、HTTP 到 HTTPS 跳转和反向代理。
-- 腾讯云仅承担公网 HTTPS 和 SSH 中继，不运行 Agent、PostgreSQL 或 Ollama。
-- Windows 应用和反向隧道目标均只监听回环地址；SSH 远端转发也只绑定腾讯云回环地址。
+- Agent 不接受公网入站流量；QQ 使用官方出站长连接，Graph、DeepSeek 由本机主动访问。
+- 腾讯云 Caddy 只负责主站 TLS 和静态文件，不运行或反向代理 Agent、PostgreSQL 或 Ollama。
+- Windows 应用只监听回环地址，不建立 Agent SSH 远端转发。
 - PostgreSQL、队列和 Ollama 不得具有公网或局域网入口。
-- OAuth 回调必须只接受预期 Provider、有效 `state` 和一次性授权码。
+- OAuth 回调必须通过本机回环 Host，并只接受预期 Provider、有效 `state` 和一次性授权码。

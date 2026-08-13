@@ -2,7 +2,7 @@
 
 import secrets
 from typing import Annotated
-from urllib.parse import parse_qs, urljoin
+from urllib.parse import parse_qs
 from uuid import UUID
 
 from fastapi import APIRouter, Cookie, Header, HTTPException, Request, Response, status
@@ -25,7 +25,6 @@ from qq_time_agent.modules.connections.contracts import ConnectionStatusView
 OWNER_COOKIE = "qq_time_agent_owner"
 OAUTH_COOKIE = "qq_time_agent_oauth"
 CSRF_COOKIE = "qq_time_agent_csrf"
-MICROSOFT_LOGIN_ORIGIN = "https://login.microsoftonline.com"
 
 
 class DisconnectRequest(BaseModel):
@@ -34,16 +33,16 @@ class DisconnectRequest(BaseModel):
 
 
 def microsoft_oauth_router(
-    service: MicrosoftConnectionService, signer: OwnerSessionSigner, app_base_url: str
+    service: MicrosoftConnectionService, signer: OwnerSessionSigner
 ) -> APIRouter:
     router = APIRouter()
-    router.include_router(_owner_bootstrap_router(signer, app_base_url))
+    router.include_router(_owner_bootstrap_router(signer))
     router.include_router(_oauth_flow_router(service, signer))
     router.include_router(_connection_api_router(service, signer))
     return router
 
 
-def _owner_bootstrap_router(signer: OwnerSessionSigner, app_base_url: str) -> APIRouter:
+def _owner_bootstrap_router(signer: OwnerSessionSigner) -> APIRouter:
     router = APIRouter()
 
     @router.get("/oauth/microsoft/owner-start", response_class=HTMLResponse)
@@ -51,26 +50,19 @@ def _owner_bootstrap_router(signer: OwnerSessionSigner, app_base_url: str) -> AP
         _require_loopback_request(request)
         token = signer.issue("owner")
         script_nonce = secrets.token_urlsafe(18)
-        response = HTMLResponse(
-            _owner_start_page("/oauth/microsoft/owner-start", token, script_nonce)
-        )
+        response = HTMLResponse(_owner_start_page("/api/v1/owner/session", token, script_nonce))
         response.headers["Cache-Control"] = "no-store"
         response.headers["Referrer-Policy"] = "no-referrer"
         response.headers["Content-Security-Policy"] = (
             f"default-src 'none'; style-src 'unsafe-inline'; "
             f"script-src 'nonce-{script_nonce}'; "
-            f"form-action 'self' {app_base_url} {MICROSOFT_LOGIN_ORIGIN}; base-uri 'none'"
+            "form-action 'self'; base-uri 'none'"
         )
         return response
 
-    @router.post("/oauth/microsoft/owner-start", response_class=RedirectResponse)
-    async def relay_owner_session(request: Request) -> RedirectResponse:
-        _require_loopback_request(request)
-        target = urljoin(app_base_url.rstrip("/") + "/", "api/v1/owner/session")
-        return RedirectResponse(target, status.HTTP_307_TEMPORARY_REDIRECT)
-
     @router.post("/api/v1/owner/session", response_class=RedirectResponse)
     async def establish_owner_session(request: Request) -> RedirectResponse:
+        _require_loopback_request(request)
         body = await request.body()
         if len(body) > 4096:
             raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, "request is too large")
@@ -81,7 +73,7 @@ def _owner_bootstrap_router(signer: OwnerSessionSigner, app_base_url: str) -> AP
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "invalid session request") from exc
         _authenticate(signer, token)
         response = RedirectResponse("/oauth/microsoft/start", status.HTTP_303_SEE_OTHER)
-        _set_secure_cookie(response, OWNER_COOKIE, token, httponly=True)
+        _set_loopback_cookie(response, OWNER_COOKIE, token, httponly=True)
         return response
 
     return router
@@ -94,15 +86,17 @@ def _oauth_flow_router(
 
     @router.get("/oauth/microsoft/start", response_class=RedirectResponse)
     async def start(
+        request: Request,
         owner_cookie: Annotated[str | None, Cookie(alias=OWNER_COOKIE)] = None,
     ) -> RedirectResponse:
+        _require_loopback_request(request)
         owner_token = owner_cookie or ""
         owner = _authenticate(signer, owner_token)
         authorization = await service.begin(owner.user_id)
         response = RedirectResponse(authorization.authorization_url, status.HTTP_302_FOUND)
-        _set_secure_cookie(response, OWNER_COOKIE, owner_token, httponly=True)
-        _set_secure_cookie(response, OAUTH_COOKIE, authorization.browser_session, httponly=True)
-        _set_secure_cookie(response, CSRF_COOKIE, secrets.token_urlsafe(24), httponly=False)
+        _set_loopback_cookie(response, OWNER_COOKIE, owner_token, httponly=True)
+        _set_loopback_cookie(response, OAUTH_COOKIE, authorization.browser_session, httponly=True)
+        _set_loopback_cookie(response, CSRF_COOKIE, secrets.token_urlsafe(24), httponly=False)
         return response
 
     @router.get("/oauth/microsoft/callback", response_class=HTMLResponse)
@@ -110,6 +104,7 @@ def _oauth_flow_router(
         request: Request,
         oauth_cookie: Annotated[str | None, Cookie(alias=OAUTH_COOKIE)] = None,
     ) -> HTMLResponse:
+        _require_loopback_request(request)
         parameters = {key: value for key, value in request.query_params.items()}
         try:
             view = await service.complete(parameters, oauth_cookie or "")
@@ -122,7 +117,7 @@ def _oauth_flow_router(
             response = HTMLResponse(
                 f"Microsoft connection is {view.status.lower()}. You may close this window."
             )
-        response.delete_cookie(OAUTH_COOKIE, secure=True, httponly=True, samesite="lax")
+        response.delete_cookie(OAUTH_COOKIE, secure=False, httponly=True, samesite="lax")
         return response
 
     return router
@@ -138,20 +133,24 @@ def _connection_api_router(
         response_model=ConnectionStatusView | None,
     )
     async def connection_status(
+        request: Request,
         owner_cookie: Annotated[str | None, Cookie(alias=OWNER_COOKIE)] = None,
         owner_header: Annotated[str | None, Header(alias="X-Owner-Session")] = None,
     ) -> ConnectionStatusView | None:
+        _require_loopback_request(request)
         owner = _authenticate(signer, owner_header or owner_cookie or "")
         return await service.status(owner.user_id)
 
     @router.post("/api/v1/oauth/microsoft/disconnect", response_model=ConnectionStatusView)
     async def disconnect(
+        request: Request,
         payload: DisconnectRequest,
         owner_cookie: Annotated[str | None, Cookie(alias=OWNER_COOKIE)] = None,
         owner_header: Annotated[str | None, Header(alias="X-Owner-Session")] = None,
         csrf_cookie: Annotated[str | None, Cookie(alias=CSRF_COOKIE)] = None,
         csrf_header: Annotated[str | None, Header(alias="X-CSRF-Token")] = None,
     ) -> ConnectionStatusView:
+        _require_loopback_request(request)
         _authenticate(signer, owner_header or owner_cookie or "")
         try:
             verify_csrf(csrf_cookie, csrf_header)
@@ -193,12 +192,12 @@ def _require_loopback_request(request: Request) -> None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "not found")
 
 
-def _set_secure_cookie(response: Response, name: str, value: str, *, httponly: bool) -> None:
+def _set_loopback_cookie(response: Response, name: str, value: str, *, httponly: bool) -> None:
     response.set_cookie(
         name,
         value,
         max_age=900,
-        secure=True,
+        secure=False,
         httponly=httponly,
         samesite="lax",
         path="/",

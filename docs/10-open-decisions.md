@@ -83,13 +83,13 @@ AI Provider 必须位于统一 AI Adapter 后，领域层不得依赖厂商模�
 - 数据保留已由 OD-04 关闭。
 - 质量门禁：实现阶段先建立去敏固定评估集，再以向量检索为基线，要求混合检索 Recall@10 不低于 0.85；达不到时不得以主观演示替代调优。
 
-## OD-10 生产运行位置与公网入口
+## OD-10 生产运行位置与网络入口
 
 - 状态：Decided
-- 当前决定：Agent、Worker、Docker PostgreSQL 和 Ollama 运行在 Windows 本机；腾讯云只承担 Caddy HTTPS 与 SSH 中继。
-- 公网路径：Caddy → 腾讯云回环 `127.0.0.1:8000` → SSH 反向隧道 → Windows 回环 `127.0.0.1:8000`。
+- 当前决定：Agent、Worker、QQ、Docker PostgreSQL 和 Ollama 运行在 Windows 本机；腾讯云只承担主站静态 HTTPS 和 SSH 管理。
+- Agent HTTP 只绑定 Windows 回环 `127.0.0.1:8000`，不提供公网路径；Microsoft 使用本机公共客户端 PKCE 回调，详见 ADR-0010。
 - 已验证本机硬件与 `qwen3-embedding:4b` 的 1024 维输出；默认单并发、30 分钟 keep-alive。
-- 可用性代价：Windows 主机或隧道离线时 OAuth/Web 入口不可用；必须配置开机自启、失败重连与外部健康告警。
+- 可用性代价：Windows 主机离线时 Agent 整体不可用；Microsoft 授权必须在该主机浏览器完成。
 
 ## 决策记录要求
 

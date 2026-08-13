@@ -58,7 +58,6 @@ def build_app() -> tuple[FastAPI, AsyncEngine, tuple[object, ...]]:
     oauth = microsoft_oauth_router(
         connections,
         OwnerSessionSigner(config.app.signing_key, clock),
-        config.app.base_url,
     )
     readiness = ReadinessService(DatabaseReadinessProbe(engine), embeddings)
     inbox = InboxService(SqlInboxRepository(sessions))
