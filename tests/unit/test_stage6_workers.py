@@ -101,7 +101,9 @@ def _lease(entry: AgendaEntryView, version: int, attempts: int = 1) -> ReminderL
 
 
 @pytest.mark.asyncio
-async def test_reminder_worker_sends_stale_dead_letters_and_retries() -> None:
+async def test_reminder_worker_sends_stale_dead_letters_and_retries(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     entry = _entry()
     good = _lease(entry, 1)
     stale = _lease(entry, 2)
@@ -127,6 +129,12 @@ async def test_reminder_worker_sends_stale_dead_letters_and_retries() -> None:
     ).run_once()
     assert failing.failed[0][1] == "ConnectionError"
     assert failing.failed[0][2] is not None
+    failure_classes = {getattr(record, "failure_class", None) for record in caplog.records}
+    assert {"StaleAgendaVersion", "ConnectionError"} <= failure_classes
+    assert any(
+        getattr(record, "reminder_id", None) == stale.reminder_id for record in caplog.records
+    )
+    assert "评审" not in caplog.text
 
 
 @pytest.mark.asyncio

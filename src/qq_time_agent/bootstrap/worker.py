@@ -14,6 +14,7 @@ from qq_time_agent.adapters.inbound.workers.knowledge import KnowledgeIndexJobHa
 from qq_time_agent.adapters.inbound.workers.knowledge_schedule import KnowledgeIndexScheduler
 from qq_time_agent.adapters.inbound.workers.mail_schedule import PeriodicMailSyncScheduler
 from qq_time_agent.adapters.inbound.workers.mail_sync import MailSyncJobHandler
+from qq_time_agent.adapters.inbound.workers.provider_readiness import EmbeddingStartupGate
 from qq_time_agent.adapters.inbound.workers.runner import JobRunner
 from qq_time_agent.adapters.inbound.workers.scheduling import SchedulingJobHandler
 from qq_time_agent.adapters.inbound.workers.scheduling_schedule import SchedulingScheduler
@@ -275,7 +276,14 @@ def build_worker() -> tuple[JobRunner, AsyncEngine, tuple[AsyncClosable, ...]]:
         await knowledge_scheduler.enqueue_due()
         await lifecycle_scheduler.enqueue_due()
 
-    runner = JobRunner(queue, handlers, clock, f"worker-{uuid4()}", before_poll=schedule_due)
+    runner = JobRunner(
+        queue,
+        handlers,
+        clock,
+        f"worker-{uuid4()}",
+        before_poll=schedule_due,
+        before_start=EmbeddingStartupGate(ollama).wait,
+    )
     return runner, engine, (graph_connection, graph_mail, qq_mail, deepseek, ollama)
 
 
@@ -291,5 +299,5 @@ async def run_worker() -> None:
 
 def main() -> None:
     configure_event_loop_policy()
-    configure_logging()
+    configure_logging(role="worker")
     asyncio.run(run_worker())

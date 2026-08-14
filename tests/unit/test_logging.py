@@ -47,3 +47,37 @@ def test_sanitize_redacts_oauth_callback_query_values() -> None:
     callback = "/oauth/microsoft/callback?code=not-for-logs&state=not-for-logs&safe=ok"
     sanitized = sanitize(callback)
     assert sanitized == (f"/oauth/microsoft/callback?code={REDACTED}&state={REDACTED}&safe=ok")
+
+
+def test_sanitize_redacts_business_content_and_payload_fields() -> None:
+    value = {
+        "body": "private mail body",
+        "prompt": "private prompt",
+        "request_payload": {"safe": "still private"},
+    }
+    assert sanitize(value) == {
+        "body": REDACTED,
+        "prompt": REDACTED,
+        "request_payload": REDACTED,
+    }
+
+
+def test_formatter_outputs_only_allowlisted_safe_context() -> None:
+    record = logging.LogRecord("test", logging.INFO, __file__, 1, "job failed", (), None)
+    record.job_id = "job-1"
+    record.kind = "knowledge-index"
+    record.failure_class = "TransientProvider"
+    record.payload = {"body": "not-for-logs"}
+    rendered = RedactingFormatter("%(message)s").format(record)
+    assert "job_id=job-1" in rendered
+    assert "kind=knowledge-index" in rendered
+    assert "failure_class=TransientProvider" in rendered
+    assert "not-for-logs" not in rendered
+    assert "payload" not in rendered
+
+
+def test_exception_formatter_redacts_business_content() -> None:
+    formatter = RedactingFormatter()
+    error = RuntimeError("body=not-for-logs")
+    rendered = formatter.formatException((RuntimeError, error, None))
+    assert "not-for-logs" not in rendered

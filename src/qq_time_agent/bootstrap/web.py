@@ -139,7 +139,7 @@ def build_app() -> tuple[FastAPI, AsyncEngine, tuple[object, ...]]:
 
 def main() -> None:
     configure_event_loop_policy()
-    configure_logging()
+    configure_logging(role="web")
     config = load_runtime_config()
     app, _, _ = build_app()
     uvicorn.run(

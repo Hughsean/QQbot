@@ -1,6 +1,7 @@
 """Offline post-restore tombstone replay gate."""
 
 import asyncio
+import logging
 from datetime import timedelta
 
 from sqlalchemy.ext.asyncio import async_sessionmaker
@@ -21,6 +22,8 @@ from qq_time_agent.modules.normalization.infrastructure.purge import Normalizati
 from qq_time_agent.modules.scheduling.infrastructure.purge import SchedulingPurgeAdapter
 from qq_time_agent.modules.understanding.infrastructure.purge import UnderstandingPurgeAdapter
 from qq_time_agent.modules.workflow.infrastructure.purge import WorkflowPurgeAdapter
+
+LOGGER = logging.getLogger(__name__)
 
 
 async def replay_tombstones() -> int:
@@ -43,12 +46,15 @@ async def replay_tombstones() -> int:
         AuditService(SqlAuditRepository(sessions)),
     )
     try:
-        return await deletion.replay()
+        LOGGER.info("tombstone replay started")
+        count = await deletion.replay()
+        LOGGER.info("tombstone replay completed", extra={"count": count})
+        return count
     finally:
         await engine.dispose()
 
 
 def main() -> None:
     configure_event_loop_policy()
-    configure_logging()
+    configure_logging(role="replay-tombstones")
     asyncio.run(replay_tombstones())

@@ -88,6 +88,38 @@ class SqlJobQueue:
         status = "DEAD_LETTER" if exhausted else "RETRY_WAIT"
         await self._finish(lease, now, status, failure_class, retry_at)
 
+    async def requeue_transient_dead_letters(
+        self, kind: str, now: datetime, limit: int = 1000
+    ) -> int:
+        if not kind.strip() or limit < 1 or limit > 10000:
+            raise ValueError("job kind and a limit between 1 and 10000 are required")
+        if now.tzinfo is None or now.utcoffset() is None:
+            raise ValueError("requeue time must be timezone-aware")
+        async with self._sessions.begin() as session:
+            rows = list(
+                await session.scalars(
+                    select(JobRow)
+                    .where(
+                        JobRow.kind == kind,
+                        JobRow.status == "DEAD_LETTER",
+                        JobRow.last_error_class == "TransientProvider",
+                    )
+                    .order_by(JobRow.updated_at, JobRow.job_id)
+                    .limit(limit)
+                    .with_for_update(skip_locked=True)
+                )
+            )
+            for row in rows:
+                row.status = "PENDING"
+                row.attempt_count = 0
+                row.available_at = now
+                row.lease_owner = None
+                row.lease_until = None
+                row.last_error_class = None
+                row.last_error_detail = None
+                row.updated_at = now
+            return len(rows)
+
     async def status(self, job_id: UUID) -> JobStatusView | None:
         async with self._sessions() as session:
             row = await session.get(JobRow, job_id)

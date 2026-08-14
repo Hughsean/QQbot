@@ -76,6 +76,35 @@ async def test_runner_schedules_bounded_retry() -> None:
 
 
 @pytest.mark.asyncio
+async def test_runner_calls_startup_gate_before_first_poll() -> None:
+    queue = MemoryQueue([])
+    events: list[str] = []
+
+    async def before_start() -> None:
+        events.append("started")
+
+    async def before_poll() -> None:
+        assert events == ["started"]
+        events.append("polled")
+
+    async def stop(_: float) -> None:
+        raise RuntimeError("stop-loop")
+
+    runner = JobRunner(
+        queue,
+        {},
+        FixedClock(datetime(2026, 8, 13, tzinfo=UTC)),
+        "worker",
+        sleep=stop,
+        before_poll=before_poll,
+        before_start=before_start,
+    )
+    with pytest.raises(RuntimeError, match="stop-loop"):
+        await runner.run_forever()
+    assert events == ["started", "polled"]
+
+
+@pytest.mark.asyncio
 async def test_runner_dead_letters_unknown_job_kind() -> None:
     job = JobLease(uuid4(), "unknown", {}, "worker", 1, 3)
     queue = MemoryQueue([job])

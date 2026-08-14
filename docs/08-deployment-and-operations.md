@@ -8,17 +8,17 @@ hughsean.online / www.hughsean.online
   → /var/www/hughsean 静态站点
 
 Windows 生产主机
-  → Python Web/Worker/QQ（项目 .venv）
+  → Docker Compose：PostgreSQL + pgvector、Web、Worker、QQ（容器模式，ADR-0012）
   → Owner browser → http://127.0.0.1:8000
-  → Docker PostgreSQL + pgvector（127.0.0.1:5432）
-  → Native Ollama（127.0.0.1:11434）
+  → Native Ollama（127.0.0.1:11434，容器经 host.docker.internal 访问）
   → Microsoft Graph / QQ Bot / QQ Mail IMAP / DeepSeek（仅出站）
 ```
 
-腾讯云 Ubuntu 只托管主站静态文件、Caddy HTTPS 和 SSH 管理入口。Agent、Worker、QQ、
-PostgreSQL 和 Ollama 均运行在 Windows 生产主机。Agent 没有公网 HTTP 入口；QQ WebSocket、
-Microsoft Graph 和 DeepSeek 均由本机发起出站连接。OAuth 回调只在授权浏览器所在的 Windows
-主机回环地址完成，不依赖腾讯云、DNS、Caddy、证书或 SSH 隧道。
+腾讯云 Ubuntu 只托管主站静态文件、Caddy HTTPS 和 SSH 管理入口。Agent、Worker、QQ 与
+PostgreSQL 以 Docker Compose 容器运行在 Windows 生产主机，Ollama 保持本机原生回环监听。
+Agent 没有公网 HTTP 入口；QQ WebSocket、Microsoft Graph 和 DeepSeek 均由本机发起出站连接。
+OAuth 回调只在授权浏览器所在的 Windows 主机回环地址完成，不依赖腾讯云、DNS、Caddy、
+证书或 SSH 隧道。
 
 ## 2. 进程边界
 
@@ -31,7 +31,14 @@ MVP 至少包含：
 - Docker PostgreSQL + pgvector：只映射到 Windows `127.0.0.1:5432`，保存业务数据、RAG 向量与加密凭据元数据。
 - 可选队列：MVP 可使用数据库 outbox/job 表，避免过早引入独立队列。
 
-Web 和 Worker 来自同一代码库和项目 `.venv`，使用不同进程角色；Python 开发运行时不容器化。Docker Compose 只管理 PostgreSQL 等基础设施。
+Web 和 Worker 来自同一代码库和同一不可变镜像，由 Compose `command` 区分进程角色。部署采用
+容器模式（ADR-0012）：`APP_CONTAINER=true` 且只接受精确地址覆盖值
+`APP_LISTEN_HOST=0.0.0.0`、`DATABASE_HOST=postgres`、
+`OLLAMA_BASE_URL=http://host.docker.internal:11434`，由 Compose 注入而不写入 `.env`；应用
+容器另固定使用 `DATABASE_PORT=5432`，宿主发布端口仍取 `.env` 的 `DATABASE_PORT`。
+`APP_LISTEN_PORT` 同时作为 Web 容器监听端口和宿主回环发布端口。裸机开发仍默认使用项目
+`.venv` 与回环门禁。数据库迁移、tombstone 重放和受控死信恢复是 `ops` profile 的
+一次性容器，不在应用启动时并发执行。
 
 ## 3. 配置分类
 
@@ -120,17 +127,25 @@ Microsoft 回调 URI 由 `APP_LISTEN_PORT` 派生为
 
 ### Windows 生产主机
 
-- Python Web、Worker 和 QQ 使用 Windows 任务计划程序或等价服务管理器登录后自启、失败重启。
-- Docker Desktop/Engine 和 PostgreSQL Compose 项目必须自动启动并带健康检查。
-- 数据库端口只绑定 `127.0.0.1`；Ollama 保持回环监听。
-- `.env` 的 ACL 只允许当前生产用户和管理员读取。
-- 数据库迁移作为显式部署步骤，不在 Web/Worker 启动时并发运行。
+- Docker Desktop/Engine 必须自动启动；每次部署先执行 `docker compose build` 生成所有角色共用
+  的 `qq-time-agent:local`，再运行迁移和服务。`docker compose up -d` 以
+  `restart: unless-stopped` 守护 Web、Worker 和 QQ 容器，替代 Windows 任务计划程序。
+- 数据库端口只绑定 `127.0.0.1`；Ollama 保持回环监听，容器经 `host.docker.internal` 网关访问。
+- `.env` 的 ACL 只允许当前生产用户和管理员读取；秘密不写入镜像，只经 Compose `env_file` 注入。
+- 数据库迁移作为显式部署步骤：`docker compose run --rm migrate`。从备份恢复时，正式
+  脚本先恢复旧库，再通过一次性容器迁移、合并当前 tombstone 账本并重放；这些步骤不与
+  Web/Worker 并发运行。
 - Ollama 必须保持回环监听；readiness 验证模型存在、输出维度正确，但不得在请求路径自动下载模型。
+  Worker 在首次租约前等待该强 readiness，通过前不消费 Job、也不增加 attempt；等待日志首轮及每
+  30 秒输出一次，恢复后自动开始轮询。
 - PostgreSQL 部署必须启用 `vector` 扩展；迁移负责创建向量列和索引。
 - 首次连接 Microsoft 时从本机打开
   `http://127.0.0.1:8000/oauth/microsoft/owner-start`；该引导页只允许回环访问，
   所有者会话通过同源 POST 建立，Microsoft 完成后返回本机
   `http://localhost:8000/oauth/microsoft/callback`。不得复制签名值或改用查询参数链接。
+- 容器日志写 stdout/stderr，由 json-file 轮转（10 MB × 3）限制。应用 formatter 只输出
+  allowlist 关联字段（role、job/reminder/proposal ID、kind、attempt、failure class、聚合 count
+  和 duration），并对凭据、正文、content、prompt、payload 和响应内容做纵深脱敏。
 
 ### 腾讯云静态站点
 
@@ -152,18 +167,23 @@ Microsoft 回调 URI 由 `APP_LISTEN_PORT` 派生为
 推进到 `UNDERSTOOD`，该 Job 按前置条件未就绪有限重试。Proposal 成功持久化后 Inbox 才进入
 `PROPOSED`。任务载荷只有 Candidate ID，排程进程不拥有 Agenda 写端口。
 
-QQ 进程通过 `uv run qq-time-agent-qq` 启动。确认卡片与 Reminder 共用已经在线的官方 QQ
+QQ 进程由 Compose `qq` 服务运行 `qq-time-agent-qq`。确认卡片与 Reminder 共用已经在线的官方 QQ
 长连接；Proposal 通知失败按 Proposal 独立隔离并在下次轮询重试，不能阻塞 Reminder。Reminder
-即使 DeepSeek、Graph 或主 Worker 不可用仍独立领取、校验 Agenda 版本并发送。Windows 任务计划
-必须分别守护 Web、Worker 和 QQ 三个进程角色。
+即使 DeepSeek、Graph 或主 Worker 不可用仍独立领取、校验 Agenda 版本并发送。Compose 的
+`restart: unless-stopped` 分别守护 Web、Worker 和 QQ 三个进程角色。
 
 仓库 `ops/` 提供以下制品：
 
-- `Register-QQTimeAgentTasks.ps1` 默认 dry-run；生产批准后才允许加 `-Apply` 注册三个登录自启任务。
-- `Start-QQTimeAgentRole.ps1` 有界间隔重启 Web、Worker 或 QQ，日志写入被 Git 忽略的 `logs/`。
-- `Test-QQTimeAgentHealth.ps1` 检查本机 readiness 和无内容标签的 `/metrics`。
+- `Register-QQTimeAgentTasks.ps1` 仅适用于裸机 `.venv` 运行模式；容器模式不使用任务计划程序。
+- `Start-QQTimeAgentRole.ps1` 仅适用于裸机 `.venv` 运行模式；容器模式由 Compose 重启策略守护。
+- `Test-QQTimeAgentHealth.ps1 [-Port <APP_LISTEN_PORT>]` 检查本机 readiness 和无内容标签的
+  `/metrics`。
 - `Backup-QQTimeAgent.ps1` 生成 PostgreSQL custom-format 备份和 SHA-256 文件。
-- `Restore-QQTimeAgent.ps1` 要求精确确认短语；覆盖前先导出当前 tombstone 账本，恢复后在服务保持停止时迁移数据库、合并该账本并强制重放；服务只能在 readiness 通过后启动。
+- `Restore-QQTimeAgent.ps1` 要求精确确认短语；覆盖前先导出当前 tombstone 账本，恢复后在
+  服务保持停止时通过 `migrate` / `replay-tombstones` 一次性容器迁移、合并该账本并强制
+  重放；生产主机不依赖 `.venv`，服务只能在 readiness 通过后启动。
+- Ollama 恢复后，只有经确认属于 `knowledge-index + DEAD_LETTER + TransientProvider` 的记录
+  才能通过 `docker compose run --rm requeue-knowledge-jobs` 重置；永久错误和其他 Job 不变。
 
 不得把任务注册 dry-run 误报为已部署。当前开发交付没有执行 `-Apply`，也没有修改生产 Caddy、SSHD 或 systemd。
 
@@ -204,7 +224,10 @@ QQ 进程通过 `uv run qq-time-agent-qq` 启动。确认卡片与 Reminder 共�
 - Reminder 到期延迟、发送成功率、重试和死信数。
 - RAG 索引积压、Ollama 延迟、召回空结果率和引用覆盖率。
 
-本机 `/metrics` 当前只暴露 Job/Reminder 的 pending、dead-letter 与 pending deletion 聚合值；不包含用户、source_ref、正文、查询或凭据标签。日志保留由主机策略限制为 30 天，并继续经过应用秘密脱敏过滤。
+本机 `/metrics` 当前只暴露 Job/Reminder 的 pending、dead-letter 与 pending deletion 聚合值；
+不包含用户、source_ref、正文、查询或凭据标签。使用 `docker compose logs --since <duration>
+web worker qq` 查看轮转后的容器日志；日志仅包含脱敏消息和 allowlist 关联字段，不输出 Job
+payload、邮件/QQ 正文或 LLM 请求响应。日志保留由主机策略限制为 30 天。
 
 ### 告警
 

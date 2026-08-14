@@ -178,5 +178,5 @@ async def run_qq() -> None:
 
 def main() -> None:
     configure_event_loop_policy()
-    configure_logging()
+    configure_logging(role="qq")
     asyncio.run(run_qq())

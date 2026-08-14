@@ -1,6 +1,28 @@
+x-app-container-environment: &app-container-environment
+  APP_CONTAINER: "true"
+  APP_LISTEN_HOST: "0.0.0.0"
+  APP_LISTEN_PORT: "${APP_LISTEN_PORT:-8000}"
+  DATABASE_HOST: "postgres"
+  DATABASE_PORT: "5432"
+  OLLAMA_BASE_URL: "http://host.docker.internal:11434"
+
+x-app-service: &app-service
+  image: qq-time-agent:local
+  restart: unless-stopped
+  env_file: .env
+  environment: *app-container-environment
+  depends_on:
+    postgres:
+      condition: service_healthy
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
 services:
   postgres:
-    image: pgvector/pgvector:0.8.1-pg17
+    image: pgvector/pgvector:0.8.1-pg17@sha256:3e8b3adfd27b5707128f60956f62a793c3c9326ea8cfaf0eab7adccb5d700b21
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${DATABASE_NAME:-qq_time_agent}
@@ -16,6 +38,51 @@ services:
       timeout: 3s
       retries: 20
       start_period: 10s
+
+  web:
+    <<: *app-service
+    build: .
+    ports:
+      - "127.0.0.1:${APP_LISTEN_PORT:-8000}:${APP_LISTEN_PORT:-8000}"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import os,sys,urllib.request;p=os.environ['APP_LISTEN_PORT'];sys.exit(0 if urllib.request.urlopen(f'http://127.0.0.1:{p}/health/live',timeout=3).status==200 else 1)",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  worker:
+    <<: *app-service
+    command: ["qq-time-agent-worker"]
+
+  qq:
+    <<: *app-service
+    command: ["qq-time-agent-qq"]
+    stop_grace_period: 20s
+
+  migrate:
+    <<: *app-service
+    profiles: ["ops"]
+    restart: "no"
+    command: ["alembic", "upgrade", "head"]
+
+  replay-tombstones:
+    <<: *app-service
+    profiles: ["ops"]
+    restart: "no"
+    command: ["qq-time-agent-replay-tombstones"]
+
+  requeue-knowledge-jobs:
+    <<: *app-service
+    profiles: ["ops"]
+    restart: "no"
+    command: ["qq-time-agent-requeue-knowledge-jobs"]
 
 volumes:
   qq_time_agent_postgres:

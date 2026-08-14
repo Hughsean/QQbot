@@ -99,6 +99,89 @@ async def test_qq_mail_jobs_retry_and_disconnect_cancellation(engine: AsyncEngin
 
 
 @pytest.mark.asyncio
+async def test_transient_dead_letters_can_be_requeued_explicitly(engine: AsyncEngine) -> None:
+    sessions = async_sessionmaker(engine, expire_on_commit=False)
+    queue = SqlJobQueue(sessions)
+    now = datetime(2026, 8, 13, tzinfo=UTC)
+    kind = f"integration-requeue-{uuid4()}"
+    target_id = uuid4()
+    permanent_id = uuid4()
+    other_id = uuid4()
+    rows = (
+        JobRow(
+            job_id=target_id,
+            kind=kind,
+            payload={},
+            status="DEAD_LETTER",
+            idempotency_key=f"integration:{target_id}",
+            available_at=now,
+            lease_owner=None,
+            lease_until=None,
+            attempt_count=3,
+            max_attempts=3,
+            last_error_class="TransientProvider",
+            last_error_detail="synthetic",
+            created_at=now,
+            updated_at=now,
+        ),
+        JobRow(
+            job_id=permanent_id,
+            kind=kind,
+            payload={},
+            status="DEAD_LETTER",
+            idempotency_key=f"integration:{permanent_id}",
+            available_at=now,
+            lease_owner=None,
+            lease_until=None,
+            attempt_count=3,
+            max_attempts=3,
+            last_error_class="PermanentProvider",
+            last_error_detail="synthetic",
+            created_at=now,
+            updated_at=now,
+        ),
+        JobRow(
+            job_id=other_id,
+            kind=f"{kind}-other",
+            payload={},
+            status="DEAD_LETTER",
+            idempotency_key=f"integration:{other_id}",
+            available_at=now,
+            lease_owner=None,
+            lease_until=None,
+            attempt_count=3,
+            max_attempts=3,
+            last_error_class="TransientProvider",
+            last_error_detail="synthetic",
+            created_at=now,
+            updated_at=now,
+        ),
+    )
+    try:
+        async with sessions.begin() as session:
+            session.add_all(rows)
+        assert await queue.requeue_transient_dead_letters(kind, now + timedelta(minutes=1)) == 1
+        async with sessions() as session:
+            target = await session.get(JobRow, target_id)
+            permanent = await session.get(JobRow, permanent_id)
+            other = await session.get(JobRow, other_id)
+            assert target is not None
+            assert (target.status, target.attempt_count, target.last_error_class) == (
+                "PENDING",
+                0,
+                None,
+            )
+            assert target.last_error_detail is None
+            assert permanent is not None and permanent.status == "DEAD_LETTER"
+            assert other is not None and other.status == "DEAD_LETTER"
+    finally:
+        async with sessions.begin() as session:
+            await session.execute(
+                delete(JobRow).where(JobRow.job_id.in_((target_id, permanent_id, other_id)))
+            )
+
+
+@pytest.mark.asyncio
 async def test_outbox_append_is_transactional_and_publish_is_idempotent(
     engine: AsyncEngine,
 ) -> None:

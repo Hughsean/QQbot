@@ -13,7 +13,7 @@
 
 - CPython 3.12，使用 uv 管理 Python、项目内 `.venv`、依赖和 `uv.lock`。
 - 新依赖使用最新稳定且兼容 Python 3.12 的版本；降级必须记录可复现原因。
-- Python 应用在项目 `.venv` 中运行；Docker Compose 只承载 PostgreSQL + pgvector 等基础设施。
+- Python 应用开发在项目 `.venv` 中运行；部署采用容器模式（ADR-0012），Docker Compose 承载 PostgreSQL + pgvector 与 Web/Worker/QQ 应用容器。
 - FastAPI + Uvicorn、SQLAlchemy 2、Alembic、LangGraph、官方 `qq-botpy`、DeepSeek Adapter、本机 Ollama。
 - 配置只由 Bootstrap 使用 `pydantic-settings` 从 `.env` 构造；业务模块禁止散落 `os.getenv()`。
 

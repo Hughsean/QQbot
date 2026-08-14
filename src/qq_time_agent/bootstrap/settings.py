@@ -23,6 +23,17 @@ from qq_time_agent.bootstrap.config_models import (
     ScheduleConfig,
 )
 
+CONTAINER_BIND_HOST = ip_address(0).compressed
+
+
+def _require_loopback_host(value: str, name: str) -> None:
+    try:
+        is_loopback = ip_address(value).is_loopback
+    except ValueError:
+        is_loopback = False
+    if not is_loopback:
+        raise ValueError(f"{name} must be loopback")
+
 
 class EnvironmentSettings(BaseSettings):
     """Flat environment contract; converted immediately to grouped config."""
@@ -35,6 +46,7 @@ class EnvironmentSettings(BaseSettings):
     )
 
     app_env: str = "development"
+    app_container: bool = False
     app_listen_host: str = "127.0.0.1"
     app_listen_port: int = Field(default=8000, ge=1, le=65535)
     app_signing_key: SecretStr
@@ -91,13 +103,10 @@ class EnvironmentSettings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_security_boundaries(self) -> "EnvironmentSettings":
-        if not ip_address(self.app_listen_host).is_loopback:
-            raise ValueError("APP_LISTEN_HOST must be loopback")
-        if not ip_address(self.database_host).is_loopback:
-            raise ValueError("DATABASE_HOST must be loopback")
-        ollama_host = urlparse(self.ollama_base_url).hostname
-        if ollama_host is None or not ip_address(ollama_host).is_loopback:
-            raise ValueError("OLLAMA_BASE_URL must use a loopback address")
+        if self.app_container:
+            self._validate_container_boundaries()
+        else:
+            self._validate_loopback_boundaries()
         if self.rag_embedding_dimensions != 1024:
             raise ValueError("RAG_EMBEDDING_DIMENSIONS must be 1024 for the active index")
         if abs(self.rag_vector_weight + self.rag_lexical_weight - 1.0) > 1e-9:
@@ -107,6 +116,24 @@ class EnvironmentSettings(BaseSettings):
         if self.qq_mail_imap_host != "imap.qq.com" or self.qq_mail_imap_port != 993:
             raise ValueError("QQ Mail IMAP must use imap.qq.com:993")
         return self
+
+    def _validate_container_boundaries(self) -> None:
+        if self.app_listen_host != CONTAINER_BIND_HOST:
+            raise ValueError("APP_CONTAINER requires APP_LISTEN_HOST=0.0.0.0")
+        if self.database_host != "postgres":
+            raise ValueError("APP_CONTAINER requires DATABASE_HOST=postgres")
+        if self.ollama_base_url != "http://host.docker.internal:11434":
+            raise ValueError(
+                "APP_CONTAINER requires OLLAMA_BASE_URL=http://host.docker.internal:11434"
+            )
+
+    def _validate_loopback_boundaries(self) -> None:
+        _require_loopback_host(self.app_listen_host, "APP_LISTEN_HOST")
+        _require_loopback_host(self.database_host, "DATABASE_HOST")
+        ollama_host = urlparse(self.ollama_base_url).hostname
+        if ollama_host is None:
+            raise ValueError("OLLAMA_BASE_URL must use a loopback address")
+        _require_loopback_host(ollama_host, "OLLAMA_BASE_URL")
 
 
 class QqMailSandboxSettings(BaseSettings):

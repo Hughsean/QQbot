@@ -26,21 +26,13 @@ if ($LASTEXITCODE -ne 0) { throw "Copying restore backup failed" }
 docker compose --project-directory $ProjectRoot exec -T postgres sh -c `
     'dropdb --force -U "$POSTGRES_USER" "$1" && createdb -U "$POSTGRES_USER" "$1" && pg_restore --no-owner -U "$POSTGRES_USER" -d "$1" /tmp/qq-time-agent-restore.dump' sh $DatabaseName
 if ($LASTEXITCODE -ne 0) { throw "PostgreSQL database replacement failed" }
-$previousDatabaseName = [Environment]::GetEnvironmentVariable("DATABASE_NAME", "Process")
-$env:DATABASE_NAME = $DatabaseName
-try {
-    & (Join-Path $ProjectRoot ".venv\Scripts\alembic.exe") upgrade head
-    if ($LASTEXITCODE -ne 0) { throw "Database migration after restore failed" }
-    docker compose --project-directory $ProjectRoot exec -T postgres sh -c `
-        'psql -U "$POSTGRES_USER" -d "$1" -v ON_ERROR_STOP=1 -c "CREATE TEMP TABLE restored_tombstones (LIKE data_lifecycle_tombstones INCLUDING DEFAULTS); COPY restored_tombstones (tombstone_id, subject_ref, requested_at, purge_by, status, completed_at) FROM ''/tmp/qq-time-agent-current-tombstones.csv'' WITH (FORMAT csv); INSERT INTO data_lifecycle_tombstones SELECT * FROM restored_tombstones ON CONFLICT (subject_ref) DO NOTHING;"' sh $DatabaseName
-    if ($LASTEXITCODE -ne 0) { throw "Merging current deletion ledger failed" }
-    & (Join-Path $ProjectRoot ".venv\Scripts\qq-time-agent-replay-tombstones.exe")
-    if ($LASTEXITCODE -ne 0) { throw "Tombstone replay after restore failed" }
-} finally {
-    if ($null -eq $previousDatabaseName) {
-        Remove-Item Env:DATABASE_NAME -ErrorAction SilentlyContinue
-    } else {
-        $env:DATABASE_NAME = $previousDatabaseName
-    }
-}
+Write-Output "Running database migration in the application container."
+docker compose --project-directory $ProjectRoot run --rm -e DATABASE_NAME=$DatabaseName migrate
+if ($LASTEXITCODE -ne 0) { throw "Database migration after restore failed" }
+docker compose --project-directory $ProjectRoot exec -T postgres sh -c `
+    'psql -U "$POSTGRES_USER" -d "$1" -v ON_ERROR_STOP=1 -c "CREATE TEMP TABLE restored_tombstones (LIKE data_lifecycle_tombstones INCLUDING DEFAULTS); COPY restored_tombstones (tombstone_id, subject_ref, requested_at, purge_by, status, completed_at) FROM ''/tmp/qq-time-agent-current-tombstones.csv'' WITH (FORMAT csv); INSERT INTO data_lifecycle_tombstones SELECT * FROM restored_tombstones ON CONFLICT (subject_ref) DO NOTHING;"' sh $DatabaseName
+if ($LASTEXITCODE -ne 0) { throw "Merging current deletion ledger failed" }
+Write-Output "Replaying the preserved deletion ledger in the application container."
+docker compose --project-directory $ProjectRoot run --rm -e DATABASE_NAME=$DatabaseName replay-tombstones
+if ($LASTEXITCODE -ne 0) { throw "Tombstone replay after restore failed" }
 Write-Output "Restore, tombstone replay, and migration completed. Start services only after readiness passes."

@@ -11,7 +11,7 @@
 | AI | DeepSeek API | 只通过 AI Gateway/DeepSeek Adapter 调用 |
 | Embedding | Windows 本机 Ollama + `qwen3-embedding:4b` | 只通过 Embedding Port 调用 |
 | 数据库 | PostgreSQL + pgvector | 关系型事实与 RAG 索引共库、分模块所有权 |
-| 本地基础设施 | Docker Compose | 只管理 PostgreSQL 等基础设施，不容器化开发 `.venv` |
+| 本地基础设施 | Docker Compose | 容器模式承载 PostgreSQL + pgvector 与 Web/Worker/QQ（ADR-0012）；开发仍用项目 `.venv` |
 | 配置 | `.env` + `pydantic-settings` | 强类型 Settings 注入 |
 | QQ 邮箱 | Python 3.12 标准库 `imaplib` + `email` | 仅在 QQ IMAP Adapter；阻塞 I/O 放入工作线程 |
 | 数据校验 | Pydantic 2 | API DTO、配置和 LLM 结构化输出 |

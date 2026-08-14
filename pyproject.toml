@@ -36,6 +36,7 @@ qq-time-agent-web = "qq_time_agent.bootstrap.web:main"
 qq-time-agent-worker = "qq_time_agent.bootstrap.worker:main"
 qq-time-agent-qq = "qq_time_agent.bootstrap.qq:main"
 qq-time-agent-replay-tombstones = "qq_time_agent.bootstrap.restore:main"
+qq-time-agent-requeue-knowledge-jobs = "qq_time_agent.bootstrap.job_recovery:main"
 
 [build-system]
 requires = ["hatchling"]

@@ -7,12 +7,13 @@ from types import TracebackType
 from typing import Final, cast
 
 SENSITIVE_FIELD: Final = re.compile(
-    r"(?i)(authorization|cookie|secret|token|password|credential|code|verifier|key)"
+    r"(?i)(authorization|cookie|secret|token|password|credential|code|verifier|key|"
+    r"body|content|prompt|payload|response|completion)"
 )
 BEARER_VALUE: Final = re.compile(r"(?i)\b(bearer|basic)\s+[A-Za-z0-9._~+/=-]+")
 JWT_VALUE: Final = re.compile(r"\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b")
 KEY_VALUE: Final = re.compile(
-    r"(?i)(password|secret|token|credential|authorization|key)"
+    r"(?i)(password|secret|token|credential|authorization|key|body|content|prompt|payload|completion)"
     r"(['\"]?\s*[:=]\s*['\"]?)([^'\"\s,}\]]+)"
 )
 SENSITIVE_QUERY: Final = re.compile(
@@ -20,6 +21,17 @@ SENSITIVE_QUERY: Final = re.compile(
     r")([^&#\s]+)"
 )
 REDACTED: Final = "[REDACTED]"
+SAFE_CONTEXT_FIELDS: Final = (
+    "role",
+    "job_id",
+    "kind",
+    "proposal_id",
+    "reminder_id",
+    "attempt",
+    "failure_class",
+    "count",
+    "duration_ms",
+)
 
 
 def sanitize(value: object, field_name: str | None = None) -> object:
@@ -51,6 +63,15 @@ class SecretRedactionFilter(logging.Filter):
 
 
 class RedactingFormatter(logging.Formatter):
+    def format(self, record: logging.LogRecord) -> str:
+        rendered = super().format(record)
+        context = [
+            f"{field}={sanitize(getattr(record, field), field)}"
+            for field in SAFE_CONTEXT_FIELDS
+            if hasattr(record, field)
+        ]
+        return f"{rendered} {' '.join(context)}" if context else rendered
+
     def formatException(
         self,
         exc_info: tuple[type[BaseException], BaseException, TracebackType | None]
@@ -59,7 +80,7 @@ class RedactingFormatter(logging.Formatter):
         return str(sanitize(super().formatException(exc_info)))
 
 
-def configure_logging(level: int = logging.INFO) -> None:
+def configure_logging(level: int = logging.INFO, role: str | None = None) -> None:
     handler = logging.StreamHandler()
     handler.addFilter(SecretRedactionFilter())
     handler.setFormatter(RedactingFormatter("%(asctime)s %(levelname)s %(name)s %(message)s"))
@@ -67,3 +88,5 @@ def configure_logging(level: int = logging.INFO) -> None:
     root.handlers.clear()
     root.addHandler(handler)
     root.setLevel(level)
+    if role is not None:
+        logging.getLogger("qq_time_agent").info("process started", extra={"role": role})
