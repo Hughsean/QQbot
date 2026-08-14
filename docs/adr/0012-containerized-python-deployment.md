@@ -39,7 +39,9 @@ MVP 交付时 Python 应用以项目 `.venv` 直接运行在 Windows 主机，�
   重启。Worker 在首次租约前等待 Ollama 强 readiness，避免主机服务滞后消耗有限重试；运行期
   瞬时故障仍进入 DEAD_LETTER，只有显式 `requeue-knowledge-jobs` 一次性容器可重置
   `knowledge-index + TransientProvider`，永久错误不自动复活。
-- `ops/` 备份恢复脚本通过 `docker compose exec postgres` 和应用一次性容器工作。
+- `ops/` 只保留容器健康检查、备份恢复与腾讯云静态站点配置；不再提供 Windows 任务计划
+  或主机 `.venv` 进程启动脚本。备份恢复通过 `docker compose exec postgres` 和应用一次性
+  容器工作。
 - 容器日志使用 json-file 轮转（10 MB × 3）；应用日志输出 allowlist 关联字段，并对秘密、正文、
   prompt、payload 与响应内容纵深脱敏。
 

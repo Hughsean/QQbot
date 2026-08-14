@@ -174,8 +174,8 @@ QQ 进程由 Compose `qq` 服务运行 `qq-time-agent-qq`。确认卡片与 Remi
 
 仓库 `ops/` 提供以下制品：
 
-- `Register-QQTimeAgentTasks.ps1` 仅适用于裸机 `.venv` 运行模式；容器模式不使用任务计划程序。
-- `Start-QQTimeAgentRole.ps1` 仅适用于裸机 `.venv` 运行模式；容器模式由 Compose 重启策略守护。
+- 生产部署只支持 Docker Compose，不提供 Windows 任务计划或主机 `.venv` 进程启动脚本，
+  避免裸机与容器双实例。
 - `Test-QQTimeAgentHealth.ps1 [-Port <APP_LISTEN_PORT>]` 检查本机 readiness 和无内容标签的
   `/metrics`。
 - `Backup-QQTimeAgent.ps1` 生成 PostgreSQL custom-format 备份和 SHA-256 文件。
@@ -185,7 +185,8 @@ QQ 进程由 Compose `qq` 服务运行 `qq-time-agent-qq`。确认卡片与 Remi
 - Ollama 恢复后，只有经确认属于 `knowledge-index + DEAD_LETTER + TransientProvider` 的记录
   才能通过 `docker compose run --rm requeue-knowledge-jobs` 重置；永久错误和其他 Job 不变。
 
-不得把任务注册 dry-run 误报为已部署。当前开发交付没有执行 `-Apply`，也没有修改生产 Caddy、SSHD 或 systemd。
+不得把 `docker compose config` 或镜像构建验证误报为已部署。当前开发交付没有执行生产
+`docker compose up -d web worker qq`，也没有修改生产 Caddy、SSHD 或 systemd。
 
 ## 5. 当前生产主机容量
 
@@ -194,7 +195,8 @@ QQ 进程由 Compose `qq` 服务运行 `qq-time-agent-qq`。确认卡片与 Remi
 - 已验证 `qwen3-embedding:4b` 可生成 1024 维有限值向量；首次冷启动约 55 秒。
 - 默认 embedding 并发为 1，模型 keep-alive 30 分钟，避免频繁冷启动；批量索引不得阻塞 Reminder Worker。
 - PostgreSQL 安装在本机 Docker 中；不得安装到腾讯云中继，也不得开放 LAN/公网端口。
-- Windows 生产主机离线意味着 Agent 整体服务离线；任务计划和监控必须把本机进程可用性作为告警项。
+- Windows 生产主机离线意味着 Agent 整体服务离线；监控必须把 Docker Desktop、Compose
+  服务和 Ollama 可用性作为告警项。
 
 ## 6. 发布流程
 

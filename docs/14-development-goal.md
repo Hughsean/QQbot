@@ -46,7 +46,7 @@
 - DeepSeek schema 校验、超时降级和调用边界验证；模型不可用不影响已有提醒。
 - RAG 来源版本、删除传播、1024 维约束、混合检索引用和 Recall@10 ≥ 0.85 的去敏评估通过。
 - 分层保留和 Tombstone 重放测试通过，删除内容不会因备份恢复重新可检索。
-- Web/Worker/QQ 本机启动、健康检查、Docker 启动和 Windows 三进程守护脚本/说明完成。
+- Web/Worker/QQ 容器启动、健康检查、Compose 自恢复和容器运维脚本/说明完成。
 - `docs/`、`.env.example` 和运行手册与最终实现一致；最终报告列出验证证据、已知限制和生产部署步骤。
 
 ## 4. Execution cadence

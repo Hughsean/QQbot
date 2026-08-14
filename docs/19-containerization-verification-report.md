@@ -56,6 +56,4 @@ Ollama 恢复后，显式 `docker compose run --rm requeue-knowledge-jobs` 只�
 - Docker Desktop 的 `host.docker.internal` 依赖 vpnkit 网关转发；转发异常时容器无法触达
   主机 Ollama（`/health/ready` 会以 `embeddings:false` 反映，Worker 启动日志会持续报告等待），
   不得把 Ollama 绑定 0.0.0.0。
-- `ops/Register-QQTimeAgentTasks.ps1` 与 `Start-QQTimeAgentRole.ps1` 仅适用于裸机模式，
-  容器模式由 Compose 重启策略守护；误用会产生双实例。
-- 尚未执行生产任务注册或生产部署；容器镜像未推送到任何仓库。
+- 尚未执行生产部署；容器镜像未推送到任何仓库。

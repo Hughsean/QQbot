@@ -91,7 +91,6 @@ QQ Time Agent 是一个仅供项目所有者本人使用、以 QQ 为主要交�
   Reminder 持久化租约/重试/推迟/取消，以及真实 QQ 主动提醒恢复验证；阶段 7 已完成
   来源版本、确定性清洗/切块、Ollama 1024 维嵌入、pgvector HNSW + pg_trgm 混合检索、
   DeepSeek 带来源只读回答、删除传播，固定 24 项去敏评估 Recall@10=1.000；阶段 8 已完成
-  分层保留、追加式审计、tombstone 恢复重放、指标、隔离备份恢复演练与 Windows 三进程
-  守护制品。MVP 后已按 ADR-0010 移除 Agent 公网入口和 SSH 反向隧道依赖；阶段 9 按
-  ADR-0011 扩展 QQ 邮箱只读 IMAP，仍复用统一 Inbox/Understanding/RAG 与删除门禁。尚未执行
-  生产任务注册或生产部署
+  分层保留、追加式审计、tombstone 恢复重放、指标、隔离备份恢复演练与容器运维制品。
+  MVP 后已按 ADR-0010 移除 Agent 公网入口和 SSH 反向隧道依赖；阶段 9 按 ADR-0011 扩展
+  QQ 邮箱只读 IMAP，仍复用统一 Inbox/Understanding/RAG 与删除门禁。尚未执行生产部署

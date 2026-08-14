@@ -38,13 +38,9 @@ def test_compose_keeps_host_and_container_port_contracts_consistent() -> None:
     assert "qq-time-agent-requeue-knowledge-jobs" in compose
 
 
-def test_process_supervision_has_no_public_tunnel_role() -> None:
-    register = (ROOT / "ops" / "Register-QQTimeAgentTasks.ps1").read_text(encoding="utf-8")
-    launcher = (ROOT / "ops" / "Start-QQTimeAgentRole.ps1").read_text(encoding="utf-8")
-    combined = f"{register}\n{launcher}".lower()
-    assert '"tunnel"' not in combined
-    assert "reverse" not in combined
-    assert "127.0.0.1:8000:127.0.0.1:8000" not in combined
+def test_ops_has_no_bare_metal_process_supervision_scripts() -> None:
+    assert not (ROOT / "ops" / "Register-QQTimeAgentTasks.ps1").exists()
+    assert not (ROOT / "ops" / "Start-QQTimeAgentRole.ps1").exists()
 
 
 def test_tencent_caddy_serves_only_static_site() -> None:
