@@ -19,9 +19,10 @@ GET /health/ready
 ```text
 GET  /oauth/microsoft/owner-start
 POST /api/v1/owner/session
-GET  /oauth/microsoft/start
+GET  /oauth/microsoft/start[?connection_id=<uuid>]
 GET  /oauth/microsoft/callback
 POST /api/v1/oauth/microsoft/disconnect
+GET  /api/v1/connections/microsoft
 GET  /api/v1/connections/microsoft/status
 ```
 
@@ -37,7 +38,8 @@ GET  /api/v1/connections/microsoft/status
 - `owner/session`、`start`、`callback`、连接状态和断开接口均拒绝非回环 Host。
 - `callback` 不把授权码、token 或 Provider 原始错误展示给用户。
 - `disconnect` 使用 CSRF 防护和明确确认。
-- 状态接口只返回能力、账号掩码、同步时间和健康状态。
+- 列表/状态接口只返回 Connection ID、所有者 label、默认/同步开关、能力、账号掩码、同步时间
+  和健康状态。无 `connection_id` 的旧 status 接口只返回显式默认连接；新操作必须携带 Connection ID。
 
 ### 同步
 
@@ -57,6 +59,7 @@ Provider 消息 ID、线程 ID、发件人掩码、主题、原始时间、处�
 GET  /qq-mail/owner-start
 GET  /qq-mail/connect
 POST /api/v1/connections/qq-mail
+GET  /api/v1/connections/qq-mail
 GET  /api/v1/connections/qq-mail/status
 POST /api/v1/connections/qq-mail/disconnect
 ```
@@ -64,7 +67,8 @@ POST /api/v1/connections/qq-mail/disconnect
 - 全部接口只接受回环 Host 和已签名所有者会话；写接口要求同源 CSRF。
 - connect body 只接收完整 QQ 邮箱地址与秘密授权码，不接收 QQ 登录密码、Host、Port 或 TLS
   开关。授权码不得进入 URL、响应、日志、异常或 Job payload。
-- connect 可用于首次连接及 `REAUTH_REQUIRED`/`DISCONNECTED` 后重新认证；活动连接重复提交被拒绝。
+- connect 可新增不同 QQ 邮箱，也可用于匹配账号的 `REAUTH_REQUIRED`/`DISCONNECTED` 重新
+  认证；同一账号活动连接重复提交被拒绝。所有后续操作按 Connection ID 隔离。
 - disconnect 需要连接 ID 和显式确认，取消该连接待执行 Job、删除凭据，再触发连接来源删除传播。
 
 ## 2. 模块契约

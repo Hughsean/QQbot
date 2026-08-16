@@ -18,10 +18,10 @@ api           对外控制器和 DTO 映射
 | 模块 | 唯一职责 | 拥有的数据 | 不负责 |
 |---|---|---|---|
 | Identity | 唯一所有者身份、QQ 白名单、偏好 | 单用户、身份映射、偏好 | OAuth token、邮件、排程 |
-| Connections | 外部连接生命周期和能力 | 连接元数据、授权状态 | 保存明文凭据、同步邮件 |
+| Connections | 外部连接生命周期和能力 | 多连接元数据、账号 fingerprint、授权状态 | 保存明文凭据、同步邮件 |
 | Credential Vault | 加密保存和读取凭据 | 密文、密钥版本、凭据引用 | 业务状态、OAuth 页面 |
-| Inbox | 原始信息信封、去重、处理状态 | InboxItem、原始内容引用 | AI 理解、执行操作 |
-| Normalization | MIME、文本、转发消息的统一化 | 规范化结果 | 判断用户意图、排程 |
+| Inbox | 原始信息信封、资产、去重、处理状态 | InboxItem、原始内容引用、SourceAsset 元数据 | AI 理解、执行操作、解析文件 |
+| Normalization | MIME、文本、ICS、PDF/OCR、转发记录的确定性统一化 | 规范化结果、解析版本 | 判断用户意图、排程、抓取 Provider 资产 |
 | Understanding | 分类和结构化候选提取 | Event/Task 候选、提取依据 | 直接访问 Provider、执行操作 |
 | Workflow | 使用 LangGraph 推进用例、追问和确认 | Graph checkpoint 引用、等待状态 | 充当业务事实源、Provider SDK |
 | AI Gateway | 统一模型调用、结构化输出、限流和用量 | 调用元数据、Prompt 版本 | 保存业务聚合、执行工具副作用 |
@@ -32,7 +32,7 @@ api           对外控制器和 DTO 映射
 | Agenda | 项目内权威日程和忙闲查询 | AgendaEntry、日程版本 | 理解自然语言、发送提醒 |
 | Reminders | 提醒计划、到期租约、重试和死信 | Reminder、执行租约 | 改写日程、直接依赖 QQ SDK |
 | Actions | 副作用门禁、幂等执行、撤销 | ActionRequest、执行结果 | 自行决定用户意图 |
-| Notifications | 渲染并发送 QQ 通知 | 投递记录、模板版本 | 修改 Proposal 或 Action 状态 |
+| Notifications | 规划、渲染并发送 QQ 通知 | 通知意图、投递记录、模板版本、cooldown | 修改 Proposal、Connection 或 Agenda 状态 |
 | Data Lifecycle | 计算保留期限、删除编排、删除记录重放 | Tombstone、PurgeRun、保留策略版本 | 直接跨模块删表、保存业务正文 |
 | Audit | 追加式审计和可追溯视图 | 审计记录 | 业务决策、凭据 |
 | Provider Adapters | Microsoft、QQ、DeepSeek、Ollama SDK/HTTP 适配 | Provider 特定游标可由所属模块托管 | 跨 Provider 业务编排 |

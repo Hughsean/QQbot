@@ -58,7 +58,8 @@ Microsoft 应用不得创建或配置客户端密码；历史密码必须在 Ent
   变更标识，写入前再按消息 ID 单独读取正文，不在 delta 列表中批量读取正文。
 - 每一页完整落库、规范化后才原样保存 Provider 返回的 `nextLink`/`deltaLink`；任务中断后从
   已提交页继续，不记录或返回游标内容。
-- 以 `(connection_id, provider_message_id)` 作为业务唯一键。
+- 以 `(connection_id, provider_message_id)` 作为业务唯一键。同一 Provider 的多个邮箱使用
+  HMAC 账号 fingerprint 去重连接，但完整账号标识不得进入日志、Job key 或跨模块引用。
 - 429、5xx 和网络错误使用带抖动的指数退避。
 - 401 在刷新一次后仍失败则标记 `REAUTH_REQUIRED`。
 - 403 视为权限或组织策略问题，不进行无限重试。
@@ -71,7 +72,8 @@ Microsoft 应用不得创建或配置客户端密码；历史密码必须在 Ent
 
 ## 3. QQ 邮箱 IMAP（P1）
 
-- 只允许本机回环页面中已认证的唯一所有者连接、查询状态、重新认证和明确确认断开。
+- 只允许本机回环页面中已认证的唯一所有者管理连接；同一所有者可连接多个 QQ 邮箱，每个
+  Connection 独立查询状态、同步、重新认证和明确确认断开。
 - 固定使用 `imap.qq.com:993`、TLS、系统受信 CA、主机名和证书校验；禁止明文、STARTTLS
   降级、跳过证书验证或切换任意 Host/Port。
 - 用户提交完整 QQ 邮箱地址和邮箱设置中生成的 IMAP 授权码；不接收、不要求、不保存 QQ
