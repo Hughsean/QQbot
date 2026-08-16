@@ -1,6 +1,7 @@
 """Bounded, restart-safe incremental mail synchronization."""
 
-from datetime import timedelta
+from datetime import datetime, timedelta
+from typing import Protocol
 from uuid import UUID
 
 from qq_time_agent.contracts.clock import Clock
@@ -12,14 +13,24 @@ from qq_time_agent.modules.inbox.application.ports import InboxRepository
 from qq_time_agent.modules.inbox.application.service import InboxService
 from qq_time_agent.modules.inbox.contracts import (
     InboxSourceDeletedError,
+    MailAttachmentMetadata,
     MailChange,
-    MailProvider,
     MailProviderError,
+    MailSyncProvider,
     MailSyncResult,
 )
 from qq_time_agent.modules.normalization.contracts import NormalizationPort
 
 MAX_PAGES_PER_RUN = 100
+
+
+class MailAssetDiscoveryPort(Protocol):
+    async def discover(
+        self,
+        inbox_item_id: UUID,
+        attachments: tuple[MailAttachmentMetadata, ...],
+        now: datetime,
+    ) -> tuple[UUID, ...]: ...
 
 
 class MailSyncService:
@@ -29,11 +40,12 @@ class MailSyncService:
         inbox: InboxService,
         repository: InboxRepository,
         normalization: NormalizationPort,
-        provider: MailProvider,
+        provider: MailSyncProvider,
         clock: Clock,
         lookback_days: int,
         deletion: DeletionRequestPort | None = None,
         source_type: SourceType = SourceType.MICROSOFT_MAIL,
+        asset_discovery: MailAssetDiscoveryPort | None = None,
     ) -> None:
         if lookback_days < 1:
             raise ValueError("mail lookback must be positive")
@@ -46,6 +58,7 @@ class MailSyncService:
         self._lookback_days = lookback_days
         self._deletion = deletion
         self._source_type = source_type
+        self._asset_discovery = asset_discovery
 
     async def synchronize(self, connection_id: UUID) -> MailSyncResult:
         try:
@@ -112,6 +125,10 @@ class MailSyncService:
             if existing is not None:
                 duplicates += 1
                 if existing.status in {"RECEIVED", "FAILED_RETRYABLE"}:
+                    complete_change = await self._provider.fetch_content(
+                        mail_credential, account_id, change
+                    )
+                    await self._discover_assets(existing.inbox_item_id, complete_change)
                     await self._normalize_with_failure(existing.inbox_item_id)
                 continue
             complete_change = await self._provider.fetch_content(
@@ -130,11 +147,18 @@ class MailSyncService:
                 continue
             if not result.created:
                 duplicates += 1
+            await self._discover_assets(result.inbox_item_id, complete_change)
             if result.status not in {"RECEIVED", "FAILED_RETRYABLE"}:
                 continue
             await self._normalize_with_failure(result.inbox_item_id)
             created += int(result.created)
         return created, duplicates, deleted
+
+    async def _discover_assets(self, inbox_item_id: UUID, change: MailChange) -> None:
+        if self._asset_discovery is not None and change.attachments:
+            await self._asset_discovery.discover(
+                inbox_item_id, change.attachments, self._clock.now()
+            )
 
     async def _normalize_with_failure(self, inbox_item_id: UUID) -> None:
         try:

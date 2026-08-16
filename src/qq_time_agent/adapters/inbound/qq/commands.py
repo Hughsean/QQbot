@@ -7,7 +7,14 @@ from uuid import UUID
 
 from qq_time_agent.contracts.clock import Clock
 from qq_time_agent.contracts.jobs import JobQueue, JobRequest
-from qq_time_agent.contracts.source import IngressType, SourceEnvelope, SourceType, TrustLevel
+from qq_time_agent.contracts.source import (
+    IngressType,
+    SourceAssetDescriptor,
+    SourceAssetDiscoveryPort,
+    SourceEnvelope,
+    SourceType,
+    TrustLevel,
+)
 from qq_time_agent.modules.actions.contracts import ActionCommandPort
 from qq_time_agent.modules.agenda.contracts import AgendaCommandPort, AgendaQueryPort
 from qq_time_agent.modules.ai_gateway.contracts import GroundedAnswer, RagAnswerPort
@@ -42,6 +49,7 @@ class QqCommandRouter:
         reminder_lead_minutes: int,
         rag: RagAnswerPort | None = None,
         deletion: DeletionRequestPort | None = None,
+        asset_discovery: SourceAssetDiscoveryPort | None = None,
     ) -> None:
         self._inbox = inbox
         self._processing = processing
@@ -57,8 +65,16 @@ class QqCommandRouter:
         self._reminder_lead_minutes = reminder_lead_minutes
         self._rag = rag
         self._deletion = deletion
+        self._asset_discovery = asset_discovery
 
-    async def receive(self, envelope: SourceEnvelope, content: str) -> str:
+    async def receive(
+        self,
+        envelope: SourceEnvelope,
+        content: str,
+        assets: tuple[SourceAssetDescriptor, ...] = (),
+    ) -> str:
+        if assets:
+            return await self._ingest_text(envelope, content, assets)
         forwarded, text = _forwarded(content)
         if forwarded:
             forwarded_envelope = _as_forwarded(envelope, text)
@@ -77,8 +93,15 @@ class QqCommandRouter:
             return await self._ingest_text(envelope, text)
         return await self._handle(command)
 
-    async def _ingest_text(self, envelope: SourceEnvelope, text: str) -> str:
+    async def _ingest_text(
+        self,
+        envelope: SourceEnvelope,
+        text: str,
+        assets: tuple[SourceAssetDescriptor, ...] = (),
+    ) -> str:
         result = await self._inbox.ingest_qq(envelope, text)
+        if assets and self._asset_discovery is not None:
+            await self._asset_discovery.discover(result.inbox_item_id, assets, self._clock.now())
         if result.created:
             await self._normalization.normalize(
                 result.inbox_item_id,
@@ -102,6 +125,8 @@ class QqCommandRouter:
                 )
         if envelope.source_type is SourceType.OWNER_NOTE:
             return "已保存主人笔记, 将用于后续检索。"
+        if assets:
+            return "已接收图片, 正在离线识别并生成建议。"
         label = "转发文本" if envelope.source_type is SourceType.QQ_FORWARD else "输入"
         return f"已接收{label}, 正在理解并生成建议。"
 

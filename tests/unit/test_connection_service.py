@@ -22,6 +22,7 @@ from qq_time_agent.modules.connections.contracts import (
     ConnectionUnavailableError,
 )
 from qq_time_agent.modules.connections.domain.models import ExternalConnection, OAuthTransaction
+from qq_time_agent.modules.connections.infrastructure.fingerprints import HmacAccountFingerprinter
 from qq_time_agent.modules.credentials.application.ports import EncryptedCredential
 from qq_time_agent.modules.credentials.application.vault import VaultService
 from qq_time_agent.modules.credentials.infrastructure.cipher import AesGcmCredentialCipher
@@ -97,6 +98,33 @@ class MemoryConnectionRepository:
             None,
         )
 
+    async def list_for_provider(
+        self, user_id: str, provider: str
+    ) -> tuple[ExternalConnection, ...]:
+        return tuple(
+            item
+            for item in self.connections.values()
+            if item.user_id == user_id and item.provider.value == provider
+        )
+
+    async def get_for_user(self, connection_id: UUID, user_id: str) -> ExternalConnection | None:
+        value = self.connections.get(connection_id)
+        return value if value is not None and value.user_id == user_id else None
+
+    async def get_by_identity(
+        self, user_id: str, provider: str, fingerprint: str
+    ) -> ExternalConnection | None:
+        return next(
+            (
+                item
+                for item in self.connections.values()
+                if item.user_id == user_id
+                and item.provider.value == provider
+                and item.account_fingerprint == fingerprint
+            ),
+            None,
+        )
+
     async def save(self, connection: ExternalConnection, expected_version: int) -> None:
         if self.fail_save:
             raise RuntimeError("synthetic save failure")
@@ -152,7 +180,38 @@ class FakeMicrosoftProvider:
         return ProviderProfile("account-id", "Owner", self.profile_email)
 
 
-def _service() -> tuple[
+@dataclass
+class FakeJobs:
+    cancelled: list[UUID] = field(default_factory=list)
+
+    async def cancel_pending_for_connection(
+        self, connection_id: UUID, cancelled_at: datetime
+    ) -> int:
+        assert cancelled_at.tzinfo is not None
+        self.cancelled.append(connection_id)
+        return 1
+
+
+@dataclass
+class FakeSources:
+    allowed: list[UUID] = field(default_factory=list)
+    blocked: list[UUID] = field(default_factory=list)
+    deleted: list[UUID] = field(default_factory=list)
+
+    async def allow_connection_sources(self, connection_id: UUID) -> None:
+        self.allowed.append(connection_id)
+
+    async def block_connection_sources(self, connection_id: UUID) -> None:
+        self.blocked.append(connection_id)
+
+    async def delete_connection_sources(self, connection_id: UUID) -> int:
+        self.deleted.append(connection_id)
+        return 1
+
+
+def _service(
+    jobs: FakeJobs | None = None, sources: FakeSources | None = None
+) -> tuple[
     MicrosoftConnectionService,
     MemoryConnectionRepository,
     MemoryCredentialRepository,
@@ -166,7 +225,15 @@ def _service() -> tuple[
     connections = MemoryConnectionRepository()
     provider = FakeMicrosoftProvider()
     return (
-        MicrosoftConnectionService(connections, vault, provider, clock),
+        MicrosoftConnectionService(
+            connections,
+            vault,
+            provider,
+            clock,
+            HmacAccountFingerprinter(SecretStr(key)),
+            jobs or FakeJobs(),
+            sources or FakeSources(),
+        ),
         connections,
         credentials,
         provider,
@@ -176,7 +243,8 @@ def _service() -> tuple[
 
 @pytest.mark.asyncio
 async def test_authorization_activation_refresh_rotation_and_disconnect() -> None:
-    service, connections, credentials, provider, _ = _service()
+    jobs, sources = FakeJobs(), FakeSources()
+    service, connections, credentials, provider, _ = _service(jobs, sources)
     start = await service.begin("owner")
     state = parse_qs(urlparse(start.authorization_url).query)["state"][0]
     view = await service.complete(
@@ -197,6 +265,10 @@ async def test_authorization_activation_refresh_rotation_and_disconnect() -> Non
     assert disconnected.status == "DISCONNECTED"
     assert credentials.records == {}
     assert connections.connections[view.connection_id].credential_ref is None
+    assert jobs.cancelled == [view.connection_id]
+    assert sources.allowed == [view.connection_id]
+    assert sources.blocked == [view.connection_id]
+    assert sources.deleted == [view.connection_id]
 
 
 @pytest.mark.asyncio
@@ -224,13 +296,17 @@ async def test_refresh_authentication_failure_enters_reauth_required() -> None:
 
 
 @pytest.mark.asyncio
-async def test_begin_rejects_active_connection_and_cleans_failed_transaction() -> None:
-    service, _, _, _, _ = _service()
+async def test_begin_adds_another_account_and_cleans_failed_transaction() -> None:
+    service, connections, _, _, _ = _service()
     start = await service.begin("owner")
     state = parse_qs(urlparse(start.authorization_url).query)["state"][0]
     await service.complete({"state": state, "code": "synthetic-code"}, start.browser_session)
-    with pytest.raises(ValueError, match="already active"):
-        await service.begin("owner")
+    await service.begin("owner")
+    assert len(connections.connections) == 2
+    assert {value.status.value for value in connections.connections.values()} == {
+        "ACTIVE",
+        "PENDING",
+    }
 
     failed_service, failed_connections, failed_credentials, _, _ = _service()
     failed_connections.fail_add = True
@@ -244,8 +320,8 @@ async def test_reauthorization_begin_and_missing_callback_context() -> None:
     service, connections, _, _, _ = _service()
     first = await service.begin("owner")
     connection = next(iter(connections.connections.values()))
-    connection.require_reauthorization()
-    second = await service.begin("owner")
+    connection.require_reauthorization(datetime(2026, 8, 13, tzinfo=UTC))
+    second = await service.begin("owner", connection.connection_id)
     assert first.browser_session != second.browser_session
     assert connection.status.value == "PENDING"
     with pytest.raises(OAuthSecurityError, match="required"):
@@ -347,3 +423,18 @@ async def test_sync_completion_and_explicit_reauth_update_connection() -> None:
         await service.mark_sync_succeeded(active.connection_id, datetime(2026, 8, 13))
     await service.mark_sync_reauth_required(active.connection_id)
     assert persisted.status.value == "REAUTH_REQUIRED"
+
+
+@pytest.mark.asyncio
+async def test_completion_rejects_duplicate_microsoft_identity() -> None:
+    service, _, credentials, _, _ = _service()
+    first = await service.begin("owner")
+    first_state = parse_qs(urlparse(first.authorization_url).query)["state"][0]
+    await service.complete({"state": first_state, "code": "synthetic-code"}, first.browser_session)
+    second = await service.begin("owner")
+    second_state = parse_qs(urlparse(second.authorization_url).query)["state"][0]
+    with pytest.raises(ValueError, match="already connected"):
+        await service.complete(
+            {"state": second_state, "code": "synthetic-code"}, second.browser_session
+        )
+    assert len(credentials.records) == 1

@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from qq_time_agent.contracts.source import SourceType
-from qq_time_agent.modules.inbox.infrastructure.repository import _source_ref
+from qq_time_agent.modules.inbox.application.source_refs import build_source_ref
 from qq_time_agent.modules.inbox.infrastructure.tables import InboxItemRow
 
 
@@ -34,6 +34,6 @@ class InboxExpiredSourceAdapter:
                 )
             )
         return tuple(
-            _source_ref(SourceType(row.source_type), row.connection_id, row.external_id)
+            build_source_ref(SourceType(row.source_type), row.connection_id, row.external_id)
             for row in rows
         )

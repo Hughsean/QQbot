@@ -8,7 +8,7 @@ from qq_time_agent.modules.connections.contracts import ConnectionStatusView
 
 
 class ConnectionStatusLookup(Protocol):
-    async def status(self, user_id: str) -> ConnectionStatusView | None: ...
+    async def statuses(self, user_id: str) -> tuple[ConnectionStatusView, ...]: ...
 
 
 class PeriodicMailSyncScheduler:
@@ -31,16 +31,17 @@ class PeriodicMailSyncScheduler:
         self._job_kind = job_kind
 
     async def enqueue_due(self) -> None:
-        connection = await self._connections.status("owner")
-        if connection is None or connection.status not in {"ACTIVE", "DEGRADED"}:
-            return
+        connections = await self._connections.statuses("owner")
         now = self._clock.now()
         bucket = int(now.timestamp()) // self._interval_seconds
-        await self._queue.enqueue(
-            JobRequest(
-                self._job_kind,
-                {"connection_id": str(connection.connection_id)},
-                f"{self._job_kind}:{connection.connection_id}:{bucket}",
-                now,
+        for connection in connections:
+            if connection.status not in {"ACTIVE", "DEGRADED"} or not connection.sync_enabled:
+                continue
+            await self._queue.enqueue(
+                JobRequest(
+                    self._job_kind,
+                    {"connection_id": str(connection.connection_id)},
+                    f"{self._job_kind}:{connection.connection_id}:{bucket}",
+                    now,
+                )
             )
-        )

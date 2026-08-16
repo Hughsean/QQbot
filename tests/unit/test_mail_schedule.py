@@ -19,11 +19,13 @@ class FixedClock:
 
 @dataclass
 class FakeConnections:
-    view: ConnectionStatusView | None
+    view: ConnectionStatusView | tuple[ConnectionStatusView, ...] | None
 
-    async def status(self, user_id: str) -> ConnectionStatusView | None:
+    async def statuses(self, user_id: str) -> tuple[ConnectionStatusView, ...]:
         assert user_id == "owner"
-        return self.view
+        if self.view is None:
+            return ()
+        return self.view if isinstance(self.view, tuple) else (self.view,)
 
 
 @dataclass
@@ -99,3 +101,14 @@ async def test_scheduler_reuses_interval_for_qq_mail_job_kind() -> None:
 def test_periodic_scheduler_rejects_too_small_interval() -> None:
     with pytest.raises(ValueError, match="at least 60"):
         PeriodicMailSyncScheduler(FakeConnections(None), MemoryQueue(), FixedClock(), 30)
+
+
+@pytest.mark.asyncio
+async def test_periodic_scheduler_enqueues_every_active_connection() -> None:
+    queue = MemoryQueue()
+    scheduler = PeriodicMailSyncScheduler(
+        FakeConnections((_view("ACTIVE"), _view("DEGRADED"))), queue, FixedClock(), 300
+    )
+    await scheduler.enqueue_due()
+    assert len(queue.requests) == 2
+    assert len({request.payload["connection_id"] for request in queue.requests.values()}) == 2

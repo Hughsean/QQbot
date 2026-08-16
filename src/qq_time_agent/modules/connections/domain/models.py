@@ -32,12 +32,24 @@ class ExternalConnection:
     credential_ref: UUID | None = None
     last_synced_at: datetime | None = None
     version: int = 1
+    account_fingerprint: str | None = None
+    display_label: str = "Mailbox"
+    is_default: bool = True
+    sync_enabled: bool = True
+    reauth_epoch: int = 0
+    reauth_required_since: datetime | None = None
 
     @classmethod
     def start(cls, user_id: str, provider: ConnectionProvider) -> "ExternalConnection":
         if not user_id.strip():
             raise ValueError("user_id is required")
-        return cls(uuid4(), user_id, provider, ConnectionStatus.PENDING)
+        return cls(
+            uuid4(),
+            user_id,
+            provider,
+            ConnectionStatus.PENDING,
+            display_label=provider.value.replace("_", " ").title(),
+        )
 
     def activate(
         self,
@@ -55,12 +67,20 @@ class ExternalConnection:
         self.capabilities = capabilities
         self.credential_ref = credential_ref
         self.status = ConnectionStatus.ACTIVE
+        self.sync_enabled = True
+        self.reauth_required_since = None
         self.version += 1
 
-    def require_reauthorization(self) -> None:
-        if self.status is not ConnectionStatus.DISCONNECTED:
-            self.status = ConnectionStatus.REAUTH_REQUIRED
-            self.version += 1
+    def require_reauthorization(self, now: datetime) -> None:
+        if now.tzinfo is None or now.utcoffset() is None:
+            raise ValueError("reauthorization time must be timezone-aware")
+        if self.status is ConnectionStatus.DISCONNECTED:
+            return
+        if self.status is not ConnectionStatus.REAUTH_REQUIRED:
+            self.reauth_epoch += 1
+            self.reauth_required_since = now
+        self.status = ConnectionStatus.REAUTH_REQUIRED
+        self.version += 1
 
     def mark_degraded(self) -> None:
         if self.status in {ConnectionStatus.ACTIVE, ConnectionStatus.DEGRADED}:
@@ -71,13 +91,39 @@ class ExternalConnection:
         if self.status is ConnectionStatus.ACTIVE:
             raise ValueError("active connection cannot restart authorization")
         self.status = ConnectionStatus.PENDING
+        self.reauth_required_since = None
         self.version += 1
+
+    def bind_identity(self, fingerprint: str, display_label: str, *, is_default: bool) -> None:
+        if not fingerprint.strip() or len(fingerprint) > 80:
+            raise ValueError("account fingerprint must be non-empty and bounded")
+        if not display_label.strip() or len(display_label) > 120:
+            raise ValueError("connection display label must be non-empty and bounded")
+        if (
+            self.account_fingerprint is not None
+            and not self.account_fingerprint.startswith("legacy:")
+            and self.account_fingerprint != fingerprint
+        ):
+            raise ValueError("connection identity cannot change")
+        self.account_fingerprint = fingerprint
+        self.display_label = display_label
+        self.is_default = is_default
+
+    def set_sync_enabled(self, enabled: bool) -> None:
+        if self.status is ConnectionStatus.DISCONNECTED and enabled:
+            raise ValueError("disconnected connection cannot enable synchronization")
+        if self.sync_enabled != enabled:
+            self.sync_enabled = enabled
+            self.version += 1
 
     def disconnect(self, credential_deleted: bool) -> None:
         if not credential_deleted and self.credential_ref is not None:
             raise ValueError("credential must be deleted before disconnect")
         self.credential_ref = None
         self.status = ConnectionStatus.DISCONNECTED
+        self.reauth_required_since = None
+        self.sync_enabled = False
+        self.is_default = False
         self.version += 1
 
 

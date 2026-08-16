@@ -32,6 +32,7 @@ from qq_time_agent.modules.audit.application.service import AuditService
 from qq_time_agent.modules.audit.infrastructure.repository import SqlAuditRepository
 from qq_time_agent.modules.connections.application.oauth import MicrosoftConnectionService
 from qq_time_agent.modules.connections.application.qq_mail import QqMailConnectionService
+from qq_time_agent.modules.connections.infrastructure.fingerprints import HmacAccountFingerprinter
 from qq_time_agent.modules.connections.infrastructure.repository import SqlConnectionRepository
 from qq_time_agent.modules.credentials.application.vault import VaultService
 from qq_time_agent.modules.credentials.infrastructure.cipher import AesGcmCredentialCipher
@@ -50,6 +51,9 @@ from qq_time_agent.modules.inbox.infrastructure.repository import SqlInboxReposi
 from qq_time_agent.modules.knowledge.infrastructure.purge import KnowledgePurgeAdapter
 from qq_time_agent.modules.knowledge.infrastructure.repository import SqlKnowledgeRepository
 from qq_time_agent.modules.normalization.infrastructure.purge import NormalizationPurgeAdapter
+from qq_time_agent.modules.notifications.infrastructure.repository import (
+    SqlNotificationIntentRepository,
+)
 from qq_time_agent.modules.scheduling.infrastructure.purge import SchedulingPurgeAdapter
 from qq_time_agent.modules.understanding.infrastructure.purge import UnderstandingPurgeAdapter
 from qq_time_agent.modules.workflow.infrastructure.purge import WorkflowPurgeAdapter
@@ -68,17 +72,7 @@ def build_app() -> tuple[FastAPI, AsyncEngine, tuple[object, ...]]:
         clock,
     )
     connection_repository = SqlConnectionRepository(sessions)
-    connections = MicrosoftConnectionService(
-        connection_repository,
-        vault,
-        graph,
-        clock,
-        audit=AuditService(SqlAuditRepository(sessions)),
-    )
-    oauth = microsoft_oauth_router(
-        connections,
-        OwnerSessionSigner(config.app.signing_key, clock),
-    )
+    fingerprinter = HmacAccountFingerprinter(config.credential_encryption_key)
     readiness = ReadinessService(DatabaseReadinessProbe(engine), embeddings)
     inbox_repository = SqlInboxRepository(sessions)
     inbox = InboxService(inbox_repository)
@@ -97,23 +91,40 @@ def build_app() -> tuple[FastAPI, AsyncEngine, tuple[object, ...]]:
         timedelta(hours=config.retention.source_deletion_hours),
         audit,
     )
+    queue = SqlJobQueue(sessions)
+    source_deletion = ConnectionSourceDeletionService(
+        SqlConnectionInboxDeletionRepository(sessions), deletion, clock
+    )
+    connections = MicrosoftConnectionService(
+        connection_repository,
+        vault,
+        graph,
+        clock,
+        fingerprinter,
+        queue,
+        source_deletion,
+        audit=audit,
+    )
+    oauth = microsoft_oauth_router(
+        connections,
+        OwnerSessionSigner(config.app.signing_key, clock),
+    )
     qq_imap = QqMailImapAdapter(config.qq_mail, clock)
     qq_connections = QqMailConnectionService(
         connection_repository,
         vault,
         qq_imap,
-        SqlJobQueue(sessions),
-        ConnectionSourceDeletionService(
-            SqlConnectionInboxDeletionRepository(sessions), deletion, clock
-        ),
+        queue,
+        source_deletion,
         clock,
+        fingerprinter,
         audit,
     )
     qq = qq_mail_router(qq_connections, OwnerSessionSigner(config.app.signing_key, clock))
     sync = mail_sync_router(
         (connections, qq_connections),
         inbox,
-        SqlJobQueue(sessions),
+        queue,
         OwnerSessionSigner(config.app.signing_key, clock),
         clock,
         config.mail_sync_interval_seconds,
@@ -132,7 +143,16 @@ def build_app() -> tuple[FastAPI, AsyncEngine, tuple[object, ...]]:
     app = create_app(
         readiness,
         lifespan,
-        (oauth, qq, sync, metrics_router(MetricsService(SqlMetricsSnapshot(sessions)))),
+        (
+            oauth,
+            qq,
+            sync,
+            metrics_router(
+                MetricsService(
+                    SqlMetricsSnapshot(sessions, SqlNotificationIntentRepository(sessions))
+                )
+            ),
+        ),
     )
     return app, engine, (embeddings, graph, qq_imap)
 

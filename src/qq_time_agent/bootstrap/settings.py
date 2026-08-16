@@ -2,6 +2,7 @@
 
 from datetime import time
 from ipaddress import ip_address
+from pathlib import Path
 from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
 
@@ -10,6 +11,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from qq_time_agent.bootstrap.config_models import (
     AppConfig,
+    AssetConfig,
     DatabaseConfig,
     DeepSeekConfig,
     MicrosoftConfig,
@@ -93,6 +95,13 @@ class EnvironmentSettings(BaseSettings):
     default_reminder_lead_minutes: int = Field(default=15, ge=0)
     mail_initial_lookback_days: int = Field(default=7, ge=1, le=30)
     mail_sync_interval_seconds: int = Field(default=300, ge=60)
+    asset_storage_path: Path = Path(".data/assets")
+    asset_max_bytes: int = Field(default=20 * 1024 * 1024, ge=1024, le=50 * 1024 * 1024)
+    asset_raw_retention_hours: int = Field(default=24, ge=1, le=24)
+    asset_max_pdf_pages: int = Field(default=50, ge=1, le=200)
+    asset_max_image_pixels: int = Field(default=40_000_000, ge=1_000_000, le=100_000_000)
+    asset_max_output_chars: int = Field(default=200_000, ge=1_000, le=1_000_000)
+    asset_processing_timeout_seconds: int = Field(default=60, ge=5, le=300)
     retention_source_content_days: int = Field(default=365, gt=0)
     retention_ai_metadata_days: int = Field(default=180, gt=0)
     retention_audit_days: int = Field(default=365, gt=0)
@@ -125,6 +134,10 @@ class EnvironmentSettings(BaseSettings):
         if self.ollama_base_url != "http://host.docker.internal:11434":
             raise ValueError(
                 "APP_CONTAINER requires OLLAMA_BASE_URL=http://host.docker.internal:11434"
+            )
+        if self.asset_storage_path.as_posix() != "/var/lib/qq-time-agent/assets":
+            raise ValueError(
+                "APP_CONTAINER requires ASSET_STORAGE_PATH=/var/lib/qq-time-agent/assets"
             )
 
     def _validate_loopback_boundaries(self) -> None:
@@ -228,6 +241,15 @@ def _to_runtime_config(value: EnvironmentSettings) -> RuntimeConfig:
             value.retention_operational_days,
             value.retention_backup_days,
             value.source_deletion_purge_hours,
+        ),
+        assets=AssetConfig(
+            value.asset_storage_path,
+            value.asset_max_bytes,
+            value.asset_raw_retention_hours,
+            value.asset_max_pdf_pages,
+            value.asset_max_image_pixels,
+            value.asset_max_output_chars,
+            value.asset_processing_timeout_seconds,
         ),
         credential_encryption_key=value.credential_encryption_key,
         mail_initial_lookback_days=value.mail_initial_lookback_days,

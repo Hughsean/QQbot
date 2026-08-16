@@ -27,11 +27,15 @@ class Service:
         self.command = command
         return self.view("ACTIVE")
 
-    async def status(self, user_id: str) -> ConnectionStatusView | None:
+    async def statuses(self, user_id: str) -> tuple[ConnectionStatusView, ...]:
         assert user_id == "owner"
-        return self.view("ACTIVE")
+        return (self.view("ACTIVE"),)
 
-    async def disconnect(self, connection_id: UUID) -> ConnectionStatusView:
+    async def status(self, user_id: str) -> ConnectionStatusView | None:
+        return (await self.statuses(user_id))[0]
+
+    async def disconnect(self, connection_id: UUID, user_id: str = "owner") -> ConnectionStatusView:
+        assert user_id == "owner"
         assert connection_id == self.connection_id
         return self.view("DISCONNECTED")
 
@@ -132,3 +136,13 @@ def test_owner_start_bootstraps_qq_mail_destination_without_url_secret() -> None
     assert 'name="next" value="/qq-mail/connect"' in response.text
     assert "session=" not in response.text
     assert response.headers["Cache-Control"] == "no-store"
+
+
+def test_connection_list_requires_owner_and_returns_safe_shape() -> None:
+    value, service, signer = client()
+    assert value.get("/api/v1/connections/qq-mail").status_code == 401
+    establish_owner(value, signer)
+    response = value.get("/api/v1/connections/qq-mail")
+    assert response.status_code == 200
+    assert response.json()[0]["connection_id"] == str(service.connection_id)
+    assert response.json()[0]["display_label"] == "Mailbox"

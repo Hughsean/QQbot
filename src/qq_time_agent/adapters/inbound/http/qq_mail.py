@@ -88,6 +88,15 @@ def qq_mail_router(service: QqMailConnectionService, signer: OwnerSessionSigner)
         except ValueError as exc:
             raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from None
 
+    @router.get("/api/v1/connections/qq-mail", response_model=list[ConnectionStatusView])
+    async def connection_list(
+        request: Request,
+        owner_cookie: Annotated[str | None, Cookie(alias=OWNER_COOKIE)] = None,
+    ) -> tuple[ConnectionStatusView, ...]:
+        _require_loopback_request(request)
+        owner = _authenticate(signer, owner_cookie or "")
+        return await service.statuses(owner.user_id)
+
     @router.get("/api/v1/connections/qq-mail/status", response_model=ConnectionStatusView | None)
     async def connection_status(
         request: Request,
@@ -106,11 +115,11 @@ def qq_mail_router(service: QqMailConnectionService, signer: OwnerSessionSigner)
         csrf_header: Annotated[str | None, Header(alias="X-CSRF-Token")] = None,
     ) -> ConnectionStatusView:
         _require_loopback_request(request)
-        _authenticate(signer, owner_cookie or "")
+        owner = _authenticate(signer, owner_cookie or "")
         _check_csrf(csrf_cookie, csrf_header)
         if not payload.confirmed:
             raise HTTPException(status.HTTP_409_CONFLICT, "disconnect requires confirmation")
-        return await service.disconnect(payload.connection_id)
+        return await service.disconnect(payload.connection_id, owner.user_id)
 
     return router
 

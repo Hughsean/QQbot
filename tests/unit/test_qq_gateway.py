@@ -1,6 +1,8 @@
 import asyncio
+import hashlib
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from types import SimpleNamespace
 
 import pytest
 from pydantic import SecretStr
@@ -10,9 +12,10 @@ from qq_time_agent.adapters.inbound.qq.gateway import (
     QqMessageProcessor,
     _delivery_id,
     _parse_timestamp,
+    _qq_assets,
 )
 from qq_time_agent.bootstrap.config_models import OwnerConfig, QqConfig
-from qq_time_agent.contracts.source import SourceEnvelope, TrustLevel
+from qq_time_agent.contracts.source import SourceAssetDescriptor, SourceEnvelope, TrustLevel
 
 
 @dataclass
@@ -33,11 +36,81 @@ class RecordingIngress:
 
 
 @dataclass
+class RecordingAssetIngress:
+    received: list[tuple[SourceEnvelope, str, tuple[SourceAssetDescriptor, ...]]] = field(
+        default_factory=list
+    )
+
+    async def receive(
+        self,
+        envelope: SourceEnvelope,
+        content: str,
+        assets: tuple[SourceAssetDescriptor, ...] = (),
+    ) -> str:
+        self.received.append((envelope, content, assets))
+        return "accepted"
+
+
+@dataclass
 class FailingIngress:
     error: Exception
 
     async def receive(self, envelope: SourceEnvelope, content: str) -> str:
         raise self.error
+
+
+@pytest.mark.asyncio
+async def test_official_image_descriptor_reaches_owner_ingress() -> None:
+    ingress = RecordingAssetIngress()
+    now = datetime(2026, 8, 13, tzinfo=UTC)
+    processor = QqMessageProcessor(OwnerConfig(SecretStr("owner")), ingress, FixedClock(now))
+    descriptor = SourceAssetDescriptor(
+        "media-1",
+        "https://gchat.qpic.cn/image/opaque",
+        "screenshot.png",
+        "image/png",
+        128,
+    )
+    assert (
+        await processor.process("owner", "message-1", "caption", now, (descriptor,)) == "accepted"
+    )
+    assert ingress.received[0][2] == (descriptor,)
+    assert ingress.received[0][0].trust_level is TrustLevel.T1
+
+
+def test_official_attachment_mapping_accepts_url_only_c2c_image() -> None:
+    locator = "https://gchat.qpic.cn/image/opaque"
+    assets, unsupported = _qq_assets([SimpleNamespace(url=locator)])
+    assert not unsupported
+    assert assets == (
+        SourceAssetDescriptor(
+            hashlib.sha256(locator.encode()).hexdigest(),
+            locator,
+            None,
+            "image/unknown",
+            None,
+        ),
+    )
+
+
+def test_official_attachment_mapping_rejects_non_image_and_incomplete_values() -> None:
+    image = SimpleNamespace(
+        id="media-1",
+        url="https://gchat.qpic.cn/image/opaque",
+        filename="image.png",
+        content_type="image/png",
+        size=128,
+    )
+    assets, unsupported = _qq_assets([image])
+    assert not unsupported and assets[0].provider_asset_id == "media-1"
+    non_image = SimpleNamespace(
+        id="forward-1",
+        url="https://gchat.qpic.cn/forward/opaque",
+        filename="forward.json",
+        content_type="application/qq-forward",
+        size=128,
+    )
+    assert _qq_assets([non_image]) == ((), True)
 
 
 @pytest.mark.asyncio

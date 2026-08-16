@@ -32,8 +32,10 @@ def test_settings_container_mode_accepts_exact_compose_values() -> None:
     values["app_listen_host"] = CONTAINER_BIND_HOST
     values["database_host"] = "postgres"
     values["ollama_base_url"] = "http://host.docker.internal:11434"
+    values["asset_storage_path"] = "/var/lib/qq-time-agent/assets"
     settings = EnvironmentSettings.model_validate(values)
     assert settings.app_listen_host == CONTAINER_BIND_HOST
+    assert _to_runtime_config(settings).assets.raw_retention_hours == 24
 
 
 def test_settings_container_mode_rejects_non_zero_bind() -> None:
@@ -101,3 +103,14 @@ def _values() -> dict[str, object]:
         "credential_encryption_key": "synthetic-encryption-key",
         "rag_index_version": "test-index-v1",
     }
+
+
+def test_settings_container_mode_rejects_unmounted_asset_path() -> None:
+    values = _values()
+    values["app_container"] = True
+    values["app_listen_host"] = CONTAINER_BIND_HOST
+    values["database_host"] = "postgres"
+    values["ollama_base_url"] = "http://host.docker.internal:11434"
+    values["asset_storage_path"] = "/srv/assets"
+    with raises(ValidationError, match="APP_CONTAINER requires ASSET_STORAGE_PATH"):
+        EnvironmentSettings.model_validate(values)

@@ -23,8 +23,9 @@ class FakeConnectionService:
         self.connection_id = uuid4()
         self.callback_parameters: dict[str, str] | None = None
 
-    async def begin(self, user_id: str) -> AuthorizationStart:
+    async def begin(self, user_id: str, connection_id: UUID | None = None) -> AuthorizationStart:
         assert user_id == "owner"
+        assert connection_id is None or connection_id == self.connection_id
         return AuthorizationStart("https://login.example.test/authorize", "browser-session")
 
     async def complete(
@@ -34,11 +35,15 @@ class FakeConnectionService:
         self.callback_parameters = callback_parameters
         return self._view("ACTIVE")
 
-    async def status(self, user_id: str) -> ConnectionStatusView:
+    async def statuses(self, user_id: str) -> tuple[ConnectionStatusView, ...]:
         assert user_id == "owner"
-        return self._view("ACTIVE")
+        return (self._view("ACTIVE"),)
 
-    async def disconnect(self, connection_id: UUID) -> ConnectionStatusView:
+    async def status(self, user_id: str) -> ConnectionStatusView:
+        return (await self.statuses(user_id))[0]
+
+    async def disconnect(self, connection_id: UUID, user_id: str = "owner") -> ConnectionStatusView:
+        assert user_id == "owner"
         assert connection_id == self.connection_id
         return self._view("DISCONNECTED")
 
@@ -144,3 +149,22 @@ def test_all_oauth_and_connection_routes_reject_non_loopback_host() -> None:
         ).status_code
         == 404
     )
+
+
+def test_connection_list_returns_safe_multi_account_shape() -> None:
+    client, service, token = _client()
+    response = client.get("/api/v1/connections/microsoft", headers={"X-Owner-Session": token})
+    assert response.status_code == 200
+    assert response.json() == [
+        {
+            "connection_id": str(service.connection_id),
+            "provider": "MICROSOFT",
+            "status": "ACTIVE",
+            "capabilities": ["Mail.Read", "User.Read"],
+            "account_mask": "o***@example.test",
+            "last_synced_at": None,
+            "display_label": "Mailbox",
+            "is_default": True,
+            "sync_enabled": True,
+        }
+    ]

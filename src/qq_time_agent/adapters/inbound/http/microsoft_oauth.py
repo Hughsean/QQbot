@@ -95,11 +95,12 @@ def _oauth_flow_router(
     async def start(
         request: Request,
         owner_cookie: Annotated[str | None, Cookie(alias=OWNER_COOKIE)] = None,
+        connection_id: UUID | None = None,
     ) -> RedirectResponse:
         _require_loopback_request(request)
         owner_token = owner_cookie or ""
         owner = _authenticate(signer, owner_token)
-        authorization = await service.begin(owner.user_id)
+        authorization = await service.begin(owner.user_id, connection_id)
         response = RedirectResponse(authorization.authorization_url, status.HTTP_302_FOUND)
         _set_loopback_cookie(response, OWNER_COOKIE, owner_token, httponly=True)
         _set_loopback_cookie(response, OAUTH_COOKIE, authorization.browser_session, httponly=True)
@@ -136,6 +137,19 @@ def _connection_api_router(
     router = APIRouter()
 
     @router.get(
+        "/api/v1/connections/microsoft",
+        response_model=list[ConnectionStatusView],
+    )
+    async def connection_list(
+        request: Request,
+        owner_cookie: Annotated[str | None, Cookie(alias=OWNER_COOKIE)] = None,
+        owner_header: Annotated[str | None, Header(alias="X-Owner-Session")] = None,
+    ) -> tuple[ConnectionStatusView, ...]:
+        _require_loopback_request(request)
+        owner = _authenticate(signer, owner_header or owner_cookie or "")
+        return await service.statuses(owner.user_id)
+
+    @router.get(
         "/api/v1/connections/microsoft/status",
         response_model=ConnectionStatusView | None,
     )
@@ -158,7 +172,7 @@ def _connection_api_router(
         csrf_header: Annotated[str | None, Header(alias="X-CSRF-Token")] = None,
     ) -> ConnectionStatusView:
         _require_loopback_request(request)
-        _authenticate(signer, owner_header or owner_cookie or "")
+        owner = _authenticate(signer, owner_header or owner_cookie or "")
         try:
             verify_csrf(csrf_cookie, csrf_header)
         except OwnerAuthenticationError as exc:
@@ -171,7 +185,7 @@ def _connection_api_router(
             raise HTTPException(
                 status.HTTP_422_UNPROCESSABLE_CONTENT, "invalid connection"
             ) from exc
-        return await service.disconnect(connection_id)
+        return await service.disconnect(connection_id, owner.user_id)
 
     return router
 

@@ -3,7 +3,18 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Index, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -85,4 +96,51 @@ class InboxSourceDeletionRow(InboxBase):
     dedupe_key: Mapped[str | None] = mapped_column(String(512), index=True)
     deleted_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class InboxSourceAssetRow(InboxBase):
+    __tablename__ = "inbox_source_assets"
+
+    asset_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    inbox_item_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("inbox_items.inbox_item_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    provider_asset_id: Mapped[str] = mapped_column(String(512), nullable=False)
+    provider_locator: Mapped[str] = mapped_column(String(512), nullable=False)
+    kind: Mapped[str] = mapped_column(String(40), nullable=False)
+    filename: Mapped[str | None] = mapped_column(String(512))
+    declared_content_type: Mapped[str] = mapped_column(String(255), nullable=False)
+    detected_content_type: Mapped[str | None] = mapped_column(String(255))
+    declared_size: Mapped[int | None] = mapped_column(Integer)
+    transfer_encoding: Mapped[str | None] = mapped_column(String(40))
+    actual_size: Mapped[int | None] = mapped_column(Integer)
+    content_sha256: Mapped[str | None] = mapped_column(String(64))
+    storage_key: Mapped[str | None] = mapped_column(String(80))
+    trust_level: Mapped[str] = mapped_column(String(10), nullable=False)
+    fetch_status: Mapped[str] = mapped_column(String(40), nullable=False)
+    parse_status: Mapped[str] = mapped_column(String(40), nullable=False)
+    parser_version: Mapped[str | None] = mapped_column(String(120))
+    failure_class: Mapped[str | None] = mapped_column(String(80))
+    purge_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    fetched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    parsed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "inbox_item_id", "provider_asset_id", name="uq_inbox_assets_parent_provider"
+        ),
+        CheckConstraint("trust_level = 'T2'", name="ck_inbox_assets_t2"),
+        CheckConstraint(
+            "declared_size IS NULL OR declared_size >= 0", name="ck_asset_declared_size"
+        ),
+        CheckConstraint("actual_size IS NULL OR actual_size >= 0", name="ck_asset_actual_size"),
+        Index("ix_inbox_assets_parent", "inbox_item_id"),
+        Index("ix_inbox_assets_fetch_parse", "fetch_status", "parse_status", "created_at"),
+        Index("ix_inbox_assets_purge", "purge_at", "deleted_at"),
     )

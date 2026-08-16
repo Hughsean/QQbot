@@ -5,7 +5,7 @@ import pytest
 
 from qq_time_agent.adapters.outbound.microsoft_graph.mail import MicrosoftGraphMailAdapter
 from qq_time_agent.modules.credentials.contracts import CredentialHandle, CredentialKind
-from qq_time_agent.modules.inbox.contracts import MailProviderError
+from qq_time_agent.modules.inbox.contracts import MailAddress, MailChange, MailProviderError
 
 
 class FixedClock:
@@ -163,6 +163,61 @@ async def test_graph_mail_accepts_documented_and_live_inbox_delta_paths_only() -
             "https://graph.microsoft.com/v1.0/me/mailFolders/archive/messages/delta?token=x",
             datetime(2026, 8, 6, tzinfo=UTC),
         )
+
+
+@pytest.mark.asyncio
+async def test_graph_mail_lists_then_selectively_fetches_bounded_attachment() -> None:
+    seen: list[str] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.url.path)
+        if request.url.path.endswith("/attachments"):
+            return httpx.Response(
+                200,
+                json={
+                    "value": [
+                        {
+                            "id": "attachment-1",
+                            "name": "agenda.pdf",
+                            "contentType": "application/pdf",
+                            "size": 14,
+                            "isInline": False,
+                        }
+                    ]
+                },
+            )
+        if request.url.path.endswith("/$value"):
+            return httpx.Response(200, content=b"%PDF-synthetic", headers={"Content-Length": "14"})
+        return httpx.Response(200, json={"body": {"contentType": "text", "content": "body"}})
+
+    adapter = MicrosoftGraphMailAdapter(
+        FixedClock(),
+        httpx.AsyncClient(transport=httpx.MockTransport(handler)),
+        max_attachment_bytes=16,
+    )
+    change = MailChange(
+        "message-1",
+        None,
+        None,
+        MailAddress("sender@example.test"),
+        (),
+        "subject",
+        "",
+        "text",
+        datetime(2026, 8, 12, tzinfo=UTC),
+        None,
+        True,
+    )
+    complete = await adapter.fetch_content(_handle(), "account-id", change)
+    attachment = complete.attachments[0]
+    assert attachment.provider_asset_id == "attachment-1"
+    assert all(not path.endswith("/$value") for path in seen)
+
+    content = await adapter.fetch_attachment(
+        _handle(), "account-id", change.external_id, attachment
+    )
+    assert content == b"%PDF-synthetic"
+    assert seen[-1].endswith("/attachments/attachment-1/$value")
 
 
 def test_access_handle_expires_and_cannot_be_serialized() -> None:

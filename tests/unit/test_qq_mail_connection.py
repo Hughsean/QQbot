@@ -11,6 +11,7 @@ from qq_time_agent.modules.connections.application.qq_mail import (
 )
 from qq_time_agent.modules.connections.contracts import ConnectionUnavailableError
 from qq_time_agent.modules.connections.domain.models import ExternalConnection
+from qq_time_agent.modules.connections.infrastructure.fingerprints import HmacAccountFingerprinter
 from qq_time_agent.modules.credentials.contracts import (
     CredentialHandle,
     CredentialKind,
@@ -52,6 +53,33 @@ class Repository:
             None,
         )
 
+    async def list_for_provider(
+        self, user_id: str, provider: str
+    ) -> tuple[ExternalConnection, ...]:
+        return tuple(
+            value
+            for value in self.values.values()
+            if value.user_id == user_id and value.provider.value == provider
+        )
+
+    async def get_for_user(self, connection_id: UUID, user_id: str) -> ExternalConnection | None:
+        value = self.values.get(connection_id)
+        return value if value is not None and value.user_id == user_id else None
+
+    async def get_by_identity(
+        self, user_id: str, provider: str, fingerprint: str
+    ) -> ExternalConnection | None:
+        return next(
+            (
+                value
+                for value in self.values.values()
+                if value.user_id == user_id
+                and value.provider.value == provider
+                and value.account_fingerprint == fingerprint
+            ),
+            None,
+        )
+
     async def save(self, connection: ExternalConnection, expected_version: int) -> None:
         assert self.values[connection.connection_id].version >= expected_version
         self.values[connection.connection_id] = connection
@@ -88,7 +116,7 @@ class Verifier:
     codes: list[str] = field(default_factory=list)
 
     async def verify(self, address: str, authorization_code: SecretStr) -> None:
-        assert address == "owner@qq.com"
+        assert address.endswith("@qq.com")
         self.codes.append(authorization_code.get_secret_value())
 
 
@@ -129,7 +157,15 @@ def service() -> tuple[QqMailConnectionService, Repository, Vault, Verifier, Job
         Jobs(),
         Sources(),
     )
-    value = QqMailConnectionService(repository, vault, verifier, jobs, sources, Clock())
+    value = QqMailConnectionService(
+        repository,
+        vault,
+        verifier,
+        jobs,
+        sources,
+        Clock(),
+        HmacAccountFingerprinter(SecretStr("test-fingerprint-key")),
+    )
     return value, repository, vault, verifier, jobs, sources
 
 
@@ -179,7 +215,7 @@ async def test_reauthentication_replaces_old_credential() -> None:
         QqMailConnectCommand("owner", "owner@qq.com", SecretStr("synthetic-old"))
     )
     connection = repository.values[initial.connection_id]
-    connection.require_reauthorization()
+    connection.require_reauthorization(datetime(2026, 8, 13, tzinfo=UTC))
     replacement = await value.connect(
         QqMailConnectCommand("owner", "owner@qq.com", SecretStr("synthetic-new"))
     )
@@ -225,3 +261,21 @@ async def test_transient_failure_degrades_and_success_recovers_connection() -> N
     await value.mark_sync_succeeded(connected.connection_id, Clock().now())
     recovered = await value.status("owner")
     assert recovered is not None and recovered.status == "ACTIVE"
+
+
+@pytest.mark.asyncio
+async def test_connect_supports_multiple_qq_mail_accounts() -> None:
+    value, repository, _, _, _, _ = service()
+    first = await value.connect(
+        QqMailConnectCommand("owner", "first@qq.com", SecretStr("first-code"))
+    )
+    second = await value.connect(
+        QqMailConnectCommand("owner", "second@qq.com", SecretStr("second-code"))
+    )
+    statuses = await value.statuses("owner")
+    assert {status.connection_id for status in statuses} == {
+        first.connection_id,
+        second.connection_id,
+    }
+    assert sum(status.is_default for status in statuses) == 1
+    assert len(repository.values) == 2

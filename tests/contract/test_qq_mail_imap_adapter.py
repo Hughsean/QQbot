@@ -77,7 +77,7 @@ def adapter(session: Session, retries: int = 0) -> QqMailImapAdapter:
 
 
 @pytest.mark.asyncio
-async def test_adapter_maps_unified_model_and_never_fetches_attachment() -> None:
+async def test_adapter_maps_metadata_then_selectively_fetches_attachment() -> None:
     session = Session()
     value = adapter(session)
     provider: MailProvider = value
@@ -91,10 +91,19 @@ async def test_adapter_maps_unified_model_and_never_fetches_attachment() -> None
     assert page.round_complete and ImapCursor.decode(page.continuation_url) == ImapCursor(101, 7)
     assert complete.subject == "日程"
     assert complete.body == "日程安排"
-    assert complete.attachments[0].filename == "report.pdf"
+    attachment = complete.attachments[0]
+    assert attachment.filename == "report.pdf"
+    assert attachment.provider_asset_id == "101:7:2"
+    before = [str(args[-1]) for command, args in session.commands if command == "fetch"]
+    assert any("BODY.PEEK[1]" in query for query in before)
+    assert all("BODY.PEEK[2]" not in query for query in before)
+
+    content = await provider.fetch_attachment(
+        credential, "owner@qq.com", complete.external_id, attachment
+    )
+    assert content == "日程安排".encode()
     queries = [str(args[-1]) for command, args in session.commands if command == "fetch"]
-    assert any("BODY.PEEK[1]" in query for query in queries)
-    assert all("BODY.PEEK[2]" not in query for query in queries)
+    assert any("BODY.PEEK[2]" in query for query in queries)
     assert all("BODY.PEEK[]" not in query and "RFC822.PEEK" not in query for query in queries)
 
 

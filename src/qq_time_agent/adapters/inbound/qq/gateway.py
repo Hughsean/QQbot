@@ -16,12 +16,15 @@ from qq_time_agent.bootstrap.config_models import OwnerConfig, QqConfig
 from qq_time_agent.contracts.clock import Clock
 from qq_time_agent.contracts.source import (
     IngressType,
+    QqAssetIngressPort,
     QqIngressPort,
+    SourceAssetDescriptor,
     SourceEnvelope,
     SourceSender,
     SourceType,
     TrustLevel,
 )
+from qq_time_agent.modules.notifications.contracts import NotificationPreSendTransientError
 
 LOGGER = logging.getLogger(__name__)
 
@@ -41,7 +44,7 @@ class OfficialQqGateway:
         self,
         qq: QqConfig,
         owner: OwnerConfig,
-        ingress: QqIngressPort,
+        ingress: QqIngressPort | QqAssetIngressPort,
         clock: Clock,
         client_factory: Callable[["QqMessageProcessor"], GatewayClient] | None = None,
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
@@ -74,7 +77,7 @@ class OfficialQqGateway:
 
     async def send_active(self, content: str) -> str:
         if self._client is None:
-            raise RuntimeError("QQ gateway is not connected")
+            raise NotificationPreSendTransientError("QQ gateway is not connected")
         return await self._client.send_active(
             self._processor.owner_openid.get_secret_value(), content
         )
@@ -90,7 +93,12 @@ class OfficialQqGateway:
 
 
 class QqMessageProcessor:
-    def __init__(self, owner: OwnerConfig, ingress: QqIngressPort, clock: Clock) -> None:
+    def __init__(
+        self,
+        owner: OwnerConfig,
+        ingress: QqIngressPort | QqAssetIngressPort,
+        clock: Clock,
+    ) -> None:
         self.owner_openid = owner.qq_openid
         self._ingress = ingress
         self._clock = clock
@@ -101,6 +109,7 @@ class QqMessageProcessor:
         message_id: str,
         content: str,
         occurred_at: datetime,
+        assets: tuple[SourceAssetDescriptor, ...] = (),
     ) -> str | None:
         if not secrets.compare_digest(author_openid, self.owner_openid.get_secret_value()):
             return None
@@ -118,6 +127,10 @@ class QqMessageProcessor:
             metadata={"message_kind": "c2c"},
         )
         try:
+            if assets:
+                if not isinstance(self._ingress, QqAssetIngressPort):
+                    return "当前接入未启用图片处理能力。"
+                return await self._ingress.receive(envelope, content, assets)
             return await self._ingress.receive(envelope, content)
         except (LookupError, PermissionError, ValueError) as exc:
             return f"无法执行: {exc}"
@@ -144,11 +157,16 @@ class _BotpyClient(botpy.Client):  # type: ignore[misc]
         self._ready.set()
 
     async def on_c2c_message_create(self, message: C2CMessage) -> None:
+        assets, unsupported = _qq_assets(getattr(message, "attachments", ()))
+        if unsupported:
+            await message.reply(content="当前官方 QQ 接口未提供此附件类型或合并转发的读取权限。")
+            return
         reply = await self._processor.process(
             str(message.author.user_openid),
             str(message.id),
-            str(message.content),
+            str(message.content or ""),
             _parse_timestamp(str(message.timestamp)),
+            assets,
         )
         if reply is not None:
             await message.reply(content=reply)
@@ -162,6 +180,42 @@ class _BotpyClient(botpy.Client):  # type: ignore[misc]
 
     async def wait_ready(self, timeout_seconds: float) -> None:
         await asyncio.wait_for(self._ready.wait(), timeout_seconds)
+
+
+def _qq_assets(values: object) -> tuple[tuple[SourceAssetDescriptor, ...], bool]:
+    if not isinstance(values, (list, tuple)):
+        return (), True
+    descriptors: list[SourceAssetDescriptor] = []
+    for value in values:
+        locator = getattr(value, "url", None)
+        content_type = getattr(value, "content_type", None)
+        provider_id = getattr(value, "id", None)
+        filename = getattr(value, "filename", None)
+        size = getattr(value, "size", None)
+        if not isinstance(locator, str) or not locator:
+            return (), True
+        if content_type is None:
+            content_type = "image/unknown"
+        if not isinstance(content_type, str) or not content_type.lower().startswith("image/"):
+            return (), True
+        if provider_id is None:
+            provider_id = hashlib.sha256(locator.encode()).hexdigest()
+        if not isinstance(provider_id, str) or not provider_id:
+            return (), True
+        if filename is not None and not isinstance(filename, str):
+            return (), True
+        if size is not None and (not isinstance(size, int) or isinstance(size, bool) or size < 0):
+            return (), True
+        descriptors.append(
+            SourceAssetDescriptor(
+                provider_id,
+                locator,
+                filename,
+                content_type,
+                size,
+            )
+        )
+    return tuple(descriptors), False
 
 
 def _delivery_id(result: object) -> str:

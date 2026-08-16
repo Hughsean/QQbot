@@ -5,11 +5,17 @@ from qq_time_agent.modules.connections.contracts.sync import (
     ConnectionUnavailableError,
     MailAccessGrant,
 )
-from qq_time_agent.modules.connections.contracts.views import ConnectionStatusView
+from qq_time_agent.modules.connections.contracts.views import (
+    ConnectionNotificationQueryPort,
+    ConnectionStatusView,
+    ReauthReminderCandidate,
+)
 
 __all__ = [
+    "ConnectionNotificationQueryPort",
     "ConnectionStatusView",
     "ConnectionSyncPort",
     "ConnectionUnavailableError",
     "MailAccessGrant",
+    "ReauthReminderCandidate",
 ]

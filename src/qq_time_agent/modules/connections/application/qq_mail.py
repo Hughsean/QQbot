@@ -9,7 +9,13 @@ from pydantic import SecretStr
 
 from qq_time_agent.contracts.clock import Clock
 from qq_time_agent.modules.audit.contracts import AuditEvent, AuditPort
+from qq_time_agent.modules.connections.application.cleanup_ports import (
+    ConnectionJobCancellationPort,
+    ConnectionSourceDeletionPort,
+)
+from qq_time_agent.modules.connections.application.identity import AccountFingerprinter
 from qq_time_agent.modules.connections.application.ports import ConnectionRepository
+from qq_time_agent.modules.connections.application.views import to_connection_view
 from qq_time_agent.modules.connections.contracts import (
     ConnectionStatusView,
     ConnectionUnavailableError,
@@ -31,20 +37,6 @@ QQ_MAIL_CAPABILITIES = frozenset({"Mail.Read"})
 
 class QqMailConnectionVerifier(Protocol):
     async def verify(self, address: str, authorization_code: SecretStr) -> None: ...
-
-
-class ConnectionJobCancellationPort(Protocol):
-    async def cancel_pending_for_connection(
-        self, connection_id: UUID, cancelled_at: datetime
-    ) -> int: ...
-
-
-class ConnectionSourceDeletionPort(Protocol):
-    async def delete_connection_sources(self, connection_id: UUID) -> int: ...
-
-    async def allow_connection_sources(self, connection_id: UUID) -> None: ...
-
-    async def block_connection_sources(self, connection_id: UUID) -> None: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,6 +61,7 @@ class QqMailConnectionService:
         jobs: ConnectionJobCancellationPort,
         sources: ConnectionSourceDeletionPort,
         clock: Clock,
+        fingerprinter: AccountFingerprinter,
         audit: AuditPort | None = None,
     ) -> None:
         self._repository = repository
@@ -77,17 +70,27 @@ class QqMailConnectionService:
         self._jobs = jobs
         self._sources = sources
         self._clock = clock
+        self._fingerprinter = fingerprinter
         self._audit = audit
 
     async def connect(self, command: QqMailConnectCommand) -> ConnectionStatusView:
         if command.user_id != "owner":
             raise PermissionError("only the local owner may connect QQ Mail")
         address = _validate_address(command.address)
-        existing = await self._repository.get_for_provider(
+        fingerprint = self._fingerprinter.fingerprint(ConnectionProvider.QQ_MAIL.value, address)
+        connections = await self._repository.list_for_provider(
             command.user_id, ConnectionProvider.QQ_MAIL.value
         )
+        existing = next(
+            (
+                value
+                for value in connections
+                if value.account_fingerprint == fingerprint or value.provider_account_id == address
+            ),
+            None,
+        )
         if existing is not None and existing.status is ConnectionStatus.ACTIVE:
-            raise ValueError("QQ Mail connection is already active")
+            raise ValueError("QQ Mail account is already active")
         await self._verifier.verify(address, command.authorization_code)
         credential = await self._vault.store(
             command.authorization_code.get_secret_value(), CredentialKind.IMAP_AUTH_CODE
@@ -98,6 +101,12 @@ class QqMailConnectionService:
         expected_version = connection.version
         if existing is not None:
             connection.restart_authorization()
+        connection.bind_identity(
+            fingerprint,
+            _mask_address(address),
+            is_default=(existing is not None and existing.is_default)
+            or not _has_default(connections),
+        )
         previous = connection.credential_ref
         connection.activate(
             address, _mask_address(address), QQ_MAIL_CAPABILITIES, credential.credential_id
@@ -115,16 +124,20 @@ class QqMailConnectionService:
         if previous is not None:
             await self._vault.delete(CredentialRef(previous))
         await self._audit_event(connection, "connection-activated")
-        return _view(connection)
+        return to_connection_view(connection)
+
+    async def statuses(self, user_id: str) -> tuple[ConnectionStatusView, ...]:
+        values = await self._repository.list_for_provider(user_id, ConnectionProvider.QQ_MAIL.value)
+        return tuple(to_connection_view(value) for value in values)
 
     async def status(self, user_id: str) -> ConnectionStatusView | None:
-        value = await self._repository.get_for_provider(user_id, ConnectionProvider.QQ_MAIL.value)
-        return None if value is None else _view(value)
+        values = await self.statuses(user_id)
+        return next((value for value in values if value.is_default), values[0] if values else None)
 
-    async def disconnect(self, connection_id: UUID) -> ConnectionStatusView:
-        connection = await self._require_connection(connection_id)
-        if connection.provider is not ConnectionProvider.QQ_MAIL:
-            raise ValueError("connection is not QQ Mail")
+    async def disconnect(self, connection_id: UUID, user_id: str = "owner") -> ConnectionStatusView:
+        connection = await self._repository.get_for_user(connection_id, user_id)
+        if connection is None or connection.provider is not ConnectionProvider.QQ_MAIL:
+            raise LookupError("connection does not exist")
         await self._sources.block_connection_sources(connection_id)
         await self._jobs.cancel_pending_for_connection(connection_id, self._clock.now())
         deleted_reference = connection.credential_ref
@@ -137,7 +150,7 @@ class QqMailConnectionService:
         connection = await self._save_disconnected(connection, deleted_reference)
         await self._sources.delete_connection_sources(connection_id)
         await self._audit_event(connection, "connection-disconnected")
-        return _view(connection)
+        return to_connection_view(connection)
 
     async def _save_disconnected(
         self, connection: ExternalConnection, deleted_reference: UUID | None
@@ -178,12 +191,13 @@ class QqMailConnectionService:
         connection = await self._require_available(connection_id)
         connection.last_synced_at = completed_at
         connection.status = ConnectionStatus.ACTIVE
+        connection.reauth_required_since = None
         connection.version += 1
         await self._repository.save(connection, connection.version - 1)
 
     async def mark_sync_reauth_required(self, connection_id: UUID) -> None:
         connection = await self._require_connection(connection_id)
-        connection.require_reauthorization()
+        connection.require_reauthorization(self._clock.now())
         await self._repository.save(connection, connection.version - 1)
 
     async def mark_sync_degraded(self, connection_id: UUID) -> None:
@@ -199,10 +213,11 @@ class QqMailConnectionService:
 
     async def _require_available(self, connection_id: UUID) -> ExternalConnection:
         connection = await self._require_connection(connection_id)
-        if connection.provider is not ConnectionProvider.QQ_MAIL or connection.status not in {
-            ConnectionStatus.ACTIVE,
-            ConnectionStatus.DEGRADED,
-        }:
+        if (
+            connection.provider is not ConnectionProvider.QQ_MAIL
+            or not connection.sync_enabled
+            or connection.status not in {ConnectionStatus.ACTIVE, ConnectionStatus.DEGRADED}
+        ):
             raise ConnectionUnavailableError("QQ Mail connection is not available")
         return connection
 
@@ -232,12 +247,7 @@ def _mask_address(value: str) -> str:
     return f"{local[:1]}***@{domain}"
 
 
-def _view(value: ExternalConnection) -> ConnectionStatusView:
-    return ConnectionStatusView(
-        value.connection_id,
-        value.provider.value,
-        value.status.value,
-        tuple(sorted(value.capabilities)),
-        value.account_mask,
-        value.last_synced_at,
+def _has_default(values: tuple[ExternalConnection, ...]) -> bool:
+    return any(
+        value.is_default and value.status is not ConnectionStatus.DISCONNECTED for value in values
     )

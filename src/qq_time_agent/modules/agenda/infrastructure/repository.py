@@ -53,6 +53,16 @@ class SqlAgendaRepository:
             )
             return tuple(_to_entry(row) for row in rows)
 
+    async def find_by_source_ref(self, source_ref: str) -> AgendaEntry | None:
+        async with self._sessions() as session:
+            row = await session.scalar(
+                select(AgendaEntryRow)
+                .where(AgendaEntryRow.source_refs.contains([source_ref]))
+                .order_by(AgendaEntryRow.agenda_entry_id)
+                .limit(1)
+            )
+            return None if row is None else _to_entry(row)
+
     async def save(
         self, entry: AgendaEntry, expected_version: int, idempotency_key: str
     ) -> AgendaEntry:

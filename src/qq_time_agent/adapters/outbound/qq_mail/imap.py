@@ -1,25 +1,60 @@
 """Strict-TLS, read-only QQ Mail IMAP adapter."""
 
 import asyncio
-import hashlib
 import imaplib
 import random
+import re
 import ssl
 from collections.abc import Awaitable, Callable
-from contextlib import suppress
 from dataclasses import replace
 from datetime import datetime
 from typing import Protocol, TypeVar, cast
 
 from pydantic import SecretStr
 
-from qq_time_agent.adapters.outbound.qq_mail.bodystructure import (
-    BodyPart,
-    body_parts,
-    parse_bodystructure,
-)
 from qq_time_agent.adapters.outbound.qq_mail.cursor import ImapCursor
-from qq_time_agent.adapters.outbound.qq_mail.mime import decode_part, dedupe_key, parse_headers
+from qq_time_agent.adapters.outbound.qq_mail.imap_parts import (
+    ImapSession,
+)
+from qq_time_agent.adapters.outbound.qq_mail.imap_parts import (
+    attachment_metadata as _attachment_metadata,
+)
+from qq_time_agent.adapters.outbound.qq_mail.imap_parts import (
+    external_id as _external_id,
+)
+from qq_time_agent.adapters.outbound.qq_mail.imap_parts import (
+    fetch_section as _fetch_section,
+)
+from qq_time_agent.adapters.outbound.qq_mail.imap_parts import (
+    fetch_structure as _fetch_structure,
+)
+from qq_time_agent.adapters.outbound.qq_mail.imap_parts import (
+    logout as _logout,
+)
+from qq_time_agent.adapters.outbound.qq_mail.imap_parts import (
+    ok as _ok,
+)
+from qq_time_agent.adapters.outbound.qq_mail.imap_parts import (
+    parse_external_id as _parse_external_id,
+)
+from qq_time_agent.adapters.outbound.qq_mail.imap_parts import (
+    preferred_body as _preferred_body,
+)
+from qq_time_agent.adapters.outbound.qq_mail.imap_parts import (
+    require_aware as _require_aware,
+)
+from qq_time_agent.adapters.outbound.qq_mail.imap_parts import (
+    search_uids as _search_uids,
+)
+from qq_time_agent.adapters.outbound.qq_mail.imap_parts import (
+    uidvalidity as _uidvalidity,
+)
+from qq_time_agent.adapters.outbound.qq_mail.mime import (
+    decode_attachment,
+    decode_part,
+    dedupe_key,
+    parse_headers,
+)
 from qq_time_agent.bootstrap.config_models import QqMailConfig
 from qq_time_agent.contracts.clock import Clock
 from qq_time_agent.modules.credentials.contracts import CredentialHandle
@@ -31,14 +66,6 @@ from qq_time_agent.modules.inbox.contracts import (
 )
 
 T = TypeVar("T")
-
-
-class ImapSession(Protocol):
-    def login(self, user: str, password: str) -> tuple[str, list[bytes]]: ...
-    def select(self, mailbox: str = "INBOX", readonly: bool = False) -> tuple[str, list[bytes]]: ...
-    def response(self, code: str) -> tuple[str, list[bytes] | None]: ...
-    def uid(self, command: str, *args: object) -> tuple[str, list[object]]: ...
-    def logout(self) -> tuple[str, list[bytes]]: ...
 
 
 class ImapSessionFactory(Protocol):
@@ -53,6 +80,7 @@ class QqMailImapAdapter:
         session_factory: ImapSessionFactory | None = None,
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
         jitter: Callable[[], float] = random.random,
+        max_attachment_bytes: int = 20 * 1024 * 1024,
     ) -> None:
         if config.host != "imap.qq.com" or config.port != 993:
             raise ValueError("QQ Mail IMAP requires imap.qq.com:993")
@@ -61,7 +89,10 @@ class QqMailImapAdapter:
         self._context = ssl.create_default_context()
         self._context.check_hostname = True
         self._context.verify_mode = ssl.CERT_REQUIRED
+        if max_attachment_bytes < 1:
+            raise ValueError("attachment maximum bytes must be positive")
         self._factory = session_factory or self._new_session
+        self._max_attachment_bytes = max_attachment_bytes
         self._sleep = sleep
         self._jitter = jitter
 
@@ -85,6 +116,18 @@ class QqMailImapAdapter:
     ) -> MailChange:
         secret = mail_credential.reveal(self._clock.now())
         return await self._retry(lambda: self._fetch_content_sync(account_id, secret, change))
+
+    async def fetch_attachment(
+        self,
+        mail_credential: CredentialHandle,
+        account_id: str,
+        message_external_id: str,
+        attachment: MailAttachmentMetadata,
+    ) -> bytes:
+        secret = mail_credential.reveal(self._clock.now())
+        return await self._retry(
+            lambda: self._fetch_attachment_sync(account_id, secret, message_external_id, attachment)
+        )
 
     async def close(self) -> None:
         return None
@@ -148,11 +191,7 @@ class QqMailImapAdapter:
                     raw_body, body_part.content_type, body_part.charset, body_part.encoding
                 )
             )
-            attachments = tuple(
-                MailAttachmentMetadata(part.filename, part.content_type, part.size)
-                for part in parts
-                if part.attachment
-            )
+            attachments = _attachment_metadata(parts, uidvalidity, uid)
             return replace(
                 change,
                 body=body,
@@ -164,6 +203,40 @@ class QqMailImapAdapter:
         finally:
             _logout(session)
 
+    def _fetch_attachment_sync(
+        self,
+        address: str,
+        secret: str,
+        message_external_id: str,
+        attachment: MailAttachmentMetadata,
+    ) -> bytes:
+        uidvalidity, uid = _parse_external_id(address, message_external_id)
+        section = attachment.provider_locator
+        expected_id = f"{uidvalidity}:{uid}:{section}"
+        if (
+            re.fullmatch(r"[1-9][0-9]*(?:\.[1-9][0-9]*)*", section) is None
+            or attachment.provider_asset_id != expected_id
+            or (
+                attachment.declared_size is not None
+                and attachment.declared_size > self._max_attachment_bytes
+            )
+        ):
+            raise MailProviderError("PermanentProvider")
+        session = self._login(address, secret)
+        try:
+            _ok(session.select("INBOX", readonly=True))
+            if _uidvalidity(session) != uidvalidity:
+                raise MailProviderError("TransientProvider")
+            raw = _fetch_section(session, uid, section)
+            content = decode_attachment(
+                raw, attachment.content_type, attachment.transfer_encoding or "7bit"
+            )
+            if not content or len(content) > self._max_attachment_bytes:
+                raise MailProviderError("AssetTooLarge")
+            return content
+        finally:
+            _logout(session)
+
     def _metadata(
         self, session: ImapSession, address: str, uidvalidity: int, uid: int, since: datetime
     ) -> MailChange:
@@ -171,11 +244,7 @@ class QqMailImapAdapter:
         subject, message_id, thread_id, sender, recipients, occurred_at = parse_headers(
             header, since
         )
-        attachments = tuple(
-            MailAttachmentMetadata(part.filename, part.content_type, part.size)
-            for part in parts
-            if part.attachment
-        )
+        attachments = _attachment_metadata(parts, uidvalidity, uid)
         external_id = _external_id(address, uidvalidity, uid)
         initial_dedupe = dedupe_key(message_id, header, "") if message_id else None
         return MailChange(
@@ -222,98 +291,3 @@ class QqMailImapAdapter:
                     raise MailProviderError("TransientProvider") from None
             await self._sleep(min(30.0, 2.0**attempt + self._jitter()))
         raise AssertionError("unreachable")
-
-
-def _fetch_structure(session: ImapSession, uid: int) -> tuple[bytes, tuple[BodyPart, ...]]:
-    status, data = session.uid("fetch", str(uid), "(BODY.PEEK[HEADER] BODYSTRUCTURE RFC822.SIZE)")
-    _ok((status, []))
-    header = b""
-    metadata = b""
-    for item in data:
-        if isinstance(item, tuple) and len(item) == 2:
-            metadata += bytes(item[0])
-            header += bytes(item[1])
-        elif isinstance(item, bytes):
-            metadata += item
-    if not header or b"BODYSTRUCTURE" not in metadata.upper():
-        raise MailProviderError("PermanentProvider")
-    try:
-        parts = body_parts(parse_bodystructure(metadata))
-    except ValueError as exc:
-        raise MailProviderError("PermanentProvider") from exc
-    return header, parts
-
-
-def _fetch_section(session: ImapSession, uid: int, section: str) -> bytes:
-    status, data = session.uid("fetch", str(uid), f"(BODY.PEEK[{section}])")
-    _ok((status, []))
-    for item in data:
-        if isinstance(item, tuple) and len(item) == 2:
-            return bytes(item[1])
-    raise MailProviderError("PermanentProvider")
-
-
-def _preferred_body(parts: tuple[BodyPart, ...]) -> BodyPart | None:
-    readable = [part for part in parts if not part.attachment]
-    return next((part for part in readable if part.content_type == "text/plain"), None) or next(
-        (part for part in readable if part.content_type == "text/html"), None
-    )
-
-
-def _search_uids(session: ImapSession, since: datetime, last_uid: int | None) -> list[int]:
-    if last_uid is None:
-        criterion: tuple[object, ...] = (None, "SINCE", since.strftime("%d-%b-%Y"))
-    else:
-        criterion = (None, "UID", f"{last_uid + 1}:*")
-    status, data = session.uid("search", *criterion)
-    _ok((status, []))
-    raw = data[0] if data else b""
-    if not isinstance(raw, bytes):
-        raise MailProviderError("PermanentProvider")
-    values = sorted({int(value) for value in raw.split() if value.isdigit()})
-    return values if last_uid is None else [value for value in values if value > last_uid]
-
-
-def _uidvalidity(session: ImapSession) -> int:
-    status, data = session.response("UIDVALIDITY")
-    if status != "UIDVALIDITY" or not data:
-        raise MailProviderError("PermanentProvider")
-    try:
-        return int(data[0])
-    except (TypeError, ValueError) as exc:
-        raise MailProviderError("PermanentProvider") from exc
-
-
-def _ok(response: tuple[str, list[bytes]], authentication: bool = False) -> None:
-    if response[0] != "OK":
-        failure = "Authentication" if authentication else "TransientProvider"
-        raise MailProviderError(failure)
-
-
-def _logout(session: ImapSession) -> None:
-    with suppress(imaplib.IMAP4.error, OSError):
-        session.logout()
-
-
-def _external_id(address: str, uidvalidity: int, uid: int) -> str:
-    mailbox = hashlib.sha256(address.strip().lower().encode()).hexdigest()[:20]
-    return f"qq-mail:{mailbox}:INBOX:{uidvalidity}:{uid}"
-
-
-def _parse_external_id(address: str, value: str) -> tuple[int, int]:
-    parts = value.split(":")
-    expected = hashlib.sha256(address.strip().lower().encode()).hexdigest()[:20]
-    if len(parts) != 5 or parts[:3] != ["qq-mail", expected, "INBOX"]:
-        raise MailProviderError("PermanentProvider")
-    try:
-        uidvalidity, uid = int(parts[3]), int(parts[4])
-    except ValueError as exc:
-        raise MailProviderError("PermanentProvider") from exc
-    if uidvalidity < 1 or uid < 1:
-        raise MailProviderError("PermanentProvider")
-    return uidvalidity, uid
-
-
-def _require_aware(value: datetime) -> None:
-    if value.tzinfo is None or value.utcoffset() is None:
-        raise ValueError("timezone-aware datetime required")

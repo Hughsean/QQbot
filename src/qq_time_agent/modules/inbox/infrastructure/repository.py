@@ -10,6 +10,7 @@ from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from qq_time_agent.contracts.source import IngressType, SourceType, TrustLevel
+from qq_time_agent.modules.inbox.application.source_refs import build_source_ref
 from qq_time_agent.modules.inbox.contracts import (
     InboxContentView,
     InboxSourceDeletedError,
@@ -92,7 +93,9 @@ class SqlInboxRepository:
                     inserted,
                     True,
                     InboxStatus.RECEIVED.value,
-                    _source_ref(envelope.source_type, envelope.connection_id, envelope.external_id),
+                    build_source_ref(
+                        envelope.source_type, envelope.connection_id, envelope.external_id
+                    ),
                 )
             identity = InboxItemRow.external_id == envelope.external_id
             if envelope.dedupe_key is not None:
@@ -109,7 +112,7 @@ class SqlInboxRepository:
                 existing.inbox_item_id,
                 False,
                 existing.status,
-                _source_ref(
+                build_source_ref(
                     SourceType(existing.source_type),
                     existing.connection_id,
                     existing.external_id,
@@ -135,7 +138,7 @@ class SqlInboxRepository:
                 row.inbox_item_id,
                 False,
                 row.status,
-                _source_ref(SourceType(row.source_type), row.connection_id, row.external_id),
+                build_source_ref(SourceType(row.source_type), row.connection_id, row.external_id),
             )
 
     async def save(self, item: InboxItem, expected_version: int) -> None:
@@ -168,7 +171,9 @@ class SqlInboxRepository:
                 content.body_html,
                 content.mime_type,
                 item.occurred_at,
-                _source_ref(SourceType(item.source_type), item.connection_id, item.external_id),
+                build_source_ref(
+                    SourceType(item.source_type), item.connection_id, item.external_id
+                ),
                 item.content_hash,
                 item.deleted_at,
             )
@@ -191,7 +196,9 @@ class SqlInboxRepository:
                 item.occurred_at,
                 item.status,
                 item.deleted_at is not None,
-                _source_ref(SourceType(item.source_type), item.connection_id, item.external_id),
+                build_source_ref(
+                    SourceType(item.source_type), item.connection_id, item.external_id
+                ),
             )
 
     async def mark_deleted(self, connection_id: UUID, external_id: str, now: datetime) -> bool:
@@ -348,17 +355,6 @@ def _mask_sender(address: str) -> str:
         return "sender"
     local, domain = address.split("@", 1)
     return f"{local[:1]}***@{domain}"
-
-
-def _source_ref(source_type: SourceType, connection_id: UUID, external_id: str) -> str:
-    prefix = {
-        SourceType.MICROSOFT_MAIL: "mail",
-        SourceType.QQ_MAIL: "qq-mail",
-        SourceType.QQ_FORWARD: "qq-forward",
-        SourceType.OWNER_NOTE: "owner-note",
-        SourceType.QQ_DIRECT: "qq",
-    }[source_type]
-    return f"{prefix}:{connection_id}:{external_id}"
 
 
 async def _lock_connection(session: AsyncSession, connection_id: UUID) -> None:

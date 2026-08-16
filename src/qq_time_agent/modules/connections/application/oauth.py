@@ -1,18 +1,30 @@
 """Delegated Microsoft OAuth lifecycle with one-time state and encrypted flow storage."""
 
-import hashlib
 import secrets
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from uuid import UUID, uuid4
 
 from qq_time_agent.contracts.clock import Clock
-from qq_time_agent.modules.audit.contracts import AuditEvent, AuditPort
+from qq_time_agent.modules.audit.contracts import AuditPort
+from qq_time_agent.modules.connections.application.cleanup_ports import (
+    ConnectionJobCancellationPort,
+    ConnectionSourceDeletionPort,
+)
+from qq_time_agent.modules.connections.application.connection_audit import append_connection_audit
+from qq_time_agent.modules.connections.application.identity import AccountFingerprinter
+from qq_time_agent.modules.connections.application.microsoft_identity import bind_microsoft_identity
+from qq_time_agent.modules.connections.application.oauth_values import (
+    hash_secret,
+    mask_account,
+    safe_callback,
+)
 from qq_time_agent.modules.connections.application.ports import (
     ConnectionRepository,
     MicrosoftConnectionProvider,
     OAuthProviderError,
 )
+from qq_time_agent.modules.connections.application.views import to_connection_view
 from qq_time_agent.modules.connections.contracts import (
     ConnectionStatusView,
     ConnectionUnavailableError,
@@ -51,6 +63,9 @@ class MicrosoftConnectionService:
         vault: CredentialVault,
         provider: MicrosoftConnectionProvider,
         clock: Clock,
+        fingerprinter: AccountFingerprinter,
+        jobs: ConnectionJobCancellationPort,
+        sources: ConnectionSourceDeletionPort,
         transaction_ttl: timedelta = timedelta(minutes=10),
         audit: AuditPort | None = None,
     ) -> None:
@@ -58,15 +73,22 @@ class MicrosoftConnectionService:
         self._vault = vault
         self._provider = provider
         self._clock = clock
+        self._fingerprinter = fingerprinter
+        self._jobs = jobs
+        self._sources = sources
         self._transaction_ttl = transaction_ttl
         self._audit = audit
 
-    async def begin(self, user_id: str) -> AuthorizationStart:
-        existing = await self._repository.get_for_provider(
-            user_id, ConnectionProvider.MICROSOFT.value
+    async def begin(self, user_id: str, connection_id: UUID | None = None) -> AuthorizationStart:
+        existing = (
+            None
+            if connection_id is None
+            else await self._repository.get_for_user(connection_id, user_id)
         )
-        if existing is not None and existing.status is ConnectionStatus.ACTIVE:
-            raise ValueError("Microsoft connection is already active")
+        if existing is not None and existing.provider is not ConnectionProvider.MICROSOFT:
+            raise ValueError("connection is not Microsoft")
+        if connection_id is not None and existing is None:
+            raise LookupError("connection does not exist")
         now = self._clock.now()
         state = secrets.token_urlsafe(32)
         browser_session = secrets.token_urlsafe(32)
@@ -82,8 +104,8 @@ class MicrosoftConnectionService:
             uuid4(),
             connection.connection_id,
             user_id,
-            _hash(state),
-            _hash(browser_session),
+            hash_secret(state),
+            hash_secret(browser_session),
             flow_ref.credential_id,
             expires_at,
             now,
@@ -102,7 +124,7 @@ class MicrosoftConnectionService:
         if not state or not browser_session:
             raise OAuthSecurityError("OAuth state and browser session are required")
         transaction = await self._repository.claim_transaction(
-            _hash(state), _hash(browser_session), self._clock.now()
+            hash_secret(state), hash_secret(browser_session), self._clock.now()
         )
         if transaction is None:
             raise OAuthSecurityError("OAuth transaction is invalid, expired, or already used")
@@ -127,34 +149,49 @@ class MicrosoftConnectionService:
             raise
         if tokens.refresh_token is not None:
             await self._vault.replace(reference, tokens.refresh_token.get_secret_value())
+        await bind_microsoft_identity(self._repository, self._fingerprinter, connection, profile)
         connection.activate(
             profile.account_id,
-            _mask_account(profile.email),
+            mask_account(profile.email),
             CONNECTION_CAPABILITIES,
             reference.credential_id,
         )
         await self._save(connection)
-        return _view(connection)
+        return to_connection_view(connection)
 
-    async def disconnect(self, connection_id: UUID) -> ConnectionStatusView:
-        connection = await self._require_connection(connection_id)
+    async def disconnect(self, connection_id: UUID, user_id: str = "owner") -> ConnectionStatusView:
+        connection = await self._repository.get_for_user(connection_id, user_id)
+        if connection is None or connection.provider is not ConnectionProvider.MICROSOFT:
+            raise LookupError("connection does not exist")
+        await self._sources.block_connection_sources(connection_id)
+        await self._jobs.cancel_pending_for_connection(connection_id, self._clock.now())
         deleted = True
         if connection.credential_ref is not None:
             deleted = await self._vault.delete(CredentialRef(connection.credential_ref))
-        connection.disconnect(deleted)
+        if not deleted:
+            raise RuntimeError("Microsoft credential deletion failed")
+        connection.disconnect(True)
         await self._save(connection)
+        await self._sources.delete_connection_sources(connection_id)
         await self._audit_connection(connection, "connection-disconnected")
-        return _view(connection)
+        return to_connection_view(connection)
 
-    async def status(self, user_id: str) -> ConnectionStatusView | None:
-        connection = await self._repository.get_for_provider(
+    async def statuses(self, user_id: str) -> tuple[ConnectionStatusView, ...]:
+        values = await self._repository.list_for_provider(
             user_id, ConnectionProvider.MICROSOFT.value
         )
-        return None if connection is None else _view(connection)
+        return tuple(to_connection_view(value) for value in values)
+
+    async def status(self, user_id: str) -> ConnectionStatusView | None:
+        values = await self.statuses(user_id)
+        return next((value for value in values if value.is_default), values[0] if values else None)
 
     async def acquire_mail_access(self, connection_id: UUID) -> MailAccessGrant:
         connection = await self._require_connection(connection_id)
-        if connection.status not in {ConnectionStatus.ACTIVE, ConnectionStatus.DEGRADED}:
+        if not connection.sync_enabled or connection.status not in {
+            ConnectionStatus.ACTIVE,
+            ConnectionStatus.DEGRADED,
+        }:
             raise ConnectionUnavailableError("connection is not available for mail synchronization")
         if connection.credential_ref is None:
             raise ValueError("connection has no refresh credential")
@@ -185,7 +222,10 @@ class MicrosoftConnectionService:
 
     async def ensure_sync_available(self, connection_id: UUID) -> None:
         connection = await self._require_connection(connection_id)
-        if connection.status not in {ConnectionStatus.ACTIVE, ConnectionStatus.DEGRADED}:
+        if not connection.sync_enabled or connection.status not in {
+            ConnectionStatus.ACTIVE,
+            ConnectionStatus.DEGRADED,
+        }:
             raise ConnectionUnavailableError("connection is not available for mail synchronization")
 
     async def mark_sync_succeeded(self, connection_id: UUID, completed_at: datetime) -> None:
@@ -214,28 +254,31 @@ class MicrosoftConnectionService:
     ) -> ConnectionStatusView:
         flow = await self._vault.open(flow_ref)
         tokens = await self._provider.complete_authorization(
-            flow.reveal(self._clock.now()), _safe_callback(callback_parameters)
+            flow.reveal(self._clock.now()), safe_callback(callback_parameters)
         )
         if tokens.refresh_token is None:
             raise OAuthProviderError("Authentication")
         profile = await self._provider.get_profile(tokens.access_token.get_secret_value())
+        connection = await self._require_connection(transaction.connection_id)
+        await bind_microsoft_identity(self._repository, self._fingerprinter, connection, profile)
         refresh_ref = await self._vault.store(
             tokens.refresh_token.get_secret_value(), CredentialKind.REFRESH_TOKEN
         )
-        connection = await self._require_connection(transaction.connection_id)
         connection.activate(
             profile.account_id,
-            _mask_account(profile.email),
+            mask_account(profile.email),
             CONNECTION_CAPABILITIES,
             refresh_ref.credential_id,
         )
         try:
+            await self._sources.allow_connection_sources(connection.connection_id)
             await self._save(connection)
         except Exception:
+            await self._sources.block_connection_sources(connection.connection_id)
             await self._vault.delete(refresh_ref)
             raise
         await self._audit_connection(connection, "connection-activated")
-        return _view(connection)
+        return to_connection_view(connection)
 
     async def _require_connection(self, connection_id: UUID) -> ExternalConnection:
         connection = await self._repository.get(connection_id)
@@ -247,46 +290,8 @@ class MicrosoftConnectionService:
         await self._repository.save(connection, connection.version - 1)
 
     async def _mark_reauthorization(self, connection: ExternalConnection) -> None:
-        connection.require_reauthorization()
+        connection.require_reauthorization(self._clock.now())
         await self._save(connection)
 
     async def _audit_connection(self, connection: ExternalConnection, event_type: str) -> None:
-        if self._audit is None:
-            return
-        await self._audit.append(
-            AuditEvent(
-                event_type,
-                connection.user_id,
-                f"connection:{connection.connection_id}",
-                connection.status.value,
-                self._clock.now(),
-                {"provider": connection.provider.value},
-            )
-        )
-
-
-def _hash(value: str) -> bytes:
-    return hashlib.sha256(value.encode()).digest()
-
-
-def _mask_account(email: str | None) -> str:
-    if not email or "@" not in email:
-        return "account"
-    local, domain = email.split("@", 1)
-    return f"{local[:1]}***@{domain}"
-
-
-def _safe_callback(parameters: dict[str, str]) -> dict[str, str]:
-    allowed = {"code", "state", "error", "error_description", "error_uri"}
-    return {key: value for key, value in parameters.items() if key in allowed}
-
-
-def _view(connection: ExternalConnection) -> ConnectionStatusView:
-    return ConnectionStatusView(
-        connection.connection_id,
-        connection.provider.value,
-        connection.status.value,
-        tuple(sorted(connection.capabilities)),
-        connection.account_mask,
-        connection.last_synced_at,
-    )
+        await append_connection_audit(self._audit, self._clock, connection, event_type)

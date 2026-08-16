@@ -16,6 +16,7 @@ from qq_time_agent.adapters.outbound.ollama.embedding import OllamaEmbeddingAdap
 from qq_time_agent.adapters.outbound.persistence.database import create_database_engine
 from qq_time_agent.adapters.outbound.persistence.jobs import SqlJobQueue
 from qq_time_agent.bootstrap.logging import configure_logging
+from qq_time_agent.bootstrap.qq_notifications import build_qq_notification_services
 from qq_time_agent.bootstrap.runtime import configure_event_loop_policy
 from qq_time_agent.bootstrap.settings import load_runtime_config
 from qq_time_agent.contracts.clock import SystemClock
@@ -35,7 +36,9 @@ from qq_time_agent.modules.identity.contracts import UserPreferencesView
 from qq_time_agent.modules.identity.infrastructure.repository import (
     SqlUserPreferencesRepository,
 )
+from qq_time_agent.modules.inbox.application.asset_discovery import MailAssetDiscoveryService
 from qq_time_agent.modules.inbox.application.service import InboxService
+from qq_time_agent.modules.inbox.infrastructure.asset_repository import SqlSourceAssetRepository
 from qq_time_agent.modules.inbox.infrastructure.purge import InboxPurgeAdapter
 from qq_time_agent.modules.inbox.infrastructure.repository import SqlInboxRepository
 from qq_time_agent.modules.knowledge.infrastructure.purge import KnowledgePurgeAdapter
@@ -45,8 +48,6 @@ from qq_time_agent.modules.normalization.infrastructure.purge import Normalizati
 from qq_time_agent.modules.normalization.infrastructure.repository import (
     SqlNormalizedContentRepository,
 )
-from qq_time_agent.modules.notifications.application.service import NotificationService
-from qq_time_agent.modules.notifications.infrastructure.repository import SqlDeliveryRepository
 from qq_time_agent.modules.reminders.application.service import ReminderService
 from qq_time_agent.modules.reminders.infrastructure.repository import SqlReminderRepository
 from qq_time_agent.modules.retrieval.application.service import HybridRetrievalService
@@ -66,6 +67,7 @@ async def run_qq() -> None:
     clock = SystemClock()
     engine = create_database_engine(config.database)
     sessions = async_sessionmaker(engine, expire_on_commit=False)
+    queue = SqlJobQueue(sessions)
     deepseek = DeepSeekStructuredAdapter(config.deepseek)
     ollama = OllamaEmbeddingAdapter(config.ollama)
     inbox = InboxService(SqlInboxRepository(sessions))
@@ -84,7 +86,8 @@ async def run_qq() -> None:
         timedelta(hours=config.retention.source_deletion_hours),
         AuditService(SqlAuditRepository(sessions)),
     )
-    agenda = AgendaService(SqlAgendaRepository(sessions))
+    agenda_repository = SqlAgendaRepository(sessions)
+    agenda = AgendaService(agenda_repository)
     reminders = ReminderService(SqlReminderRepository(sessions))
     actions = ActionService(
         SqlActionRepository(sessions),
@@ -145,14 +148,21 @@ async def run_qq() -> None:
         agenda,
         agenda,
         reminders,
-        SqlJobQueue(sessions),
+        queue,
         clock,
         config.schedule.default_reminder_minutes,
         rag,
         deletion,
+        MailAssetDiscoveryService(
+            SqlSourceAssetRepository(sessions),
+            queue,
+            config.assets.raw_retention_hours,
+        ),
     )
     gateway = OfficialQqGateway(config.qq, config.owner, router, clock)
-    notifications = NotificationService(gateway, SqlDeliveryRepository(sessions), clock)
+    notifications, intent_delivery = build_qq_notification_services(
+        sessions, preferences, agenda_repository, gateway, clock
+    )
     reminder_worker = ReminderWorker(
         reminders,
         agenda,
@@ -167,6 +177,7 @@ async def run_qq() -> None:
         while True:
             await proposal_notifications.run_once()
             await reminder_worker.run_once()
+            await intent_delivery.run_once(clock.now())
             await asyncio.sleep(5)
     finally:
         gateway_task.cancel()

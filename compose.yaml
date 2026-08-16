@@ -5,12 +5,15 @@ x-app-container-environment: &app-container-environment
   DATABASE_HOST: "postgres"
   DATABASE_PORT: "5432"
   OLLAMA_BASE_URL: "http://host.docker.internal:11434"
+  ASSET_STORAGE_PATH: "/var/lib/qq-time-agent/assets"
 
 x-app-service: &app-service
   image: qq-time-agent:local
   restart: unless-stopped
   env_file: .env
   environment: *app-container-environment
+  volumes:
+    - qq_time_agent_assets:/var/lib/qq-time-agent/assets
   depends_on:
     postgres:
       condition: service_healthy
@@ -86,3 +89,4 @@ services:
 
 volumes:
   qq_time_agent_postgres:
+  qq_time_agent_assets:

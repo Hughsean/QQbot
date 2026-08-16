@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from datetime import time
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from pydantic import SecretStr
@@ -102,6 +103,17 @@ class RetentionConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class AssetConfig:
+    storage_path: Path
+    max_bytes: int
+    raw_retention_hours: int
+    max_pdf_pages: int
+    max_image_pixels: int
+    max_output_chars: int
+    processing_timeout_seconds: int
+
+
+@dataclass(frozen=True, slots=True)
 class RuntimeConfig:
     app: AppConfig
     owner: OwnerConfig
@@ -113,6 +125,7 @@ class RuntimeConfig:
     ollama: OllamaConfig
     schedule: ScheduleConfig
     retention: RetentionConfig
+    assets: AssetConfig
     credential_encryption_key: SecretStr
     mail_initial_lookback_days: int
     mail_sync_interval_seconds: int

@@ -17,6 +17,13 @@ class UserPreferencesView:
     working_weekdays: tuple[int, ...]
     default_event_minutes: int
     default_task_minutes: int
+    digest_enabled: bool = True
+    digest_local_time: time = time(8, 0)
+    conflict_notifications_enabled: bool = True
+    reauth_notifications_enabled: bool = True
+    quiet_hours_enabled: bool = True
+    quiet_start: time = time(22, 0)
+    quiet_end: time = time(7, 0)
 
     def __post_init__(self) -> None:
         if not self.user_id.strip() or not self.timezone.strip():
@@ -37,6 +44,8 @@ class UserPreferencesView:
             raise ValueError("working weekdays must use values from 0 to 6")
         if self.default_event_minutes < 1 or self.default_task_minutes < 1:
             raise ValueError("default durations must be positive")
+        if self.quiet_hours_enabled and self.quiet_start == self.quiet_end:
+            raise ValueError("quiet hours must have a non-zero window")
 
 
 class UserPreferencesPort(Protocol):

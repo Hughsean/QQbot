@@ -9,12 +9,18 @@ from sqlalchemy.sql.elements import ColumnElement
 from qq_time_agent.adapters.outbound.persistence.operations_tables import JobRow
 from qq_time_agent.modules.actions.infrastructure.tables import ActionRow
 from qq_time_agent.modules.data_lifecycle.infrastructure.tables import TombstoneRow
+from qq_time_agent.modules.notifications.contracts import NotificationMetricsPort
 from qq_time_agent.modules.reminders.infrastructure.tables import ReminderRow
 
 
 class SqlMetricsSnapshot:
-    def __init__(self, sessions: async_sessionmaker[AsyncSession]) -> None:
+    def __init__(
+        self,
+        sessions: async_sessionmaker[AsyncSession],
+        notifications: NotificationMetricsPort,
+    ) -> None:
         self._sessions = sessions
+        self._notifications = notifications
 
     async def snapshot(self) -> dict[str, float]:
         async with self._sessions() as session:
@@ -32,6 +38,7 @@ class SqlMetricsSnapshot:
             actions = tuple(
                 await session.scalars(select(ActionRow).where(ActionRow.status == "SUCCEEDED"))
             )
+        notification_metrics = await self._notifications.notification_metrics()
         created = tuple(value for value in actions if value.action_type == "CREATE_AGENDA")
         cancelled = tuple(value for value in actions if value.action_type == "CANCEL_AGENDA")
         quick_undo = _quick_undo_count(created, cancelled)
@@ -41,6 +48,10 @@ class SqlMetricsSnapshot:
             "reminders_pending": due_reminders,
             "reminders_dead_letter": dead_reminders,
             "deletions_pending": pending_deletions,
+            "notifications_pending": notification_metrics.pending,
+            "notifications_leased": notification_metrics.leased,
+            "notifications_ambiguous": notification_metrics.ambiguous,
+            "notifications_dead_letter": notification_metrics.dead_letter,
             "agenda_created_total": float(len(created)),
             "agenda_cancelled_total": float(len(cancelled)),
             "agenda_undo_rate": _ratio(len(cancelled), len(created)),

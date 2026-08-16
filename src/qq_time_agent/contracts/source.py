@@ -3,7 +3,8 @@
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
-from typing import Protocol
+from typing import Protocol, runtime_checkable
+from uuid import UUID
 
 
 class SourceType(StrEnum):
@@ -33,6 +34,16 @@ class SourceSender:
 
 
 @dataclass(frozen=True, slots=True)
+class SourceAssetDescriptor:
+    provider_asset_id: str
+    provider_locator: str
+    filename: str | None
+    content_type: str
+    declared_size: int | None
+    transfer_encoding: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class SourceEnvelope:
     source_type: SourceType
     ingress_type: IngressType
@@ -47,6 +58,25 @@ class SourceEnvelope:
     metadata: dict[str, str]
 
 
+class SourceAssetDiscoveryPort(Protocol):
+    async def discover(
+        self,
+        inbox_item_id: UUID,
+        attachments: tuple[SourceAssetDescriptor, ...],
+        now: datetime,
+    ) -> tuple[UUID, ...]: ...
+
+
 class QqIngressPort(Protocol):
     async def receive(self, envelope: SourceEnvelope, content: str) -> str | None:
         """Accept an owner-authenticated direct message and optionally return a reply."""
+
+
+@runtime_checkable
+class QqAssetIngressPort(Protocol):
+    async def receive(
+        self,
+        envelope: SourceEnvelope,
+        content: str,
+        assets: tuple[SourceAssetDescriptor, ...] = (),
+    ) -> str | None: ...

@@ -37,8 +37,12 @@ class SqlConnectionRepository:
             insert(ConnectionRow)
             .values(**values)
             .on_conflict_do_update(
-                constraint="uq_connections_user_provider",
-                set_={"status": connection.status.value, "version": connection.version},
+                index_elements=[ConnectionRow.connection_id],
+                set_={
+                    "status": connection.status.value,
+                    "version": connection.version,
+                    "sync_enabled": connection.sync_enabled,
+                },
             )
         )
         async with self._sessions.begin() as session:
@@ -80,6 +84,45 @@ class SqlConnectionRepository:
             )
             return None if row is None else _to_connection(row)
 
+    async def list_for_provider(
+        self, user_id: str, provider: str
+    ) -> tuple[ExternalConnection, ...]:
+        async with self._sessions() as session:
+            rows = await session.scalars(
+                select(ConnectionRow)
+                .where(ConnectionRow.user_id == user_id, ConnectionRow.provider == provider)
+                .order_by(
+                    ConnectionRow.is_default.desc(),
+                    ConnectionRow.status.asc(),
+                    ConnectionRow.connection_id,
+                )
+            )
+            return tuple(_to_connection(row) for row in rows)
+
+    async def get_for_user(self, connection_id: UUID, user_id: str) -> ExternalConnection | None:
+        async with self._sessions() as session:
+            row = await session.scalar(
+                select(ConnectionRow).where(
+                    ConnectionRow.connection_id == connection_id,
+                    ConnectionRow.user_id == user_id,
+                )
+            )
+            return None if row is None else _to_connection(row)
+
+    async def get_by_identity(
+        self, user_id: str, provider: str, fingerprint: str
+    ) -> ExternalConnection | None:
+        async with self._sessions() as session:
+            row = await session.scalar(
+                select(ConnectionRow).where(
+                    ConnectionRow.user_id == user_id,
+                    ConnectionRow.provider == provider,
+                    ConnectionRow.account_fingerprint == fingerprint,
+                    ConnectionRow.status != ConnectionStatus.DISCONNECTED.value,
+                )
+            )
+            return None if row is None else _to_connection(row)
+
     async def save(self, connection: ExternalConnection, expected_version: int) -> None:
         values = _connection_values(connection)
         values.pop("connection_id")
@@ -105,9 +148,15 @@ def _connection_values(connection: ExternalConnection) -> dict[str, object]:
         "status": connection.status.value,
         "provider_account_id": connection.provider_account_id,
         "account_mask": connection.account_mask,
+        "account_fingerprint": connection.account_fingerprint,
+        "display_label": connection.display_label,
+        "is_default": connection.is_default,
+        "sync_enabled": connection.sync_enabled,
         "capabilities": sorted(connection.capabilities),
         "credential_ref": connection.credential_ref,
         "last_synced_at": connection.last_synced_at,
+        "reauth_epoch": connection.reauth_epoch,
+        "reauth_required_since": connection.reauth_required_since,
         "version": connection.version,
     }
 
@@ -138,6 +187,12 @@ def _to_connection(row: ConnectionRow) -> ExternalConnection:
         credential_ref=row.credential_ref,
         last_synced_at=row.last_synced_at,
         version=row.version,
+        account_fingerprint=row.account_fingerprint,
+        display_label=row.display_label,
+        is_default=row.is_default,
+        sync_enabled=row.sync_enabled,
+        reauth_epoch=row.reauth_epoch,
+        reauth_required_since=row.reauth_required_since,
     )
 
 

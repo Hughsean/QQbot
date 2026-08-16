@@ -47,6 +47,19 @@ def decode_part(raw: bytes, content_type: str, charset: str | None, encoding: st
         return raw.decode(safe_charset, "replace")
 
 
+def decode_attachment(raw: bytes, content_type: str, encoding: str) -> bytes:
+    prefix = (
+        f"Content-Type: {content_type}\r\n"
+        f"Content-Transfer-Encoding: {encoding}\r\nMIME-Version: 1.0\r\n\r\n"
+    ).encode("ascii", "replace")
+    try:
+        parsed = BytesParser(policy=policy.default).parsebytes(prefix + raw)
+        payload = parsed.get_payload(decode=True)
+        return payload if isinstance(payload, bytes) else raw
+    except (LookupError, UnicodeError, ValueError):
+        return raw
+
+
 def dedupe_key(message_id: str | None, header: bytes, body: str) -> str:
     basis = message_id.strip().lower().encode() if message_id else header + body.encode()
     prefix = "message-id" if message_id else "fingerprint"

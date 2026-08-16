@@ -9,6 +9,7 @@ from qq_time_agent.adapters.inbound.qq.commands import QqCommandRouter
 from qq_time_agent.contracts.jobs import JobRequest
 from qq_time_agent.contracts.source import (
     IngressType,
+    SourceAssetDescriptor,
     SourceEnvelope,
     SourceSender,
     SourceType,
@@ -29,10 +30,12 @@ class Clock:
 class Inbox:
     envelopes: list[SourceEnvelope] = field(default_factory=list)
     normalized: list[UUID] = field(default_factory=list)
+    inbox_item_id: UUID = field(default_factory=uuid4)
+    created: bool = True
 
     async def ingest_qq(self, envelope: SourceEnvelope, content: str) -> IngestResult:
         self.envelopes.append(envelope)
-        return IngestResult(uuid4(), True, "RECEIVED")
+        return IngestResult(self.inbox_item_id, self.created, "RECEIVED")
 
     async def mark_normalized(self, inbox_item_id: UUID) -> None:
         self.normalized.append(inbox_item_id)
@@ -86,6 +89,21 @@ class ForbiddenScheduling:
             raise AssertionError("forwarded content reached command side effect")
 
         return fail
+
+
+@dataclass
+class Discovery:
+    values: list[tuple[UUID, tuple[SourceAssetDescriptor, ...]]] = field(default_factory=list)
+
+    async def discover(
+        self,
+        inbox_item_id: UUID,
+        attachments: tuple[SourceAssetDescriptor, ...],
+        now: datetime,
+    ) -> tuple[UUID, ...]:
+        del now
+        self.values.append((inbox_item_id, attachments))
+        return tuple(uuid4() for _ in attachments)
 
 
 @dataclass
@@ -224,3 +242,43 @@ async def test_query_uses_read_only_rag_and_renders_source() -> None:
     reply = await router.receive(_envelope("查询: 星河联系人"), "查询: 星河联系人")
     assert "答案:星河联系人" in reply and "owner-note:1" in reply
     assert inbox.envelopes == [] and queue.values == []
+
+
+@pytest.mark.asyncio
+async def test_media_caption_cannot_execute_command_and_discovers_asset() -> None:
+    inbox = Inbox()
+    queue = Queue()
+    scheduling = ForbiddenScheduling()
+    discovery = Discovery()
+    router = QqCommandRouter(
+        inbox,
+        inbox,
+        Normalization(),
+        scheduling,  # type: ignore[arg-type]
+        Forbidden(),  # type: ignore[arg-type]
+        Forbidden(),  # type: ignore[arg-type]
+        Forbidden(),  # type: ignore[arg-type]
+        Forbidden(),  # type: ignore[arg-type]
+        Forbidden(),  # type: ignore[arg-type]
+        queue,  # type: ignore[arg-type]
+        Clock(),
+        15,
+        asset_discovery=discovery,
+    )
+    descriptor = SourceAssetDescriptor(
+        "media-1",
+        "https://gchat.qpic.cn/image/opaque",
+        "screenshot.png",
+        "image/png",
+        128,
+    )
+    reply = await router.receive(_envelope("确认 deadbeef-1"), "确认 deadbeef-1", (descriptor,))
+    assert "已接收图片" in reply
+    inbox.created = False
+    duplicate_reply = await router.receive(
+        _envelope("确认 deadbeef-1"), "确认 deadbeef-1", (descriptor,)
+    )
+    assert "已接收图片" in duplicate_reply
+    assert scheduling.calls == 0
+    assert [value[0] for value in discovery.values] == [inbox.inbox_item_id] * 2
+    assert discovery.values[0][1] == discovery.values[1][1] == (descriptor,)

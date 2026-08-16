@@ -10,10 +10,12 @@ from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from qq_time_agent.contracts.source import SourceType
-from qq_time_agent.modules.inbox.infrastructure.repository import _lock_connection, _source_ref
+from qq_time_agent.modules.inbox.application.source_refs import build_source_ref
+from qq_time_agent.modules.inbox.infrastructure.repository import _lock_connection
 from qq_time_agent.modules.inbox.infrastructure.tables import (
     InboxConnectionStateRow,
     InboxItemRow,
+    InboxSourceAssetRow,
     InboxSourceDeletionRow,
     InboxSyncCursorRow,
 )
@@ -65,6 +67,20 @@ class SqlConnectionInboxDeletionRepository:
                     )
                     .on_conflict_do_nothing()
                 )
+            item_ids = select(InboxItemRow.inbox_item_id).where(
+                InboxItemRow.connection_id == connection_id
+            )
+            await session.execute(
+                update(InboxSourceAssetRow)
+                .where(
+                    InboxSourceAssetRow.inbox_item_id.in_(item_ids),
+                    InboxSourceAssetRow.deleted_at.is_(None),
+                )
+                .values(
+                    purge_at=now,
+                    version=InboxSourceAssetRow.version + 1,
+                )
+            )
             result = await session.execute(
                 update(InboxItemRow)
                 .where(
@@ -90,7 +106,7 @@ class SqlConnectionInboxDeletionRepository:
         return tuple(
             (
                 row.inbox_item_id,
-                _source_ref(SourceType(row.source_type), row.connection_id, row.external_id),
+                build_source_ref(SourceType(row.source_type), row.connection_id, row.external_id),
             )
             for row in rows
         )

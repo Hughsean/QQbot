@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Protocol
 from uuid import UUID
 
-from qq_time_agent.contracts.source import SourceEnvelope
+from qq_time_agent.contracts.source import SourceAssetDescriptor, SourceEnvelope
 from qq_time_agent.modules.credentials.contracts import CredentialHandle
 
 
@@ -15,11 +15,26 @@ class MailAddress:
     display_name: str | None = None
 
 
-@dataclass(frozen=True, slots=True)
-class MailAttachmentMetadata:
-    filename: str | None
-    content_type: str
-    declared_size: int | None
+@dataclass(frozen=True, slots=True, init=False)
+class MailAttachmentMetadata(SourceAssetDescriptor):
+    def __init__(
+        self,
+        filename: str | None,
+        content_type: str,
+        declared_size: int | None,
+        provider_asset_id: str = "",
+        provider_locator: str = "",
+        transfer_encoding: str | None = None,
+    ) -> None:
+        SourceAssetDescriptor.__init__(
+            self,
+            provider_asset_id,
+            provider_locator,
+            filename,
+            content_type,
+            declared_size,
+            transfer_encoding,
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -47,7 +62,7 @@ class MailDeltaPage:
     round_complete: bool
 
 
-class MailProvider(Protocol):
+class MailSyncProvider(Protocol):
     async def fetch_page(
         self,
         mail_credential: CredentialHandle,
@@ -59,6 +74,16 @@ class MailProvider(Protocol):
     async def fetch_content(
         self, mail_credential: CredentialHandle, account_id: str, change: MailChange
     ) -> MailChange: ...
+
+
+class MailProvider(MailSyncProvider, Protocol):
+    async def fetch_attachment(
+        self,
+        mail_credential: CredentialHandle,
+        account_id: str,
+        message_external_id: str,
+        attachment: MailAttachmentMetadata,
+    ) -> bytes: ...
 
 
 class MailProviderError(RuntimeError):

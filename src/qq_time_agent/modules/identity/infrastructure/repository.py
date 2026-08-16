@@ -27,6 +27,13 @@ class SqlUserPreferencesRepository:
             "working_weekdays": list(value.working_weekdays),
             "default_event_minutes": value.default_event_minutes,
             "default_task_minutes": value.default_task_minutes,
+            "digest_enabled": value.digest_enabled,
+            "digest_local_time": value.digest_local_time,
+            "conflict_notifications_enabled": value.conflict_notifications_enabled,
+            "reauth_notifications_enabled": value.reauth_notifications_enabled,
+            "quiet_hours_enabled": value.quiet_hours_enabled,
+            "quiet_start": value.quiet_start,
+            "quiet_end": value.quiet_end,
         }
         async with self._sessions.begin() as session:
             await session.execute(
@@ -51,4 +58,11 @@ def _view(row: UserPreferencesRow) -> UserPreferencesView:
         tuple(row.working_weekdays),
         row.default_event_minutes,
         row.default_task_minutes,
+        row.digest_enabled,
+        row.digest_local_time,
+        row.conflict_notifications_enabled,
+        row.reauth_notifications_enabled,
+        row.quiet_hours_enabled,
+        row.quiet_start,
+        row.quiet_end,
     )

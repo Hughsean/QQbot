@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker
 from qq_time_agent.adapters.outbound.persistence.database import create_database_engine
 from qq_time_agent.bootstrap.settings import load_runtime_config
 from qq_time_agent.modules.agenda.application.service import AgendaService
+from qq_time_agent.modules.agenda.application.source_lookup import AgendaSourceLookupService
 from qq_time_agent.modules.agenda.contracts import AgendaDraft
 from qq_time_agent.modules.agenda.infrastructure.repository import SqlAgendaRepository
 from qq_time_agent.modules.agenda.infrastructure.tables import AgendaEntryRow
@@ -43,12 +44,14 @@ async def test_agenda_is_idempotent_fact_source_and_busy_query_is_overlap_safe(
         start,
         start + timedelta(hours=1),
         "Asia/Shanghai",
-        ("inbox:integration",),
+        ("inbox:integration", "calendar:" + "a" * 64),
         proposal_id,
     )
     first = await service.create_entry(action_id, draft, f"agenda-test-{proposal_id}")
     second = await service.create_entry(uuid4(), draft, f"agenda-test-{proposal_id}")
     assert first == second
+    matched = await AgendaSourceLookupService(repository).find_by_source_ref("calendar:" + "a" * 64)
+    assert matched is not None and matched.agenda_entry_id == first.agenda_entry_id
     busy = await service.get_busy_intervals(
         start + timedelta(minutes=30), start + timedelta(hours=2)
     )

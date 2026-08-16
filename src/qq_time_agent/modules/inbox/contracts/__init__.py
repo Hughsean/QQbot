@@ -16,6 +16,7 @@ from qq_time_agent.modules.inbox.contracts.models import (
     MailDeltaPage,
     MailProvider,
     MailProviderError,
+    MailSyncProvider,
     MailSyncResult,
     QqInboxPort,
 )
@@ -36,6 +37,7 @@ __all__ = [
     "MailDeltaPage",
     "MailProvider",
     "MailProviderError",
+    "MailSyncProvider",
     "MailSyncResult",
     "QqInboxPort",
 ]

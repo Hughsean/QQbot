@@ -148,3 +148,39 @@ async def test_oauth_transaction_claim_is_atomic_one_time_and_session_bound(
         await session.execute(
             delete(ConnectionRow).where(ConnectionRow.connection_id == connection.connection_id)
         )
+
+
+@pytest.mark.asyncio
+async def test_same_provider_connections_are_isolated_by_identity(engine: AsyncEngine) -> None:
+    sessions = async_sessionmaker(engine, expire_on_commit=False)
+    repository = SqlConnectionRepository(sessions)
+    user_id = f"multi-{uuid4()}"
+    first = ExternalConnection.start(user_id, ConnectionProvider.QQ_MAIL)
+    second = ExternalConnection.start(user_id, ConnectionProvider.QQ_MAIL)
+    first.bind_identity("v1:" + "1" * 64, "Primary", is_default=True)
+    second.bind_identity("v1:" + "2" * 64, "Secondary", is_default=False)
+    first.activate("first@qq.com", "f***@qq.com", frozenset({"Mail.Read"}), uuid4())
+    second.activate("second@qq.com", "s***@qq.com", frozenset({"Mail.Read"}), uuid4())
+    await repository.add(first)
+    await repository.add(second)
+    try:
+        values = await repository.list_for_provider(user_id, ConnectionProvider.QQ_MAIL.value)
+        assert {value.connection_id for value in values} == {
+            first.connection_id,
+            second.connection_id,
+        }
+        default = await repository.get_for_provider(user_id, ConnectionProvider.QQ_MAIL.value)
+        assert default is not None and default.connection_id == first.connection_id
+        matched = await repository.get_by_identity(
+            user_id, ConnectionProvider.QQ_MAIL.value, second.account_fingerprint or ""
+        )
+        assert matched is not None and matched.connection_id == second.connection_id
+        owned = await repository.get_for_user(first.connection_id, user_id)
+        assert owned is not None and owned.display_label == "Primary"
+    finally:
+        async with sessions.begin() as session:
+            await session.execute(
+                delete(ConnectionRow).where(
+                    ConnectionRow.connection_id.in_((first.connection_id, second.connection_id))
+                )
+            )

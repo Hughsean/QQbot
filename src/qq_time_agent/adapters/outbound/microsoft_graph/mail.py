@@ -4,15 +4,20 @@ import asyncio
 import random
 from collections.abc import Awaitable, Callable
 from dataclasses import replace
-from datetime import UTC, datetime
+from datetime import datetime
 from urllib.parse import quote, urlparse
 
 import httpx
 
+from qq_time_agent.adapters.outbound.microsoft_graph.mail_mapping import (
+    map_attachment,
+    map_change,
+    optional_string,
+)
 from qq_time_agent.contracts.clock import Clock
 from qq_time_agent.modules.credentials.contracts import CredentialHandle
 from qq_time_agent.modules.inbox.contracts import (
-    MailAddress,
+    MailAttachmentMetadata,
     MailChange,
     MailDeltaPage,
     MailProviderError,
@@ -46,13 +51,17 @@ class MicrosoftGraphMailAdapter:
         client: httpx.AsyncClient | None = None,
         timeout_seconds: float = 20.0,
         max_attempts: int = 3,
+        max_attachment_bytes: int = 20 * 1024 * 1024,
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
         jitter: Callable[[], float] = random.random,
     ) -> None:
         self._clock = clock
         self._client = client or httpx.AsyncClient(base_url=GRAPH_ORIGIN, timeout=timeout_seconds)
         self._owns_client = client is None
+        if max_attachment_bytes < 1:
+            raise ValueError("attachment maximum bytes must be positive")
         self._max_attempts = max_attempts
+        self._max_attachment_bytes = max_attachment_bytes
         self._sleep = sleep
         self._jitter = jitter
 
@@ -73,7 +82,7 @@ class MicrosoftGraphMailAdapter:
             raw_changes = payload["value"]
             if not isinstance(raw_changes, list):
                 raise TypeError
-            changes = tuple(_map_change(item) for item in raw_changes)
+            changes = tuple(map_change(item) for item in raw_changes)
             continuation, complete = _continuation(payload)
         except (KeyError, TypeError, ValueError, AttributeError) as exc:
             raise MailProviderError("PermanentProvider") from exc
@@ -97,11 +106,65 @@ class MicrosoftGraphMailAdapter:
             body = payload["body"]
             if not isinstance(body, dict):
                 raise TypeError
-            content = _optional_string(body, "content") or ""
-            content_type = (_optional_string(body, "contentType") or "text").lower()
+            content = optional_string(body, "content") or ""
+            content_type = (optional_string(body, "contentType") or "text").lower()
         except (KeyError, TypeError, ValueError, AttributeError) as exc:
             raise MailProviderError("PermanentProvider") from exc
-        return replace(change, body=content, body_content_type=content_type)
+        attachments = (
+            await self._attachment_metadata(token, message_id) if change.has_attachments else ()
+        )
+        return replace(
+            change,
+            body=content,
+            body_content_type=content_type,
+            attachments=attachments,
+        )
+
+    async def fetch_attachment(
+        self,
+        mail_credential: CredentialHandle,
+        account_id: str,
+        message_external_id: str,
+        attachment: MailAttachmentMetadata,
+    ) -> bytes:
+        del account_id
+        if not attachment.provider_locator:
+            raise MailProviderError("PermanentProvider")
+        token = mail_credential.reveal(self._clock.now())
+        message_id = quote(message_external_id, safe="")
+        attachment_id = quote(attachment.provider_locator, safe="")
+        response = await self._get(
+            f"{GRAPH_ORIGIN}/v1.0/me/messages/{message_id}/attachments/{attachment_id}/$value",
+            token,
+            None,
+        )
+        declared = response.headers.get("Content-Length")
+        try:
+            declared_size = None if declared is None else int(declared)
+        except ValueError as exc:
+            raise MailProviderError("PermanentProvider") from exc
+        if declared_size is not None and declared_size > self._max_attachment_bytes:
+            raise MailProviderError("AssetTooLarge")
+        if not response.content or len(response.content) > self._max_attachment_bytes:
+            raise MailProviderError("AssetTooLarge")
+        return response.content
+
+    async def _attachment_metadata(
+        self, token: str, message_id: str
+    ) -> tuple[MailAttachmentMetadata, ...]:
+        response = await self._get(
+            f"{GRAPH_ORIGIN}/v1.0/me/messages/{message_id}/attachments",
+            token,
+            {"$select": "id,name,contentType,size,isInline", "$top": "100"},
+        )
+        try:
+            payload = response.json()
+            raw = payload["value"]
+            if not isinstance(raw, list) or "@odata.nextLink" in payload:
+                raise TypeError
+            return tuple(map_attachment(value) for value in raw)
+        except (KeyError, TypeError, ValueError, AttributeError) as exc:
+            raise MailProviderError("PermanentProvider") from exc
 
     async def close(self) -> None:
         if self._owns_client:
@@ -162,69 +225,6 @@ def _validate_cursor(value: str) -> None:
         raise ValueError("untrusted Graph cursor URL")
     if parsed.path not in ALLOWED_DELTA_PATHS:
         raise ValueError("unexpected Graph cursor path")
-
-
-def _map_change(value: object) -> MailChange:
-    if not isinstance(value, dict):
-        raise TypeError
-    external_id = _required_string(value, "id")
-    if "@removed" in value:
-        return MailChange(
-            external_id,
-            None,
-            None,
-            MailAddress("removed"),
-            (),
-            "",
-            "",
-            "text",
-            datetime.min.replace(tzinfo=UTC),
-            None,
-            False,
-            True,
-        )
-    sender = _address(value.get("sender"))
-    recipients_raw = value.get("toRecipients", [])
-    if not isinstance(recipients_raw, list):
-        raise TypeError
-    return MailChange(
-        external_id,
-        _optional_string(value, "conversationId"),
-        _optional_string(value, "internetMessageId"),
-        sender,
-        tuple(_address(item) for item in recipients_raw),
-        _optional_string(value, "subject") or "",
-        "",
-        "text",
-        _parse_datetime(_required_string(value, "receivedDateTime")),
-        _optional_string(value, "changeKey"),
-        bool(value.get("hasAttachments", False)),
-    )
-
-
-def _address(value: object) -> MailAddress:
-    if not isinstance(value, dict) or not isinstance(value.get("emailAddress"), dict):
-        raise TypeError
-    email = value["emailAddress"]
-    return MailAddress(_required_string(email, "address"), _optional_string(email, "name"))
-
-
-def _required_string(value: dict[object, object], key: str) -> str:
-    result = value.get(key)
-    if not isinstance(result, str) or not result:
-        raise ValueError(f"Graph field {key} is required")
-    return result
-
-
-def _optional_string(value: dict[object, object], key: str) -> str | None:
-    result = value.get(key)
-    return result if isinstance(result, str) else None
-
-
-def _parse_datetime(value: str) -> datetime:
-    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    _require_aware(parsed)
-    return parsed
 
 
 def _require_aware(value: datetime) -> None:

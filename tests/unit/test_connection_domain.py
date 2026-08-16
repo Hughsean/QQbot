@@ -36,7 +36,7 @@ def test_connection_rejects_invalid_identity_and_activation_inputs() -> None:
 
 def test_connection_reauthorization_transitions_respect_terminal_states() -> None:
     connection = ExternalConnection.start("owner", ConnectionProvider.MICROSOFT)
-    connection.require_reauthorization()
+    connection.require_reauthorization(datetime(2026, 8, 13, tzinfo=UTC))
     assert connection.status is ConnectionStatus.REAUTH_REQUIRED
     connection.restart_authorization()
     assert connection.status.value == "PENDING"
@@ -45,9 +45,25 @@ def test_connection_reauthorization_transitions_respect_terminal_states() -> Non
         connection.restart_authorization()
     connection.disconnect(True)
     version = connection.version
-    connection.require_reauthorization()
+    connection.require_reauthorization(datetime(2026, 8, 13, tzinfo=UTC))
     assert connection.status.value == "DISCONNECTED"
     assert connection.version == version
+
+
+def test_connection_identity_binding_is_stable_and_sync_is_explicit() -> None:
+    connection = ExternalConnection.start("owner", ConnectionProvider.QQ_MAIL)
+    connection.bind_identity("v1:" + "a" * 64, "Personal mail", is_default=False)
+    assert connection.display_label == "Personal mail"
+    assert not connection.is_default
+
+    with pytest.raises(ValueError, match="identity cannot change"):
+        connection.bind_identity("v1:" + "b" * 64, "Other", is_default=False)
+
+    connection.set_sync_enabled(False)
+    assert not connection.sync_enabled
+    connection.disconnect(True)
+    with pytest.raises(ValueError, match="cannot enable"):
+        connection.set_sync_enabled(True)
 
 
 def test_oauth_transaction_is_session_bound_expiring_and_one_time() -> None:

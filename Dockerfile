@@ -15,7 +15,12 @@ ENV PYTHONUNBUFFERED=1 \
     TZ=Asia/Shanghai \
     PATH="/app/.venv/bin:$PATH"
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates tzdata \
+    && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        libgl1 \
+        libglib2.0-0 \
+        libxcb1 \
+        tzdata \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --system --gid 10001 app \
     && useradd --system --uid 10001 --gid app --create-home app

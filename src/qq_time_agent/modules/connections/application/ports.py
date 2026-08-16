@@ -63,4 +63,16 @@ class ConnectionRepository(Protocol):
 
     async def get_for_provider(self, user_id: str, provider: str) -> ExternalConnection | None: ...
 
+    async def list_for_provider(
+        self, user_id: str, provider: str
+    ) -> tuple[ExternalConnection, ...]: ...
+
+    async def get_for_user(
+        self, connection_id: UUID, user_id: str
+    ) -> ExternalConnection | None: ...
+
+    async def get_by_identity(
+        self, user_id: str, provider: str, fingerprint: str
+    ) -> ExternalConnection | None: ...
+
     async def save(self, connection: ExternalConnection, expected_version: int) -> None: ...
