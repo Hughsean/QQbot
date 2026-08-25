@@ -131,10 +131,10 @@ def test_disconnect_requires_explicit_confirmation() -> None:
 
 def test_owner_start_bootstraps_qq_mail_destination_without_url_secret() -> None:
     value, _, _ = client()
-    response = value.get("/qq-mail/owner-start")
-    assert response.status_code == 200
-    assert 'name="next" value="/qq-mail/connect"' in response.text
-    assert "session=" not in response.text
+    response = value.get("/qq-mail/owner-start", follow_redirects=False)
+    assert response.status_code == 303
+    assert response.headers["location"] == "/qq-mail/connect"
+    assert "qq_time_agent_owner" in response.cookies
     assert response.headers["Cache-Control"] == "no-store"
 
 

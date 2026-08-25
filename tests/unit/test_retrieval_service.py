@@ -6,7 +6,10 @@ import pytest
 
 from qq_time_agent.modules.embeddings.contracts import EmbeddingBatch, EmbeddingProviderHealth
 from qq_time_agent.modules.knowledge.contracts import KnowledgeSearchCandidate
-from qq_time_agent.modules.retrieval.application.service import HybridRetrievalService
+from qq_time_agent.modules.retrieval.application.service import (
+    HybridRetrievalService,
+    optimize_query,
+)
 from qq_time_agent.modules.retrieval.contracts import RetrievalFilters
 
 
@@ -47,6 +50,11 @@ def _candidate(name: str, vector: float | None, lexical: float | None) -> Knowle
         vector,
         lexical,
     )
+
+
+def test_query_optimization_removes_duplicate_terms_and_bounds_length() -> None:
+    assert optimize_query('  星河   报价 星河 "截止 周五"  ') == '星河 报价 "截止 周五"'
+    assert len(optimize_query("x" * 100, 20)) <= 20
 
 
 @pytest.mark.asyncio

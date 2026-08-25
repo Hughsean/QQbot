@@ -92,6 +92,19 @@ class Reminder:
         self.failure_class = None
         self.occurrence += 1
 
+    def reschedule(self, due_at: datetime, now: datetime) -> None:
+        """Move a reminder, creating a new delivery occurrence when needed."""
+        _aware(due_at)
+        _aware(now)
+        if self.status in {ReminderStatus.CANCELLED, ReminderStatus.DEAD_LETTER}:
+            raise ValueError("terminal Reminder cannot be rescheduled")
+        self.status = ReminderStatus.SCHEDULED
+        self.due_at = due_at
+        self.delivery_ref = None
+        self.failure_class = None
+        self._clear_lease()
+        self.occurrence += 1
+
     def _require_lease(self, worker_id: str) -> None:
         if self.status is not ReminderStatus.LEASED or self.lease_owner != worker_id:
             raise ValueError("Reminder lease is stale or not owned")

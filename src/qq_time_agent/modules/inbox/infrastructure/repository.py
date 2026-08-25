@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from qq_time_agent.contracts.source import IngressType, SourceType, TrustLevel
 from qq_time_agent.modules.inbox.application.source_refs import build_source_ref
 from qq_time_agent.modules.inbox.contracts import (
+    ConversationContextItem,
     InboxContentView,
     InboxSourceDeletedError,
     InboxSourceView,
@@ -186,19 +187,41 @@ class SqlInboxRepository:
             content = await session.get(InboxRawContentRow, item.raw_content_ref)
             if content is None:
                 raise RuntimeError("Inbox raw content is missing")
-            return InboxSourceView(
-                item.inbox_item_id,
-                item.source_type,
-                item.external_id,
-                item.thread_id,
-                _mask_sender(item.sender_id),
-                content.subject,
-                item.occurred_at,
-                item.status,
-                item.deleted_at is not None,
-                build_source_ref(
-                    SourceType(item.source_type), item.connection_id, item.external_id
-                ),
+            return _source_view(item, content)
+
+    async def list_recent_conversation(
+        self, user_id: str, before: datetime, exclude_id: UUID, limit: int = 8
+    ) -> tuple[ConversationContextItem, ...]:
+        if limit < 1 or limit > 20:
+            raise ValueError("conversation context limit must be between 1 and 20")
+        async with self._sessions() as session:
+            rows = await session.execute(
+                select(InboxItemRow, InboxRawContentRow)
+                .join(
+                    InboxRawContentRow,
+                    InboxRawContentRow.raw_content_id == InboxItemRow.raw_content_ref,
+                )
+                .where(
+                    InboxItemRow.user_id == user_id,
+                    InboxItemRow.inbox_item_id != exclude_id,
+                    InboxItemRow.source_type == SourceType.QQ_DIRECT.value,
+                    InboxItemRow.received_at < before,
+                    InboxItemRow.deleted_at.is_(None),
+                )
+                .order_by(InboxItemRow.received_at.desc(), InboxItemRow.inbox_item_id.desc())
+                .limit(limit)
+            )
+            return tuple(
+                ConversationContextItem(
+                    item.source_type,
+                    item.occurred_at,
+                    raw.subject,
+                    raw.body_text,
+                    build_source_ref(
+                        SourceType(item.source_type), item.connection_id, item.external_id
+                    ),
+                )
+                for item, raw in rows
             )
 
     async def mark_deleted(self, connection_id: UUID, external_id: str, now: datetime) -> bool:
@@ -274,6 +297,23 @@ class SqlInboxRepository:
             )
             return tuple(values)
 
+    async def list_needs_review(self, limit: int) -> tuple[InboxSourceView, ...]:
+        async with self._sessions() as session:
+            rows = await session.execute(
+                select(InboxItemRow, InboxRawContentRow)
+                .join(
+                    InboxRawContentRow,
+                    InboxRawContentRow.raw_content_id == InboxItemRow.raw_content_ref,
+                )
+                .where(
+                    InboxItemRow.status == InboxStatus.NEEDS_REVIEW.value,
+                    InboxItemRow.deleted_at.is_(None),
+                )
+                .order_by(InboxItemRow.received_at, InboxItemRow.inbox_item_id)
+                .limit(limit)
+            )
+            return tuple(_source_view(item, raw) for item, raw in rows)
+
     async def list_knowledge_source_ids(
         self, limit: int, after_id: UUID | None = None
     ) -> tuple[UUID, ...]:
@@ -321,6 +361,21 @@ def _item_values(item: InboxItem) -> dict[str, object]:
         "retry_count": item.retry_count,
         "version": item.version,
     }
+
+
+def _source_view(item: InboxItemRow, content: InboxRawContentRow) -> InboxSourceView:
+    return InboxSourceView(
+        item.inbox_item_id,
+        item.source_type,
+        item.external_id,
+        item.thread_id,
+        _mask_sender(item.sender_id),
+        content.subject,
+        item.occurred_at,
+        item.status,
+        item.deleted_at is not None,
+        build_source_ref(SourceType(item.source_type), item.connection_id, item.external_id),
+    )
 
 
 def _to_item(row: InboxItemRow) -> InboxItem:

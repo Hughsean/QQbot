@@ -36,6 +36,8 @@ QQ Time Agent 是一个仅供项目所有者本人使用、以 QQ 为主要交�
 | [17-local-oauth-migration-report.md](17-local-oauth-migration-report.md) | 本机公共客户端迁移、腾讯云清理与控制台验证证据 |
 | [18-qq-mail-imap-verification-report.md](18-qq-mail-imap-verification-report.md) | QQ 邮箱 IMAP 扩展的验证证据与试用步骤 |
 | [19-containerization-verification-report.md](19-containerization-verification-report.md) | Python 应用容器化部署的验证证据、事件恢复与剩余风险 |
+| [20-agent-context-and-rag-upgrade.md](20-agent-context-and-rag-upgrade.md) | 会话上下文、通用回复、RAG 工具和提醒更新契约 |
+| [21-agent-harness-and-calendar-system.md](21-agent-harness-and-calendar-system.md) | Agent loop、日程系统工具边界和自动更新策略 |
 | [adr/](adr/) | 已接受的关键架构决策 |
 
 ## 决策优先级
@@ -65,7 +67,7 @@ QQ Time Agent 是一个仅供项目所有者本人使用、以 QQ 为主要交�
 
 ## 当前已确定的运行条件
 
-- Agent HTTP 入口：仅 Windows 本机 `http://127.0.0.1:8000`，不提供公网入口
+- Agent HTTP 入口：仅生产主机 `http://127.0.0.1:8000`，不提供公网入口
 - 腾讯云职责：仅托管 `hughsean.online` / `www.hughsean.online` 静态站点和 SSH 管理，不代理 Agent
 - 邮箱连接器：Microsoft Graph `Mail.Read` 与单一所有者 QQ 邮箱只读 IMAP
 - Microsoft OAuth 客户端：移动和桌面公共客户端，Authorization Code + PKCE，不使用客户端密码
@@ -73,14 +75,14 @@ QQ Time Agent 是一个仅供项目所有者本人使用、以 QQ 为主要交�
 - 开发语言：Python 3.12（`qq-botpy 1.2.1` 在 Python 3.14 客户端初始化失败，已按兼容策略降级）
 - 项目与依赖管理：uv、项目内 `.venv`（开发）、提交 `uv.lock`
 - 部署：容器模式（ADR-0012），Docker Compose 承载 PostgreSQL + pgvector 与 Web/Worker/QQ
-  容器，`APP_CONTAINER` 精确值门禁；Ollama 保持主机回环监听
+  容器，`APP_CONTAINER` 精确值门禁；Ollama 与应用同在 Compose 私有网络
 - Agent 编排：LangGraph，确定性流程为主、受限 Agent 节点为辅
 - QQ 接入：QQ 开放平台官方 Python SDK `qq-botpy`
 - AI Provider：DeepSeek API，通过独立适配器和 `.env` 注入配置
 - 日程存储：项目内部 PostgreSQL，不接入外部日历 Provider
 - 用户范围：仅项目所有者本人，拒绝其他 QQ 身份，不设计多租户
 - 提醒出口：QQ 官方 Bot 主动消息
-- RAG：Windows 生产主机 Ollama `qwen3-embedding:4b` + Docker PostgreSQL `pgvector`，混合检索
+- RAG：Docker Ollama `qwen3-embedding:4b` + Docker PostgreSQL `pgvector`，混合检索
 - 数据保留：日程/任务/笔记随用户删除，邮件与 QQ/RAG 来源 365 天，分层清理策略见 ADR-0009
 - 当前阶段：阶段 1 已通过本地基础设施、Ollama 与真实 QQ 沙箱门禁；阶段 2 已通过
   Microsoft 真实连接、refresh、Graph 账号读取、明确确认断开和凭据删除验证；阶段 3
@@ -94,4 +96,5 @@ QQ Time Agent 是一个仅供项目所有者本人使用、以 QQ 为主要交�
   分层保留、追加式审计、tombstone 恢复重放、指标、隔离备份恢复演练与容器运维制品。
   MVP 后已按 ADR-0010 移除 Agent 公网入口和 SSH 反向隧道依赖；阶段 9 按 ADR-0011 扩展
   QQ 邮箱只读 IMAP，仍复用统一 Inbox/Understanding/RAG 与删除门禁。阶段 10 已按 ADR-0013
-  启动统一内容资产与多连接基础实施；Gmail 保持关闭。尚未执行生产部署
+  启动统一内容资产与多连接基础实施；Gmail 保持关闭。当前目标生产部署为 Ubuntu Server
+  Docker Compose，Ollama 与应用同栈运行；尚未执行目标主机生产部署

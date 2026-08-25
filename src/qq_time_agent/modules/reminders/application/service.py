@@ -44,6 +44,17 @@ class ReminderService:
         await self._repository.save(value)
         return _view(value)
 
+    async def reschedule(
+        self, reminder_id: UUID, due_at: datetime, now: datetime
+    ) -> ReminderView:
+        value = await self._require(reminder_id)
+        value.reschedule(due_at, now)
+        await self._repository.save(value)
+        return _view(value)
+
+    async def list_for_entry(self, entry_id: UUID) -> tuple[ReminderView, ...]:
+        return tuple(_view(value) for value in await self._repository.list_for_entry(entry_id))
+
     async def lease_due(
         self, now: datetime, worker_id: str, limit: int, lease_duration: timedelta
     ) -> tuple[ReminderLease, ...]:

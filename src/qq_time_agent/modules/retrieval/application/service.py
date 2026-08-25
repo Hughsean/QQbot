@@ -1,5 +1,6 @@
 """Filtered vector plus lexical retrieval with deterministic weighted RRF."""
 
+import re
 from dataclasses import replace
 
 from qq_time_agent.modules.embeddings.contracts import EmbeddingPort
@@ -11,6 +12,7 @@ from qq_time_agent.modules.knowledge.contracts import (
 from qq_time_agent.modules.retrieval.contracts import RetrievalFilters, RetrievedChunk
 
 RRF_K = 60
+_TOKEN_PATTERN = re.compile(r'"[^"\n]+"|“[^”\n]+”|[\w\u4e00-\u9fff]+', re.UNICODE)
 
 
 class HybridRetrievalService:
@@ -38,7 +40,10 @@ class HybridRetrievalService:
         self, query: str, filters: RetrievalFilters, limit: int
     ) -> tuple[RetrievedChunk, ...]:
         _validate(query, filters, limit)
-        batch = await self._embeddings.embed((query,), self._model_id, self._dimensions)
+        optimized_query = optimize_query(query)
+        batch = await self._embeddings.embed(
+            (optimized_query,), self._model_id, self._dimensions
+        )
         if batch.model_id != self._model_id or batch.dimensions != self._dimensions:
             raise ValueError("Embedding result does not match active Retrieval index")
         vector = await self._knowledge.search_vector(
@@ -55,7 +60,7 @@ class HybridRetrievalService:
             self._candidate_limit,
         )
         lexical = await self._knowledge.search_lexical(
-            query,
+            optimized_query,
             build_index_version(
                 self._index_version, batch.model_id, batch.model_digest, batch.dimensions
             ),
@@ -92,7 +97,35 @@ def _fuse(
                 ),
                 fusion_score=base.fusion_score + weight / (RRF_K + rank),
             )
-    return tuple(sorted(values.values(), key=lambda item: (-item.fusion_score, str(item.chunk_id))))
+    return tuple(
+        sorted(
+            values.values(),
+            key=lambda item: (
+                -item.fusion_score,
+                -item.occurred_at.timestamp(),
+                str(item.chunk_id),
+            ),
+        )
+    )
+
+
+def optimize_query(query: str, max_chars: int = 6000) -> str:
+    """Normalize whitespace and remove repeated lexical terms deterministically."""
+    if max_chars < 1:
+        raise ValueError("query maximum length must be positive")
+    value = " ".join(query.strip().split())
+    if not value:
+        return ""
+    terms: list[str] = []
+    seen: set[str] = set()
+    for term in _TOKEN_PATTERN.findall(value):
+        key = term.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        terms.append(term)
+    optimized = " ".join(terms)
+    return optimized[:max_chars]
 
 
 def _result(value: KnowledgeSearchCandidate) -> RetrievedChunk:

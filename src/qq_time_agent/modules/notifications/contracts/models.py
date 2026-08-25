@@ -39,6 +39,10 @@ class NotificationMetricsPort(Protocol):
 
 
 class NotificationPort(Protocol):
+    async def send_clarification(
+        self, user_id: str, subject_key: str, content: str
+    ) -> DeliveryRef: ...
+
     async def send_confirmation(
         self, user_id: str, proposal: SchedulingProposalView
     ) -> DeliveryRef: ...

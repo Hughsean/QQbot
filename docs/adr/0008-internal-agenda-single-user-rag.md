@@ -12,7 +12,7 @@
 - Agenda 模块以 PostgreSQL 作为权威日程事实源，不接入 Microsoft、Google 或 CalDAV 日历。
 - Identity 只允许 `.env` 配置的所有者 QQ 身份，不设计租户、注册和公开发布。
 - Reminder 使用持久化数据库任务和幂等 QQ 主动消息。
-- RAG 使用 Windows 本机 Ollama `qwen3-embedding:4b` 生成 1024 维向量，Docker PostgreSQL `pgvector` 保存并进行 cosine/混合检索。
+- RAG 使用 Docker Ollama `qwen3-embedding:4b` 生成 1024 维向量，Docker PostgreSQL `pgvector` 保存并进行 cosine/混合检索。
 - DeepSeek 只负责生成式理解与回答，不负责 embedding；RAG 只提供带来源的只读背景。
 
 ## 结果

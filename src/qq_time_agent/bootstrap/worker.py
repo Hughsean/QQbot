@@ -75,6 +75,7 @@ from qq_time_agent.modules.normalization.infrastructure.purge import Normalizati
 from qq_time_agent.modules.normalization.infrastructure.repository import (
     SqlNormalizedContentRepository,
 )
+from qq_time_agent.modules.retrieval.application.service import HybridRetrievalService
 from qq_time_agent.modules.scheduling.application.service import SchedulingService
 from qq_time_agent.modules.scheduling.infrastructure.purge import SchedulingPurgeAdapter
 from qq_time_agent.modules.scheduling.infrastructure.repository import SqlProposalRepository
@@ -172,6 +173,16 @@ def build_worker() -> tuple[JobRunner, AsyncEngine, tuple[AsyncClosable, ...]]:
         config.ollama.dimensions,
         config.ollama.index_version,
     )
+    retrieval = HybridRetrievalService(
+        knowledge_repository,
+        ollama,
+        config.ollama.model,
+        config.ollama.dimensions,
+        config.ollama.index_version,
+        config.rag_vector_weight,
+        config.rag_lexical_weight,
+        config.rag_retrieval_limit,
+    )
     microsoft_sync = MailSyncService(
         connections,
         inbox,
@@ -208,6 +219,8 @@ def build_worker() -> tuple[JobRunner, AsyncEngine, tuple[AsyncClosable, ...]]:
             "owner",
             config.schedule.default_item_minutes,
         ),
+        retrieval=retrieval,
+        conversation=inbox,
     )
     workflow = UnderstandingWorkflow(
         understanding, inbox, SqlWorkflowCheckpointRepository(sessions), inbox_repository

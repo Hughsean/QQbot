@@ -65,3 +65,7 @@ class StructuredModelPort(Protocol):
 
 class RagAnswerPort(Protocol):
     async def answer(self, question: str) -> GroundedAnswer: ...
+
+
+class GeneralAnswerPort(Protocol):
+    async def answer_general(self, question: str) -> GroundedAnswer: ...

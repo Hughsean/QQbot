@@ -31,7 +31,7 @@ def test_settings_container_mode_accepts_exact_compose_values() -> None:
     values["app_container"] = True
     values["app_listen_host"] = CONTAINER_BIND_HOST
     values["database_host"] = "postgres"
-    values["ollama_base_url"] = "http://host.docker.internal:11434"
+    values["ollama_base_url"] = "http://ollama:11434"
     values["asset_storage_path"] = "/var/lib/qq-time-agent/assets"
     settings = EnvironmentSettings.model_validate(values)
     assert settings.app_listen_host == CONTAINER_BIND_HOST
@@ -43,7 +43,7 @@ def test_settings_container_mode_rejects_non_zero_bind() -> None:
     values["app_container"] = True
     values["app_listen_host"] = "127.0.0.1"
     values["database_host"] = "postgres"
-    values["ollama_base_url"] = "http://host.docker.internal:11434"
+    values["ollama_base_url"] = "http://ollama:11434"
     with raises(ValidationError, match="APP_CONTAINER requires APP_LISTEN_HOST"):
         EnvironmentSettings.model_validate(values)
 
@@ -53,7 +53,7 @@ def test_settings_container_mode_rejects_non_compose_database_host() -> None:
     values["app_container"] = True
     values["app_listen_host"] = CONTAINER_BIND_HOST
     values["database_host"] = "192.168.1.20"
-    values["ollama_base_url"] = "http://host.docker.internal:11434"
+    values["ollama_base_url"] = "http://ollama:11434"
     with raises(ValidationError, match="APP_CONTAINER requires DATABASE_HOST"):
         EnvironmentSettings.model_validate(values)
 
@@ -110,7 +110,7 @@ def test_settings_container_mode_rejects_unmounted_asset_path() -> None:
     values["app_container"] = True
     values["app_listen_host"] = CONTAINER_BIND_HOST
     values["database_host"] = "postgres"
-    values["ollama_base_url"] = "http://host.docker.internal:11434"
+    values["ollama_base_url"] = "http://ollama:11434"
     values["asset_storage_path"] = "/srv/assets"
     with raises(ValidationError, match="APP_CONTAINER requires ASSET_STORAGE_PATH"):
         EnvironmentSettings.model_validate(values)

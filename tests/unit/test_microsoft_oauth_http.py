@@ -112,20 +112,14 @@ def test_disconnect_requires_owner_csrf_and_explicit_confirmation() -> None:
     assert response.json()["status"] == "DISCONNECTED"
 
 
-def test_owner_bootstrap_page_is_local_only_and_never_places_session_in_url() -> None:
+def test_owner_bootstrap_redirects_without_url_secret() -> None:
     client, _, _ = _client()
     public_client = TestClient(client.app, base_url="https://agent.example.test")
     assert public_client.get("/oauth/microsoft/owner-start").status_code == 404
-    response = client.get("/oauth/microsoft/owner-start")
-    assert response.status_code == 200
-    assert 'method="post"' in response.text
-    assert 'action="/api/v1/owner/session"' in response.text
-    assert "session=" not in response.text
-    assert "document.forms[0].submit()" in response.text
-    csp = response.headers["Content-Security-Policy"]
-    assert "script-src 'nonce-" in csp
-    assert "form-action 'self'" in csp
-    assert "form-action *" not in csp
+    response = client.get("/oauth/microsoft/owner-start", follow_redirects=False)
+    assert response.status_code == 303
+    assert response.headers["location"] == "/oauth/microsoft/start"
+    assert "qq_time_agent_owner" in response.cookies
     assert response.headers["Cache-Control"] == "no-store"
 
 

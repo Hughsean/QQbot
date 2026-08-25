@@ -20,11 +20,11 @@
 - Python 3.12 与 QQ 官方 SDK 的沙箱网关、C2C 收发和重连测试；已记录 Python 3.14 Client 初始化不兼容。
 - Web/Worker 进程和健康检查。
 - PostgreSQL + pgvector、数据库迁移、Outbox/Job 基础设施。
-- Windows 本机 Ollama `qwen3-embedding:4b` 健康检查、冷/热启动和 1024 维契约测试。
+- Docker Ollama `qwen3-embedding:4b` 健康检查、冷/热启动和 1024 维契约测试。
 - Data Lifecycle、Tombstone、模块级清理端口和保留策略配置骨架。
 - 架构边界测试。
 
-完成标准：Windows 本机 `http://127.0.0.1:8000/health/ready` 正常，所有服务只监听回环或使用出站连接，未接入任何真实用户数据。
+完成标准：生产主机 `http://127.0.0.1:8000/health/ready` 正常，所有服务只监听回环或使用出站连接，未接入任何真实用户数据。
 
 ## 阶段 2：Microsoft 账号连接
 
@@ -101,6 +101,11 @@
 完成标准：安全检查通过，错误创建和撤销率处于可接受范围，再决定是否扩展 Gmail、QQ 邮箱和附件。
 
 ## 实施顺序约束
+
+当前 Agent harness 架构决策见 `docs/21-agent-harness-and-calendar-system.md`：所有者的合规日程
+更新默认自动执行并返回结果，不再要求用户输入确认码；歧义、冲突、过期版本和策略不允许的操作
+仍由 Calendar System 拒绝并交给 Agent 追问。该决策替代早期“所有日程写入必须用户二次确认”的
+交互要求，但不削弱所有者鉴权、版本校验、幂等和审计门禁。
 
 - 不得在 Credential Vault 完成前保存真实 refresh token。
 - 不得在 Inbox 去重完成前启用周期性邮件同步。

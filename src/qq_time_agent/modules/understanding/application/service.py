@@ -12,11 +12,16 @@ from qq_time_agent.modules.ai_gateway.contracts import (
     ModelRoute,
     StructuredModelPort,
 )
-from qq_time_agent.modules.inbox.contracts import InboxSourcePort, InboxSourceView
+from qq_time_agent.modules.inbox.contracts import (
+    ConversationContextPort,
+    InboxSourcePort,
+    InboxSourceView,
+)
 from qq_time_agent.modules.normalization.contracts import (
     NormalizedContentQueryPort,
     NormalizedContentView,
 )
+from qq_time_agent.modules.retrieval.contracts import RetrievalFilters, RetrievalPort
 from qq_time_agent.modules.understanding.application.ports import CandidateRepository
 from qq_time_agent.modules.understanding.application.prompts import (
     classification_request,
@@ -57,12 +62,16 @@ class UnderstandingService:
         model: StructuredModelPort,
         repository: CandidateRepository,
         temporal: TemporalContext,
+        retrieval: RetrievalPort | None = None,
+        conversation: ConversationContextPort | None = None,
     ) -> None:
         self._content = content
         self._sources = sources
         self._model = model
         self._repository = repository
         self._temporal = temporal
+        self._retrieval = retrieval
+        self._conversation = conversation
 
     async def understand(self, inbox_item_id: UUID) -> UnderstandingResult:
         classification = await self.classify(inbox_item_id)
@@ -90,7 +99,9 @@ class UnderstandingService:
             )
         content, source = await self._load_content(inbox_item_id)
         try:
-            classification = await self._classify(content.subject, content.body, source.occurred_at)
+            classification = await self._classify(
+                content.subject, content.body, source.occurred_at, inbox_item_id
+            )
         except (ValidationError, ModelFailure):
             return _classification_review(inbox_item_id, 0, "model_unavailable_or_invalid")
         if classification.kind == "IRRELEVANT":
@@ -137,7 +148,7 @@ class UnderstandingService:
         )
         try:
             extracted = await self._extract(
-                content.subject, content.body, source.occurred_at, route
+                content.subject, content.body, source.occurred_at, route, inbox_item_id
             )
         except (ValidationError, ModelFailure):
             return ExtractionDecision(None, classification_confidence, "invalid_model_output", 1)
@@ -173,8 +184,9 @@ class UnderstandingService:
         return content, source
 
     async def _classify(
-        self, subject: str, body: str, reference_time: datetime
+        self, subject: str, body: str, reference_time: datetime, inbox_item_id: UUID
     ) -> ClassificationOutput:
+        context = await self._context(subject, body, reference_time, inbox_item_id)
         response = await self._model.invoke(
             classification_request(
                 subject,
@@ -182,13 +194,20 @@ class UnderstandingService:
                 reference_time,
                 self._temporal.timezone,
                 _alias(self._temporal.user_id),
+                context,
             )
         )
         return ClassificationOutput.model_validate(response.output)
 
     async def _extract(
-        self, subject: str, body: str, reference_time: datetime, route: ModelRoute
+        self,
+        subject: str,
+        body: str,
+        reference_time: datetime,
+        route: ModelRoute,
+        inbox_item_id: UUID,
     ) -> ExtractionOutput:
+        context = await self._context(subject, body, reference_time, inbox_item_id)
         response = await self._model.invoke(
             extraction_request(
                 subject,
@@ -197,9 +216,35 @@ class UnderstandingService:
                 self._temporal.timezone,
                 _alias(self._temporal.user_id),
                 route,
+                context,
             )
         )
         return ExtractionOutput.model_validate(response.output)
+
+    async def _context(
+        self, subject: str, body: str, reference_time: datetime, inbox_item_id: UUID
+    ) -> str:
+        blocks: list[str] = []
+        if self._conversation is not None:
+            recent = await self._conversation.list_recent_conversation(
+                self._temporal.user_id, reference_time, inbox_item_id
+            )
+            blocks.extend(
+                f"[conversation] {item.occurred_at.isoformat()} {item.source_ref}\n"
+                f"{item.subject}\n{item.body[:1800]}"
+                for item in recent
+            )
+        if self._retrieval is not None:
+            query = f"{subject}\n{body}"[:6000]
+            chunks = await self._retrieval.retrieve(query, RetrievalFilters(), 5)
+            blocks.extend(
+                (
+                    f"[knowledge] {item.occurred_at.isoformat()} {item.source_ref}\n"
+                    f"{item.content[:1800]}"
+                )
+                for item in chunks
+            )
+        return "\n\n".join(blocks)[:12000]
 
 
 def _candidate(

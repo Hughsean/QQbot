@@ -1,6 +1,8 @@
 """Public Inbox contracts."""
 
 from qq_time_agent.modules.inbox.contracts.models import (
+    ConversationContextItem,
+    ConversationContextPort,
     InboxContentPort,
     InboxContentView,
     InboxKnowledgeQueryPort,
@@ -22,6 +24,8 @@ from qq_time_agent.modules.inbox.contracts.models import (
 )
 
 __all__ = [
+    "ConversationContextItem",
+    "ConversationContextPort",
     "InboxContentPort",
     "InboxContentView",
     "InboxKnowledgeQueryPort",

@@ -29,13 +29,14 @@ def classification_request(
     occurred_at: datetime,
     timezone: str,
     user_alias: str,
+    context: str = "",
 ) -> StructuredRequest:
     return StructuredRequest(
         "understanding.classify",
         PROMPT_VERSION,
         ModelRoute.FAST,
         CLASSIFICATION_SYSTEM,
-        _data(subject, body, occurred_at, timezone),
+        _data(subject, body, occurred_at, timezone, context),
         user_alias,
         500,
     )
@@ -48,23 +49,27 @@ def extraction_request(
     timezone: str,
     user_alias: str,
     route: ModelRoute,
+    context: str = "",
 ) -> StructuredRequest:
     return StructuredRequest(
         "understanding.extract",
         PROMPT_VERSION,
         route,
         EXTRACTION_SYSTEM,
-        _data(subject, body, occurred_at, timezone),
+        _data(subject, body, occurred_at, timezone, context),
         user_alias,
         1200,
     )
 
 
-def _data(subject: str, body: str, occurred_at: datetime, timezone: str) -> str:
+def _data(subject: str, body: str, occurred_at: datetime, timezone: str, context: str) -> str:
     value = {
         "reference_time": occurred_at.isoformat(),
         "user_timezone": timezone,
         "subject": subject[:2000],
         "body": body[:20000],
     }
-    return "<EXTERNAL_DATA>\n" + json.dumps(value, ensure_ascii=False) + "\n</EXTERNAL_DATA>"
+    payload = "<EXTERNAL_DATA>\n" + json.dumps(value, ensure_ascii=False) + "\n</EXTERNAL_DATA>"
+    if not context.strip():
+        return payload
+    return payload + "\n<RELATED_CONTEXT_T2>\n" + context[:12000] + "\n</RELATED_CONTEXT_T2>"

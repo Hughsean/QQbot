@@ -2,6 +2,7 @@
 
 from qq_time_agent.modules.ai_gateway.contracts.models import (
     AnswerCitation,
+    GeneralAnswerPort,
     GroundedAnswer,
     ModelFailure,
     ModelRoute,
@@ -13,6 +14,7 @@ from qq_time_agent.modules.ai_gateway.contracts.models import (
 
 __all__ = [
     "AnswerCitation",
+    "GeneralAnswerPort",
     "GroundedAnswer",
     "ModelFailure",
     "ModelRoute",

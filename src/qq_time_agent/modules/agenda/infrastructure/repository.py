@@ -38,6 +38,18 @@ class SqlAgendaRepository:
             row = await session.get(AgendaEntryRow, entry_id)
             return None if row is None else _to_entry(row)
 
+    async def find_active_by_title(self, title: str) -> tuple[AgendaEntry, ...]:
+        async with self._sessions() as session:
+            rows = await session.scalars(
+                select(AgendaEntryRow)
+                .where(
+                    AgendaEntryRow.status == AgendaStatus.ACTIVE.value,
+                    AgendaEntryRow.title == title,
+                )
+                .order_by(AgendaEntryRow.starts_at, AgendaEntryRow.agenda_entry_id)
+            )
+            return tuple(_to_entry(row) for row in rows)
+
     async def busy_between(
         self, range_start: datetime, range_end: datetime
     ) -> tuple[AgendaEntry, ...]:

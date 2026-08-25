@@ -7,6 +7,7 @@ from uuid import NAMESPACE_URL, UUID, uuid5
 from qq_time_agent.contracts.source import IngressType, SourceEnvelope, SourceType, TrustLevel
 from qq_time_agent.modules.inbox.application.ports import InboxRepository
 from qq_time_agent.modules.inbox.contracts import (
+    ConversationContextItem,
     InboxContentView,
     InboxSourceView,
     IngestResult,
@@ -141,10 +142,20 @@ class InboxService:
     async def source(self, inbox_item_id: UUID) -> InboxSourceView | None:
         return await self._repository.get_source(inbox_item_id)
 
+    async def list_recent_conversation(
+        self, user_id: str, before: datetime, exclude_id: UUID, limit: int = 8
+    ) -> tuple[ConversationContextItem, ...]:
+        return await self._repository.list_recent_conversation(user_id, before, exclude_id, limit)
+
     async def list_normalized(self, limit: int) -> tuple[UUID, ...]:
         if limit < 1 or limit > 100:
             raise ValueError("normalized Inbox query limit must be between 1 and 100")
         return await self._repository.list_normalized(limit)
+
+    async def list_needs_review(self, limit: int) -> tuple[InboxSourceView, ...]:
+        if limit < 1 or limit > 100:
+            raise ValueError("review query limit must be between 1 and 100")
+        return await self._repository.list_needs_review(limit)
 
     async def list_knowledge_source_ids(
         self, limit: int, after_id: UUID | None = None

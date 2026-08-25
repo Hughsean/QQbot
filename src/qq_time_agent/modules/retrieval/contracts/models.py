@@ -30,3 +30,7 @@ class RetrievalPort(Protocol):
     async def retrieve(
         self, query: str, filters: RetrievalFilters, limit: int
     ) -> tuple[RetrievedChunk, ...]: ...
+
+
+class RagToolsPort(Protocol):
+    async def call(self, name: str, owner_id: str, arguments: dict[str, object]) -> object: ...

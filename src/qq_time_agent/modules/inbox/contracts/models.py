@@ -140,12 +140,27 @@ class InboxSourceView:
     source_ref: str | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class ConversationContextItem:
+    source_type: str
+    occurred_at: datetime
+    subject: str
+    body: str
+    source_ref: str
+
+
 class InboxContentPort(Protocol):
     async def get_content(self, inbox_item_id: UUID) -> InboxContentView | None: ...
 
 
 class InboxSourcePort(Protocol):
     async def get_source(self, inbox_item_id: UUID) -> InboxSourceView | None: ...
+
+
+class ConversationContextPort(Protocol):
+    async def list_recent_conversation(
+        self, user_id: str, before: datetime, exclude_id: UUID, limit: int = 8
+    ) -> tuple[ConversationContextItem, ...]: ...
 
 
 class InboxProcessingPort(Protocol):
@@ -168,6 +183,8 @@ class QqInboxPort(Protocol):
 
 class InboxProcessingQueryPort(Protocol):
     async def list_normalized(self, limit: int) -> tuple[UUID, ...]: ...
+
+    async def list_needs_review(self, limit: int) -> tuple[InboxSourceView, ...]: ...
 
 
 class InboxKnowledgeQueryPort(Protocol):

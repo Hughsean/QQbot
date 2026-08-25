@@ -137,7 +137,7 @@ reviseEntry(actionContext, entryId, expectedVersion, patch, idempotencyKey) -> A
 cancelEntry(actionContext, entryId, expectedVersion, idempotencyKey) -> CancelResult
 ```
 
-只有 Actions 模块可以调用 AgendaCommandPort。
+只有 Actions 或 Calendar System 内部用例可以调用 AgendaCommandPort；Agent 和其他模块只能调用 Calendar System 的公开工具。Calendar System 必须执行所有者授权、参数、冲突、版本和幂等校验。
 
 ### SchedulingPort
 

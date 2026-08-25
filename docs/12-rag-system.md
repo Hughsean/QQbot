@@ -14,7 +14,7 @@ RAG 不负责：
 ## 2. 已接受技术方案
 
 ```text
-Embedding Runtime  本机 Ollama，仅回环监听
+Embedding Runtime  Docker Ollama，仅 Compose 私有网络可访问
 Embedding Model    qwen3-embedding:4b
 Dimensions         1024，启动和入库时强校验
 Vector Store       PostgreSQL + pgvector
@@ -24,7 +24,7 @@ Retrieval          metadata filter + vector + lexical + deterministic fusion
 Generation         DeepSeek，经 AI Gateway 使用带来源上下文
 ```
 
-选择 4B 是因为 Windows 生产主机具备 12 核 CPU、31 GiB RAM 和 12 GiB GPU，且已安装该模型。2026-08-13 已验证冷启动约 55 秒并能生成 1024 维有限值向量；默认 keep-alive 30 分钟。模型、维度和检索参数通过 `.env` 配置，但修改模型或维度必须触发完整索引迁移。
+选择 4B 是因为目标 Ubuntu 主机具备 32 GiB RAM 和 NVIDIA GTX 1650 Ti；模型可 GPU offload 或 CPU fallback。模型必须生成 1024 维有限值向量；默认 keep-alive 30 分钟。模型、维度和检索参数通过 `.env` 配置，但修改模型或维度必须触发完整索引迁移。
 
 ## 3. 模块边界
 

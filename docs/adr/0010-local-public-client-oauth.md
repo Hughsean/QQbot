@@ -6,7 +6,7 @@
 
 ## 背景
 
-QQ Time Agent 只供所有者本人使用，Web、Worker 和浏览器均运行在同一台 Windows 主机。
+QQ Time Agent 只供所有者本人使用，Web、Worker 和浏览器均运行在同一台生产主机。
 Microsoft Graph 只需要用户委托的只读邮件权限。原方案把应用注册为机密 Web 客户端，使用
 `agent.hughsean.online` 接收回调，并依赖腾讯云 Caddy、SSH 反向隧道和客户端密码。这增加了
 公网攻击面、证书与隧道运维，但没有带来单用户本机场景所需的能力。
@@ -26,7 +26,7 @@ Microsoft Graph 只需要用户委托的只读邮件权限。原方案把应用�
 
 - `agent.hughsean.online` 不再是系统依赖，可删除其 DNS 记录和 Caddy 站点。
 - Microsoft 仍要求注册一个重定向 URI，但它是本机回环 URI，不是公网地址。
-- 授权必须在运行 Agent 的 Windows 主机浏览器中完成；不能从手机或另一台电脑完成回调。
+- 授权必须在运行 Agent 的生产主机浏览器中完成；不能从手机或另一台电脑完成回调。
 - 固定端口与 Web 进程生命周期绑定，避免额外临时 HTTP Server；端口被占用时 readiness 失败，
   不会回退到公网回调。
 - Azure 中遗留的 Web 重定向 URI和客户端密码应删除；已生成的客户端密码应撤销。

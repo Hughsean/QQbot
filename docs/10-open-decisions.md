@@ -77,7 +77,7 @@ AI Provider 必须位于统一 AI Adapter 后，领域层不得依赖厂商模�
 ## OD-09 RAG 实现
 
 - 状态：Decided for MVP
-- 已决定：Windows 本机 Ollama、`qwen3-embedding:4b`、1024 维、Docker PostgreSQL `pgvector`、cosine/HNSW 和混合检索。
+- 已决定：Docker Ollama、`qwen3-embedding:4b`、1024 维、Docker PostgreSQL `pgvector`、cosine/HNSW 和混合检索。
 - 已决定：DeepSeek 不生成 embedding；RAG 不是 Agenda 或任务状态的事实源。
 - 首批来源：已同步 Outlook 邮件正文、所有者明确转发给 Bot 的 QQ 文本、所有者直接提交的笔记；MVP 不索引附件、图片或网页。
 - 数据保留已由 OD-04 关闭。
@@ -86,10 +86,10 @@ AI Provider 必须位于统一 AI Adapter 后，领域层不得依赖厂商模�
 ## OD-10 生产运行位置与网络入口
 
 - 状态：Decided
-- 当前决定：Agent、Worker、QQ、Docker PostgreSQL 和 Ollama 运行在 Windows 本机；腾讯云只承担主站静态 HTTPS 和 SSH 管理。
-- Agent HTTP 只绑定 Windows 回环 `127.0.0.1:8000`，不提供公网路径；Microsoft 使用本机公共客户端 PKCE 回调，详见 ADR-0010。
+- 当前决定：Agent、Worker、QQ、Docker PostgreSQL 和 Ollama 运行在 Ubuntu Server；腾讯云只承担主站静态 HTTPS 和 SSH 管理。
+- Agent HTTP 只绑定生产主机回环 `127.0.0.1:8000`，不提供公网路径；Microsoft 使用本机公共客户端 PKCE 回调，详见 ADR-0010。
 - 已验证本机硬件与 `qwen3-embedding:4b` 的 1024 维输出；默认单并发、30 分钟 keep-alive。
-- 可用性代价：Windows 主机离线时 Agent 整体不可用；Microsoft 授权必须在该主机浏览器完成。
+- 可用性代价：生产主机离线时 Agent 整体不可用；Microsoft 授权必须在该主机浏览器完成。
 
 ## 决策记录要求
 

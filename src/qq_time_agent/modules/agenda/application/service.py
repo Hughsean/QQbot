@@ -37,6 +37,12 @@ class AgendaService:
         value = await self._repository.get(entry_id)
         return None if value is None else _view(value)
 
+    async def find_active_by_title(self, title: str) -> tuple[AgendaEntryView, ...]:
+        if not title.strip():
+            raise ValueError("Agenda title is required")
+        values = await self._repository.find_active_by_title(title.strip())
+        return tuple(_view(value) for value in values)
+
     async def create_entry(
         self, action_id: UUID, draft: AgendaDraft, idempotency_key: str
     ) -> AgendaEntryRef:

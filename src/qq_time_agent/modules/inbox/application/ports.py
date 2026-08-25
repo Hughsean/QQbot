@@ -4,7 +4,12 @@ from datetime import datetime
 from typing import Protocol
 from uuid import UUID
 
-from qq_time_agent.modules.inbox.contracts import InboxContentView, InboxSourceView, IngestResult
+from qq_time_agent.modules.inbox.contracts import (
+    ConversationContextItem,
+    InboxContentView,
+    InboxSourceView,
+    IngestResult,
+)
 from qq_time_agent.modules.inbox.domain.models import InboxItem, MailEnvelope
 
 
@@ -35,6 +40,10 @@ class InboxRepository(Protocol):
 
     async def get_source(self, inbox_item_id: UUID) -> InboxSourceView | None: ...
 
+    async def list_recent_conversation(
+        self, user_id: str, before: datetime, exclude_id: UUID, limit: int = 8
+    ) -> tuple[ConversationContextItem, ...]: ...
+
     async def mark_deleted(self, connection_id: UUID, external_id: str, now: datetime) -> bool: ...
 
     async def get_cursor(self, connection_id: UUID) -> str | None: ...
@@ -42,6 +51,8 @@ class InboxRepository(Protocol):
     async def save_cursor(self, connection_id: UUID, cursor: str, now: datetime) -> None: ...
 
     async def list_normalized(self, limit: int) -> tuple[UUID, ...]: ...
+
+    async def list_needs_review(self, limit: int) -> tuple[InboxSourceView, ...]: ...
 
     async def list_knowledge_source_ids(
         self, limit: int, after_id: UUID | None = None

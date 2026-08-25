@@ -4,8 +4,7 @@
 
 按照本仓库 `AGENTS.md`、`docs/README.md`、`docs/09-delivery-plan.md` 和全部已接受 ADR，完成 QQ Time Agent 的可运行、可测试 MVP：
 
-- Windows 本机使用 Python 3.12、uv 和项目 `.venv` 运行 Web/Worker。
-- Docker Compose 运行 PostgreSQL + pgvector，仅绑定回环地址。
+- Ubuntu Server 使用 Docker Compose 运行 Web/Worker/QQ、Ollama 和 PostgreSQL + pgvector；开发测试仍使用 Python 3.12、uv 和项目 `.venv`。
 - QQ 官方 `qq-botpy` 支持唯一所有者的沙箱 C2C 输入、确认、结果和主动提醒。
 - Microsoft delegated OAuth 只读同步 Outlook 邮件。
 - LangGraph 采用受限、可恢复、有界工作流。

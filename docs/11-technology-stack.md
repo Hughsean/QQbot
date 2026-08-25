@@ -9,7 +9,7 @@
 | Agent 编排 | LangGraph | 只属于 Workflow/Application 层 |
 | QQ | 官方 `qq-botpy` | 只存在于 QQ Adapter |
 | AI | DeepSeek API | 只通过 AI Gateway/DeepSeek Adapter 调用 |
-| Embedding | Windows 本机 Ollama + `qwen3-embedding:4b` | 只通过 Embedding Port 调用 |
+| Embedding | Docker Ollama + `qwen3-embedding:4b` | 只通过 Embedding Port 调用 |
 | 数据库 | PostgreSQL + pgvector | 关系型事实与 RAG 索引共库、分模块所有权 |
 | 本地基础设施 | Docker Compose | 容器模式承载 PostgreSQL + pgvector 与 Web/Worker/QQ（ADR-0012）；开发仍用项目 `.venv` |
 | 配置 | `.env` + `pydantic-settings` | 强类型 Settings 注入 |
@@ -190,8 +190,8 @@ Understanding 工作流使用 LangGraph `StateGraph`，最大递归步数为 8�
 
 ## 9. RAG 技术约束
 
-- 默认嵌入模型为 Windows 本机 Ollama `qwen3-embedding:4b`，调用 `/api/embed`，固定输出 1024 维。
-- Ollama 只监听 `127.0.0.1:11434`；DeepSeek 与 Ollama 分属生成模型和嵌入模型两个适配器。
+- 默认嵌入模型为 Docker Ollama `qwen3-embedding:4b`，调用 `/api/embed`，固定输出 1024 维。
+- Ollama 只加入 Compose 私有网络且不发布宿主机端口；DeepSeek 与 Ollama 分属生成模型和嵌入模型两个适配器。
 - PostgreSQL 启用 `vector` 扩展，使用 pgvector cosine 距离；数据量增长后使用 HNSW `vector_cosine_ops`。
 - 第一版采用混合检索：向量召回、关键词/短语召回、来源和时间元数据过滤，再通过 RRF 或等价确定性算法融合。
 - 每个向量记录 `model_id`、模型摘要、dimensions、chunker_version 和 index_version。

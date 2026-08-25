@@ -36,7 +36,7 @@ disconnect()
 
 ### 授权流程
 
-1. 所有者从 Windows 本机打开 `http://127.0.0.1:8000/oauth/microsoft/owner-start`；
+1. 所有者从 Ubuntu 生产主机浏览器打开 `http://127.0.0.1:8000/oauth/microsoft/owner-start`；
    短期签名会话由隐藏同源 POST 换取 `HttpOnly` 所有者 Cookie，不把会话放入 URL。
 2. `/oauth/microsoft/start` 验证所有者 Cookie，生成 `state`、`nonce` 和 PKCE verifier。
 3. 临时授权事务绑定用户、浏览器会话和过期时间。
