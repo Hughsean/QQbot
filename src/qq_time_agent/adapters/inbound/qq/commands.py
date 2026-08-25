@@ -1,8 +1,9 @@
 """Owner-only QQ command routing; forwarded content never reaches this parser."""
 
 import hashlib
+import re
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import datetime, timedelta
 from uuid import UUID
 
 from qq_time_agent.contracts.clock import Clock
@@ -17,7 +18,12 @@ from qq_time_agent.contracts.source import (
 )
 from qq_time_agent.modules.actions.contracts import ActionCommandPort
 from qq_time_agent.modules.agenda.contracts import AgendaCommandPort, AgendaQueryPort
-from qq_time_agent.modules.ai_gateway.contracts import GroundedAnswer, RagAnswerPort
+from qq_time_agent.modules.agent.contracts import AgentContextPort, AgentRunPort
+from qq_time_agent.modules.ai_gateway.contracts import (
+    GeneralAnswerPort,
+    GroundedAnswer,
+    RagAnswerPort,
+)
 from qq_time_agent.modules.data_lifecycle.contracts import DeletionRequestPort
 from qq_time_agent.modules.inbox.contracts import InboxProcessingPort, QqInboxPort
 from qq_time_agent.modules.normalization.contracts import NormalizationPort
@@ -50,6 +56,9 @@ class QqCommandRouter:
         rag: RagAnswerPort | None = None,
         deletion: DeletionRequestPort | None = None,
         asset_discovery: SourceAssetDiscoveryPort | None = None,
+        general_answer: GeneralAnswerPort | None = None,
+        agent: AgentRunPort | None = None,
+        agent_context: AgentContextPort | None = None,
     ) -> None:
         self._inbox = inbox
         self._processing = processing
@@ -64,6 +73,9 @@ class QqCommandRouter:
         self._clock = clock
         self._reminder_lead_minutes = reminder_lead_minutes
         self._rag = rag
+        self._general_answer = general_answer
+        self._agent = agent
+        self._agent_context = agent_context
         self._deletion = deletion
         self._asset_discovery = asset_discovery
 
@@ -83,14 +95,36 @@ class QqCommandRouter:
         if noted:
             note_envelope = _as_note(envelope, text)
             return await self._ingest_text(note_envelope, text)
+        if self._agent is not None and envelope.source_type is SourceType.QQ_DIRECT:
+            return await self._agent_reply(envelope, content)
+        return await self._dispatch_text(envelope, text)
+
+    async def _agent_reply(self, envelope: SourceEnvelope, content: str) -> str:
+        agent = self._agent
+        if agent is None:
+            raise RuntimeError("Agent is not configured")
+        await self._ingest_text(envelope, content, enqueue_understanding=False)
+        context = ""
+        if self._agent_context is not None:
+            context = await self._agent_context.build("owner", content)
+        result = await agent.run("owner", content, context)
+        return result.content
+
+    async def _dispatch_text(self, envelope: SourceEnvelope, text: str) -> str:
         questioned, text = _questioned(text)
         if questioned:
             if self._rag is None:
                 return "资料查询暂不可用。"
             return _format_answer(await self._rag.answer(text))
+        natural_reminder = _natural_reminder(text)
+        if natural_reminder is not None:
+            return await self._reschedule_by_title(*natural_reminder)
         command = _parse_command(text)
         if command is None:
-            return await self._ingest_text(envelope, text)
+            acknowledgement = await self._ingest_text(envelope, text)
+            if self._general_answer is not None and not _looks_like_time_management(text):
+                return _format_answer(await self._general_answer.answer_general(text))
+            return acknowledgement
         return await self._handle(command)
 
     async def _ingest_text(
@@ -98,6 +132,7 @@ class QqCommandRouter:
         envelope: SourceEnvelope,
         text: str,
         assets: tuple[SourceAssetDescriptor, ...] = (),
+        enqueue_understanding: bool = True,
     ) -> str:
         result = await self._inbox.ingest_qq(envelope, text)
         if assets and self._asset_discovery is not None:
@@ -114,7 +149,7 @@ class QqCommandRouter:
             await self._processing.mark_normalized(result.inbox_item_id)
             if envelope.source_type is SourceType.OWNER_NOTE:
                 await self._processing.mark_completed(result.inbox_item_id)
-            else:
+            elif enqueue_understanding:
                 await self._jobs.enqueue(
                     JobRequest(
                         "understanding-run",
@@ -145,6 +180,8 @@ class QqCommandRouter:
             return await self._complete(command.arguments)
         if command.name == "推迟":
             return await self._snooze(command.arguments)
+        if command.name == "提醒":
+            return await self._remind(command.arguments)
         if command.name == "删除资料":
             return await self._delete_source(command.arguments)
         return "无法识别命令。"
@@ -232,6 +269,39 @@ class QqCommandRouter:
             UUID(args[0]), timedelta(minutes=minutes), self._clock.now()
         )
         return f"已推迟到 {reminder.due_at.isoformat(timespec='minutes')}"
+
+    async def _remind(self, args: tuple[str, ...]) -> str:
+        if len(args) < 3 or args[1] not in {"提前", "改为"}:
+            raise ValueError("提醒格式: 提醒 <日程编号> 提前 <天/小时/分钟> 或 改为 <ISO时间>")
+        entry_id = UUID(args[0])
+        entry = await self._agenda_query.get_entry(entry_id)
+        if entry is None or entry.status != "ACTIVE":
+            raise LookupError("活动日程不存在")
+        reminders = await self._reminders.list_for_entry(entry_id)
+        active = [value for value in reminders if value.status not in {"CANCELLED", "DEAD_LETTER"}]
+        if not active:
+            raise LookupError("该日程没有可修改的提醒")
+        current = min(active, key=lambda value: value.due_at)
+        now = self._clock.now()
+        if args[1] == "提前":
+            due_at = current.due_at - _parse_duration(args[2])
+        else:
+            if len(args) != 3:
+                raise ValueError("改为只接受一个 ISO-8601 时间")
+            due_at = datetime.fromisoformat(args[2])
+        if due_at.tzinfo is None or due_at.utcoffset() is None:
+            raise ValueError("提醒时间必须包含时区")
+        updated = await self._reminders.reschedule(current.reminder_id, due_at, now)
+        return f"提醒已更新到 {updated.due_at.isoformat(timespec='minutes')}"
+
+    async def _reschedule_by_title(self, title: str, duration: str) -> str:
+        entries = await self._agenda_query.find_active_by_title(title)
+        if not entries:
+            return f"找不到活动日程《{title}》, 请改用: 提醒 <日程编号> 提前 {duration}。"
+        if len(entries) > 1:
+            ids = "、".join(str(entry.agenda_entry_id) for entry in entries[:3])
+            return f"找到多个同名日程, 请指定编号: {ids}"
+        return await self._remind((str(entries[0].agenda_entry_id), "提前", duration))
 
     async def _delete_source(self, args: tuple[str, ...]) -> str:
         _count(args, 2)
@@ -339,6 +409,7 @@ def _parse_command(content: str) -> ParsedCommand | None:
         "完成",
         "推迟",
         "删除资料",
+        "提醒",
     }:
         return None
     return ParsedCommand(parts[0], parts[1:])
@@ -347,3 +418,63 @@ def _parse_command(content: str) -> ParsedCommand | None:
 def _count(args: tuple[str, ...], expected: int) -> None:
     if len(args) != expected:
         raise ValueError("命令参数数量不正确")
+
+
+def _parse_duration(value: str) -> timedelta:
+    normalized = value.strip().lower()
+    units = (
+        ("天", 24 * 60),
+        ("d", 24 * 60),
+        ("小时", 60),
+        ("h", 60),
+        ("分钟", 1),
+        ("分", 1),
+        ("m", 1),
+    )
+    for suffix, minutes in units:
+        if normalized.endswith(suffix):
+            amount = normalized[: -len(suffix)]
+            if not amount.isdigit() or int(amount) < 1:
+                break
+            return timedelta(minutes=int(amount) * minutes)
+    raise ValueError("提前时长必须是正整数天、小时或分钟")
+
+
+def _looks_like_time_management(value: str) -> bool:
+    markers = (
+        "今天",
+        "明天",
+        "后天",
+        "昨天",
+        "下周",
+        "周一",
+        "周二",
+        "周三",
+        "周四",
+        "周五",
+        "周六",
+        "周日",
+        "任务",
+        "日程",
+        "会议",
+        "提醒",
+        "截止",
+        "安排",
+        "改到",
+        "几点",
+        "上午",
+        "下午",
+        "晚上",
+    )
+    if any(marker in value for marker in markers):
+        return True
+    return any(character.isdigit() for character in value) and any(
+        marker in value for marker in ("点", ":", "时", "月", "号", "日")
+    )
+
+
+def _natural_reminder(value: str) -> tuple[str, str] | None:
+    match = re.fullmatch(r"(.+?)提前([1-9][0-9]*)(天|小时|分钟)提醒我", value.strip())
+    if match is None:
+        return None
+    return match.group(1).strip(), match.group(2) + match.group(3)

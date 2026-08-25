@@ -124,6 +124,17 @@ class Rag:
             False,
         )
 
+    async def answer_general(self, question: str) -> GroundedAnswer:
+        return GroundedAnswer(f"通用:{question}", (), True)
+
+
+@dataclass
+class Agent:
+    async def run(self, owner_id: str, message: str, context: str = "") -> object:
+        assert owner_id == "owner" and message
+        del context
+        return type("Final", (), {"content": "Agent已处理"})()
+
 
 def _envelope(content: str) -> SourceEnvelope:
     now = datetime(2026, 8, 20, tzinfo=UTC)
@@ -242,6 +253,54 @@ async def test_query_uses_read_only_rag_and_renders_source() -> None:
     reply = await router.receive(_envelope("查询: 星河联系人"), "查询: 星河联系人")
     assert "答案:星河联系人" in reply and "owner-note:1" in reply
     assert inbox.envelopes == [] and queue.values == []
+
+
+@pytest.mark.asyncio
+async def test_plain_owner_message_gets_immediate_read_only_reply() -> None:
+    inbox = Inbox()
+    queue = Queue()
+    router = QqCommandRouter(
+        inbox,
+        inbox,
+        Normalization(),
+        ForbiddenScheduling(),  # type: ignore[arg-type]
+        Forbidden(),  # type: ignore[arg-type]
+        Forbidden(),  # type: ignore[arg-type]
+        Forbidden(),  # type: ignore[arg-type]
+        Forbidden(),  # type: ignore[arg-type]
+        Forbidden(),  # type: ignore[arg-type]
+        queue,
+        Clock(),
+        15,
+        general_answer=Rag(),
+    )
+    reply = await router.receive(_envelope("你好"), "你好")
+    assert reply == "通用:你好"
+    assert inbox.envelopes and queue.values
+
+
+@pytest.mark.asyncio
+async def test_agent_path_persists_direct_message_without_legacy_understanding_job() -> None:
+    inbox = Inbox()
+    queue = Queue()
+    router = QqCommandRouter(
+        inbox,
+        inbox,
+        Normalization(),
+        ForbiddenScheduling(),  # type: ignore[arg-type]
+        Forbidden(),  # type: ignore[arg-type]
+        Forbidden(),  # type: ignore[arg-type]
+        Forbidden(),  # type: ignore[arg-type]
+        Forbidden(),  # type: ignore[arg-type]
+        Forbidden(),  # type: ignore[arg-type]
+        queue,
+        Clock(),
+        15,
+        agent=Agent(),  # type: ignore[arg-type]
+    )
+    reply = await router.receive(_envelope("刚才那个任务改到明天"), "刚才那个任务改到明天")
+    assert reply == "Agent已处理"
+    assert queue.values == []
 
 
 @pytest.mark.asyncio

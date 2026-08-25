@@ -31,6 +31,10 @@ SAFE_CONTEXT_FIELDS: Final = (
     "failure_class",
     "count",
     "duration_ms",
+    "step",
+    "tool",
+    "call_id",
+    "status",
 )
 
 

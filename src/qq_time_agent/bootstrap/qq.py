@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from qq_time_agent.adapters.inbound.qq.commands import QqCommandRouter
 from qq_time_agent.adapters.inbound.qq.gateway import OfficialQqGateway
+from qq_time_agent.adapters.inbound.workers.clarification import ClarificationWorker
 from qq_time_agent.adapters.inbound.workers.proposal_notifications import (
     ProposalNotificationWorker,
 )
@@ -24,11 +25,15 @@ from qq_time_agent.modules.actions.application.service import ActionService
 from qq_time_agent.modules.actions.infrastructure.repository import SqlActionRepository
 from qq_time_agent.modules.agenda.application.service import AgendaService
 from qq_time_agent.modules.agenda.infrastructure.repository import SqlAgendaRepository
+from qq_time_agent.modules.agent.application.context import AgentContextAssembler
+from qq_time_agent.modules.agent.application.json_model import JsonAgentModel
+from qq_time_agent.modules.agent.application.loop import AgentLoop
 from qq_time_agent.modules.ai_gateway.application.rag_answer import RetrievalAnswerService
 from qq_time_agent.modules.ai_gateway.application.service import AIGatewayService
 from qq_time_agent.modules.ai_gateway.infrastructure.repository import SqlInvocationRepository
 from qq_time_agent.modules.audit.application.service import AuditService
 from qq_time_agent.modules.audit.infrastructure.repository import SqlAuditRepository
+from qq_time_agent.modules.calendar_system.application.tools import CalendarToolRegistry
 from qq_time_agent.modules.data_lifecycle.application.coordinator import DeletionCoordinator
 from qq_time_agent.modules.data_lifecycle.infrastructure.repository import SqlTombstoneRepository
 from qq_time_agent.modules.identity.application.service import UserPreferencesService
@@ -50,6 +55,7 @@ from qq_time_agent.modules.normalization.infrastructure.repository import (
 )
 from qq_time_agent.modules.reminders.application.service import ReminderService
 from qq_time_agent.modules.reminders.infrastructure.repository import SqlReminderRepository
+from qq_time_agent.modules.retrieval.application.mcp_tools import RagToolRegistry
 from qq_time_agent.modules.retrieval.application.service import HybridRetrievalService
 from qq_time_agent.modules.scheduling.application.service import SchedulingService
 from qq_time_agent.modules.scheduling.infrastructure.purge import SchedulingPurgeAdapter
@@ -128,16 +134,21 @@ async def run_qq() -> None:
         config.rag_lexical_weight,
         config.rag_retrieval_limit,
     )
+    model = AIGatewayService(
+        deepseek,
+        SqlInvocationRepository(sessions),
+        clock,
+        config.deepseek.max_concurrency,
+    )
     rag = RetrievalAnswerService(
         retrieval,
-        AIGatewayService(
-            deepseek,
-            SqlInvocationRepository(sessions),
-            clock,
-            config.deepseek.max_concurrency,
-        ),
+        model,
         config.rag_retrieval_limit,
+        tools=RagToolRegistry(retrieval),
     )
+    calendar_tools = CalendarToolRegistry(agenda, agenda, reminders, clock)
+    agent = AgentLoop(JsonAgentModel(model), calendar_tools)
+    agent_context = AgentContextAssembler(retrieval, inbox)
     router = QqCommandRouter(
         inbox,
         inbox,
@@ -158,6 +169,9 @@ async def run_qq() -> None:
             queue,
             config.assets.raw_retention_hours,
         ),
+        general_answer=rag,
+        agent=agent,
+        agent_context=agent_context,
     )
     gateway = OfficialQqGateway(config.qq, config.owner, router, clock)
     notifications, intent_delivery = build_qq_notification_services(
@@ -171,11 +185,13 @@ async def run_qq() -> None:
         "qq-reminders",
     )
     proposal_notifications = ProposalNotificationWorker(scheduling, notifications)
+    clarification_worker = ClarificationWorker(inbox, notifications)
     gateway_task = asyncio.create_task(gateway.run_forever())
     try:
         await gateway.wait_ready()
         while True:
             await proposal_notifications.run_once()
+            await clarification_worker.run_once()
             await reminder_worker.run_once()
             await intent_delivery.run_once(clock.now())
             await asyncio.sleep(5)

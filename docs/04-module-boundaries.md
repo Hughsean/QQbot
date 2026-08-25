@@ -30,6 +30,7 @@ api           对外控制器和 DTO 映射
 | Embeddings | 嵌入生成端口、模型/维度契约 | 嵌入调用元数据 | 自行切块、访问 DeepSeek、保存日程 |
 | Scheduling | 约束求解和 Proposal 生成 | Proposal、约束快照 | 写内部日程、发 QQ 消息 |
 | Agenda | 项目内权威日程和忙闲查询 | AgendaEntry、日程版本 | 理解自然语言、发送提醒 |
+| Calendar System | 日程工具边界、目标解析、策略校验、版本/幂等和结果 | 日程操作工具契约与审计结果 | 模型推理、Provider SDK、凭据 |
 | Reminders | 提醒计划、到期租约、重试和死信 | Reminder、执行租约 | 改写日程、直接依赖 QQ SDK |
 | Actions | 副作用门禁、幂等执行、撤销 | ActionRequest、执行结果 | 自行决定用户意图 |
 | Notifications | 规划、渲染并发送 QQ 通知 | 通知意图、投递记录、模板版本、cooldown | 修改 Proposal、Connection 或 Agenda 状态 |
@@ -123,12 +124,13 @@ Audit ◄── 接收所有关键领域事件
 - LangGraph State 不得替代领域聚合或成为业务事实源，只保存工作流状态和领域对象引用。
 - LangChain/LangGraph 的 Message、Tool、Runnable 等类型不得进入领域层或跨模块契约。
 - Scheduling 不得发送 QQ 消息或写入内部日程。
+- Agent 只能调用 Calendar System 的公开工具；Calendar System 在自己的安全边界内协调 Agenda、Reminder 和 Action，拒绝不合规请求。
 - RAG/Retrieval 不得充当 Agenda、Task、Proposal、Confirmation 或 Reminder 的事实源。
 - Knowledge 不得直接调用 DeepSeek；Embeddings 不得把 Ollama DTO 传给 Knowledge。
 - 检索结果只能作为带来源的 T2 上下文，不能提升为命令或绕过确认。
 - Data Lifecycle 不得直接执行跨模块 SQL 删除；任何备份恢复都必须在 Retrieval 启用前重放 Tombstone。
 - Notifications 不得根据用户文本自行改变业务状态。
-- Actions 不得在没有有效确认或明确自动化规则时执行。
+- Actions 和 Calendar System 不得在没有有效所有者授权、当前版本和明确自动化规则时执行。
 - AI Adapter 不得接收客户端密码、refresh token、完整审计日志或不必要的个人数据。
 - 任何模块不得通过共享 ORM Entity 形成隐式耦合。
 - 不得用跨模块数据库事务或 JOIN 代替公开契约。
