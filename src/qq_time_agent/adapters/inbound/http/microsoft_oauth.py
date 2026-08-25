@@ -45,23 +45,14 @@ def microsoft_oauth_router(
 def _owner_bootstrap_router(signer: OwnerSessionSigner) -> APIRouter:
     router = APIRouter()
 
-    @router.get("/oauth/microsoft/owner-start", response_class=HTMLResponse)
-    async def owner_start(request: Request) -> HTMLResponse:
+    @router.get("/oauth/microsoft/owner-start", response_class=RedirectResponse)
+    async def owner_start(request: Request) -> RedirectResponse:
         _require_loopback_request(request)
         token = signer.issue("owner")
-        script_nonce = secrets.token_urlsafe(18)
-        response = HTMLResponse(
-            _owner_start_page(
-                "/api/v1/owner/session", token, script_nonce, "/oauth/microsoft/start"
-            )
-        )
+        response = RedirectResponse("/oauth/microsoft/start", status.HTTP_303_SEE_OTHER)
+        _set_loopback_cookie(response, OWNER_COOKIE, token, httponly=True)
         response.headers["Cache-Control"] = "no-store"
         response.headers["Referrer-Policy"] = "no-referrer"
-        response.headers["Content-Security-Policy"] = (
-            f"default-src 'none'; style-src 'unsafe-inline'; "
-            f"script-src 'nonce-{script_nonce}'; "
-            "form-action 'self'; base-uri 'none'"
-        )
         return response
 
     @router.post("/api/v1/owner/session", response_class=RedirectResponse)

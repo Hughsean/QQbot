@@ -15,6 +15,7 @@ htmlcov/
 
 # Local runtime data
 .data/
+dist/
 logs/
 *.log
 

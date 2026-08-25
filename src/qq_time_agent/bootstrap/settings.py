@@ -131,10 +131,8 @@ class EnvironmentSettings(BaseSettings):
             raise ValueError("APP_CONTAINER requires APP_LISTEN_HOST=0.0.0.0")
         if self.database_host != "postgres":
             raise ValueError("APP_CONTAINER requires DATABASE_HOST=postgres")
-        if self.ollama_base_url != "http://host.docker.internal:11434":
-            raise ValueError(
-                "APP_CONTAINER requires OLLAMA_BASE_URL=http://host.docker.internal:11434"
-            )
+        if self.ollama_base_url != "http://ollama:11434":
+            raise ValueError("APP_CONTAINER requires OLLAMA_BASE_URL=http://ollama:11434")
         if self.asset_storage_path.as_posix() != "/var/lib/qq-time-agent/assets":
             raise ValueError(
                 "APP_CONTAINER requires ASSET_STORAGE_PATH=/var/lib/qq-time-agent/assets"

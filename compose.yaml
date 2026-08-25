@@ -4,7 +4,7 @@ x-app-container-environment: &app-container-environment
   APP_LISTEN_PORT: "${APP_LISTEN_PORT:-8000}"
   DATABASE_HOST: "postgres"
   DATABASE_PORT: "5432"
-  OLLAMA_BASE_URL: "http://host.docker.internal:11434"
+  OLLAMA_BASE_URL: "http://ollama:11434"
   ASSET_STORAGE_PATH: "/var/lib/qq-time-agent/assets"
 
 x-app-service: &app-service
@@ -17,6 +17,8 @@ x-app-service: &app-service
   depends_on:
     postgres:
       condition: service_healthy
+    ollama-init:
+      condition: service_completed_successfully
   logging:
     driver: json-file
     options:
@@ -41,6 +43,37 @@ services:
       timeout: 3s
       retries: 20
       start_period: 10s
+
+  ollama:
+    image: ollama/ollama@sha256:57d60e686821ea81a7748a3ec8141308c8b8f95b27105713954abf7a6529e700
+    restart: unless-stopped
+    environment:
+      OLLAMA_HOST: "0.0.0.0:11434"
+      OLLAMA_KEEP_ALIVE: "${OLLAMA_KEEP_ALIVE:-30m}"
+    volumes:
+      - qq_time_agent_ollama:/root/.ollama
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+
+  ollama-init:
+    image: ollama/ollama@sha256:57d60e686821ea81a7748a3ec8141308c8b8f95b27105713954abf7a6529e700
+    restart: "no"
+    environment:
+      OLLAMA_HOST: "http://ollama:11434"
+      OLLAMA_EMBEDDING_MODEL: "${OLLAMA_EMBEDDING_MODEL:-qwen3-embedding:4b}"
+    depends_on:
+      ollama:
+        condition: service_healthy
+    entrypoint: ["sh", "-c"]
+    command:
+      - >-
+        if ollama list | awk 'NR > 1 {print $1}' | grep -Fxq "$${OLLAMA_EMBEDDING_MODEL}";
+        then echo "Ollama model already present";
+        else ollama pull "$${OLLAMA_EMBEDDING_MODEL}"; fi
 
   web:
     <<: *app-service
@@ -90,3 +123,4 @@ services:
 volumes:
   qq_time_agent_postgres:
   qq_time_agent_assets:
+  qq_time_agent_ollama:

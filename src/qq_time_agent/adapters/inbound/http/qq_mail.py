@@ -5,14 +5,13 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Cookie, Header, HTTPException, Request, status
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import BaseModel, SecretStr
 
 from qq_time_agent.adapters.inbound.http.microsoft_oauth import (
     CSRF_COOKIE,
     OWNER_COOKIE,
     _authenticate,
-    _owner_start_page,
     _require_loopback_request,
     _set_loopback_cookie,
 )
@@ -42,15 +41,14 @@ class QqMailDisconnectRequest(BaseModel):
 def qq_mail_router(service: QqMailConnectionService, signer: OwnerSessionSigner) -> APIRouter:
     router = APIRouter()
 
-    @router.get("/qq-mail/owner-start", response_class=HTMLResponse)
-    async def owner_start(request: Request) -> HTMLResponse:
+    @router.get("/qq-mail/owner-start", response_class=RedirectResponse)
+    async def owner_start(request: Request) -> RedirectResponse:
         _require_loopback_request(request)
         token = signer.issue("owner")
-        nonce = secrets.token_urlsafe(18)
-        response = HTMLResponse(
-            _owner_start_page("/api/v1/owner/session", token, nonce, "/qq-mail/connect")
-        )
-        _secure_page(response, nonce)
+        response = RedirectResponse("/qq-mail/connect", status.HTTP_303_SEE_OTHER)
+        _set_loopback_cookie(response, OWNER_COOKIE, token, httponly=True)
+        response.headers["Cache-Control"] = "no-store"
+        response.headers["Referrer-Policy"] = "no-referrer"
         return response
 
     @router.get("/qq-mail/connect", response_class=HTMLResponse)

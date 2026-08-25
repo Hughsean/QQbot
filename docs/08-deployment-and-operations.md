@@ -7,15 +7,15 @@ hughsean.online / www.hughsean.online
   → 腾讯云 Caddy
   → /var/www/hughsean 静态站点
 
-Windows 生产主机
-  → Docker Compose：PostgreSQL + pgvector、Web、Worker、QQ（容器模式，ADR-0012）
+Ubuntu Server 生产主机（linux/amd64）
+  → Docker Compose：PostgreSQL + pgvector、Ollama、Web、Worker、QQ（容器模式，ADR-0012）
   → Owner browser → http://127.0.0.1:8000
-  → Native Ollama（127.0.0.1:11434，容器经 host.docker.internal 访问）
   → Microsoft Graph / QQ Bot / QQ Mail IMAP / DeepSeek（仅出站）
 ```
 
 腾讯云 Ubuntu 只托管主站静态文件、Caddy HTTPS 和 SSH 管理入口。Agent、Worker、QQ 与
-PostgreSQL 以 Docker Compose 容器运行在 Windows 生产主机，Ollama 保持本机原生回环监听。
+PostgreSQL、Ollama、Web、Worker 与 QQ 均以 Docker Compose 容器运行在 Ubuntu 生产主机；Ollama
+只加入 Compose 内部网络，不发布宿主机端口。
 Agent 没有公网 HTTP 入口；QQ WebSocket、Microsoft Graph 和 DeepSeek 均由本机发起出站连接。
 OAuth 回调只在授权浏览器所在的 Windows 主机回环地址完成，不依赖腾讯云、DNS、Caddy、
 证书或 SSH 隧道。
@@ -27,14 +27,14 @@ MVP 至少包含：
 - `qq-time-agent-web`：OAuth 回调、QQ Webhook/API、查询接口。
 - `qq-time-agent-worker`：邮件同步、理解、排程和通知任务。
 - `qq-time-agent-qq`：QQ 官方长连接、所有者命令、确认卡片投递和持久化 Reminder 轮询。
-- Windows Native Ollama：只监听 `127.0.0.1:11434`，运行 Qwen3 Embedding。
-- Docker PostgreSQL + pgvector：只映射到 Windows `127.0.0.1:5432`，保存业务数据、RAG 向量与加密凭据元数据。
+- Docker Ollama：只加入 Compose 内部网络，运行 Qwen3 Embedding，模型使用独立命名卷。
+- Docker PostgreSQL + pgvector：只映射到 Ubuntu `127.0.0.1:5432`，保存业务数据、RAG 向量与加密凭据元数据。
 - 可选队列：MVP 可使用数据库 outbox/job 表，避免过早引入独立队列。
 
 Web 和 Worker 来自同一代码库和同一不可变镜像，由 Compose `command` 区分进程角色。部署采用
 容器模式（ADR-0012）：`APP_CONTAINER=true` 且只接受精确地址覆盖值
 `APP_LISTEN_HOST=0.0.0.0`、`DATABASE_HOST=postgres`、
-`OLLAMA_BASE_URL=http://host.docker.internal:11434`，由 Compose 注入而不写入 `.env`；应用
+`OLLAMA_BASE_URL=http://ollama:11434`，由 Compose 注入而不写入 `.env`；应用
 容器另固定使用 `DATABASE_PORT=5432`，宿主发布端口仍取 `.env` 的 `DATABASE_PORT`。
 `APP_LISTEN_PORT` 同时作为 Web 容器监听端口和宿主回环发布端口。裸机开发仍默认使用项目
 `.venv` 与回环门禁。数据库迁移、tombstone 重放和受控死信恢复是 `ops` profile 的
@@ -118,24 +118,26 @@ Microsoft 回调 URI 由 `APP_LISTEN_PORT` 派生为
 - 本地开发从项目根目录 `.env` 加载，使用 `pydantic-settings` 做强类型校验。
 - 提交不含真实值的 `.env.example`；`.env` 必须被 `.gitignore` 排除。
 - 测试使用独立 `.env.test` 或测试夹具，禁止连接生产 QQ、邮箱和 DeepSeek 账号。
-- Windows 生产环境使用同一 Settings 契约，从项目根目录受限 `.env` 加载；该文件不得通过 SSH 隧道或部署流程复制到腾讯云。
+- Ubuntu 生产环境使用同一 Settings 契约，从项目根目录受限 `.env` 加载；该文件不得通过 SSH 隧道或部署流程复制到腾讯云。
 - 启动时缺少必需配置应立即失败，但错误信息不得打印配置值。
 - 业务代码只依赖 Settings 对象，不允许在任意模块散落调用 `os.getenv()`。
 - 生产环境不得把 `PERSIST_LLM_PAYLOADS` 改为 `true`；如为隔离测试临时启用，测试数据必须是合成数据并在测试结束后清除。
 
 ## 4. 主机与进程管理
 
-### Windows 生产主机
+### Ubuntu 生产主机
 
-- Docker Desktop/Engine 必须自动启动；每次部署先执行 `docker compose build` 生成所有角色共用
+- Docker Engine/Compose 必须随主机启动；GPU 模式还需要 NVIDIA 驱动与 NVIDIA Container Toolkit。
+  每次部署先执行 `docker compose build` 生成所有角色共用
   的 `qq-time-agent:local`，再运行迁移和服务。`docker compose up -d` 以
   `restart: unless-stopped` 守护 Web、Worker 和 QQ 容器，替代 Windows 任务计划程序。
-- 数据库端口只绑定 `127.0.0.1`；Ollama 保持回环监听，容器经 `host.docker.internal` 网关访问。
+- 数据库和 Web 端口只绑定 `127.0.0.1`；Ollama 不发布宿主机端口，只在 Compose 网络可访问。
 - `.env` 的 ACL 只允许当前生产用户和管理员读取；秘密不写入镜像，只经 Compose `env_file` 注入。
 - 数据库迁移作为显式部署步骤：`docker compose run --rm migrate`。从备份恢复时，正式
   脚本先恢复旧库，再通过一次性容器迁移、合并当前 tombstone 账本并重放；这些步骤不与
   Web/Worker 并发运行。
-- Ollama 必须保持回环监听；readiness 验证模型存在、输出维度正确，但不得在请求路径自动下载模型。
+- Ollama 模型必须由 `ollama-init` 在应用启动前准备；readiness 验证模型存在、输出维度正确，
+  不得在业务请求路径自动下载模型。
   Worker 在首次租约前等待该强 readiness，通过前不消费 Job、也不增加 attempt；等待日志首轮及每
   30 秒输出一次，恢复后自动开始轮询。
 - PostgreSQL 部署必须启用 `vector` 扩展；迁移负责创建向量列和索引。
@@ -174,7 +176,7 @@ QQ 进程由 Compose `qq` 服务运行 `qq-time-agent-qq`。确认卡片与 Remi
 
 仓库 `ops/` 提供以下制品：
 
-- 生产部署只支持 Docker Compose，不提供 Windows 任务计划或主机 `.venv` 进程启动脚本，
+- 生产部署只支持 Docker Compose，不提供主机任务计划或主机 `.venv` 进程启动脚本，
   避免裸机与容器双实例。
 - `Test-QQTimeAgentHealth.ps1 [-Port <APP_LISTEN_PORT>]` 检查本机 readiness 和无内容标签的
   `/metrics`。
@@ -190,13 +192,15 @@ QQ 进程由 Compose `qq` 服务运行 `qq-time-agent-qq`。确认卡片与 Remi
 
 ## 5. 当前生产主机容量
 
-2026-08-13 只读核验结果：Windows 主机为 AMD Ryzen 9 9900X3D（12 核/24 线程）、31.4 GiB RAM、NVIDIA RTX 5070 12 GiB。Docker 29.7.2、Compose 5.3.1 和 Ollama 0.32.9 已安装；Ollama 已安装 `qwen3-embedding:4b`。
+目标迁移主机：Ubuntu Server `linux/amd64`、32 GiB RAM、NVIDIA GTX 1650 Ti。需要 Docker
+Engine/Compose、NVIDIA 驱动和 NVIDIA Container Toolkit；Ollama 以容器运行并使用 `qwen3-embedding:4b`。
 
-- 已验证 `qwen3-embedding:4b` 可生成 1024 维有限值向量；首次冷启动约 55 秒。
+- `qwen3-embedding:4b` 必须生成 1024 维有限值向量；1650 Ti 显存不足时允许 CPU/offload，
+  但必须以 `/health/ready` 和模型探针通过作为启动条件。
 - 默认 embedding 并发为 1，模型 keep-alive 30 分钟，避免频繁冷启动；批量索引不得阻塞 Reminder Worker。
 - PostgreSQL 安装在本机 Docker 中；不得安装到腾讯云中继，也不得开放 LAN/公网端口。
-- Windows 生产主机离线意味着 Agent 整体服务离线；监控必须把 Docker Desktop、Compose
-  服务和 Ollama 可用性作为告警项。
+- Ubuntu 主机离线意味着 Agent 整体服务离线；监控必须把 Docker、Compose、Ollama 模型和
+  NVIDIA runtime 可用性作为告警项。
 
 ## 6. 发布流程
 
