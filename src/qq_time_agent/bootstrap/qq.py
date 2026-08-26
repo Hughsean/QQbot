@@ -7,7 +7,6 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from qq_time_agent.adapters.inbound.qq.commands import QqCommandRouter
 from qq_time_agent.adapters.inbound.qq.gateway import OfficialQqGateway
-from qq_time_agent.adapters.inbound.workers.clarification import ClarificationWorker
 from qq_time_agent.adapters.inbound.workers.proposal_notifications import (
     ProposalNotificationWorker,
 )
@@ -187,13 +186,11 @@ async def run_qq() -> None:
         "qq-reminders",
     )
     proposal_notifications = ProposalNotificationWorker(scheduling, notifications)
-    clarification_worker = ClarificationWorker(inbox, notifications)
     gateway_task = asyncio.create_task(gateway.run_forever())
     try:
         await gateway.wait_ready()
         while True:
             await proposal_notifications.run_once()
-            await clarification_worker.run_once()
             await reminder_worker.run_once()
             await intent_delivery.run_once(clock.now())
             await asyncio.sleep(5)

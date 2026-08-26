@@ -40,11 +40,6 @@ class NotificationService:
             f"proposal:{proposal.proposal_id}:v{proposal.version}:confirmation", body
         )
 
-    async def send_clarification(self, user_id: str, subject_key: str, content: str) -> DeliveryRef:
-        if not subject_key.strip() or not content.strip():
-            raise ValueError("clarification subject and content are required")
-        return await self._send(f"clarification:{subject_key}:v1", content.strip())
-
     async def send_result(self, user_id: str, result: ActionResultView) -> DeliveryRef:
         body = f"操作已完成: {result.action_type}。\n日程编号: {result.agenda_entry_id or '无'}"
         return await self._send(f"action:{result.action_id}:result:{result.status}", body)

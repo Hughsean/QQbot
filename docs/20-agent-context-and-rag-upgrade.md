@@ -8,13 +8,13 @@ and reminder-time changes.
 
 ## Implementation Status
 
-The first implementation slice is complete: Worker understanding receives bounded recent
-conversation and automatic hybrid-RAG context; QQ supports read-only general replies and
-title-based reminder commands; NEEDS_REVIEW items produce idempotent clarification messages;
-retrieval exposes a local owner-scoped MCP-compatible registry and deterministic query
-normalization/ranking. Agenda, Reminder and Notification writes remain behind their existing
-command/action ports. Semantic event identity and automatic Agenda mutation remain a follow-up
-because they require an explicit proposal and confirmation contract.
+The initial implementation is superseded by the persistent AgentRun harness. QQ direct messages
+receive a response in their own conversation. Mail results may notify the owner only when the
+Agent explicitly records a material `NOTIFY` decision; uncertain or incomplete mail remains in its
+EventCase as `HOLD` and never emits an unsolicited clarification. Every mail notification carries
+a deterministic subject anchor. Retrieval exposes a local owner-scoped MCP-compatible registry
+and deterministic query normalization/ranking. Agenda, Reminder and Notification writes remain
+behind their existing command/action ports.
 
 ## Safety boundary
 
@@ -41,12 +41,11 @@ evidence. The current message remains the only command authority.
 
 ## General messages and clarification
 
-Plain owner messages that are not explicit commands are routed through a read-only response
-use case. Event/Task messages continue through the asynchronous understanding workflow. If a
-candidate lacks a reliable time, deadline or required constraint, the workflow creates a
-clarification request and the QQ process asks a focused question. A reply is associated with
-the open clarification by the conversation context window; it is not treated as a command
-unless it matches an explicit command grammar.
+Plain owner messages that are not explicit commands are routed through the Agent and may receive
+a focused question in that same conversation. A mail event with incomplete information must not
+trigger a standalone QQ question. The Agent records it as `HOLD` in the related EventCase and can
+use later mail or a user-initiated conversation to resolve it. A `NOTIFY` mail result is rendered
+with its source subject, so it never appears as an unreferenced message.
 
 ## RAG tools
 

@@ -4,6 +4,7 @@ import json
 from collections.abc import Mapping
 
 from qq_time_agent.modules.agent.contracts import (
+    AgentDelivery,
     AgentFinal,
     AgentModelPort,
     AgentRequest,
@@ -52,6 +53,10 @@ def _instruction(request: AgentRequest) -> str:
     return (
         "只返回 JSON。你是一个有界 Agent。必须在 final 和 tool_call 中二选一。"
         "tool_call.arguments 必须符合对应 input_schema。不得伪造工具结果。\n"
+        "final 必须包含 delivery, 取值只能是 HOLD 或 NOTIFY. 对用户直接消息, delivery 仅用于"
+        "记录, 回复始终会立即送达当前会话. 对无人请求的邮件事件, 只有存在明确、可操作、"
+        "与该邮件相关的结果时才用 NOTIFY; 需要更多信息、内容不完整、仅供记录或不确定时"
+        "必须用 HOLD, 绝不能主动发送泛化追问.\n"
         + request.system_instruction
         + "\n可用工具:\n"
         + tools
@@ -80,9 +85,15 @@ def _parse(output: Mapping[str, object]) -> AgentResponse:
     kind = output.get("type")
     if kind == "final":
         content = output.get("content")
+        delivery = output.get("delivery")
         if not isinstance(content, str) or not content.strip():
             raise ValueError("Agent final content is required")
-        return AgentResponse(final=AgentFinal(content.strip()))
+        if not isinstance(delivery, str):
+            raise ValueError("Agent final delivery is required")
+        try:
+            return AgentResponse(final=AgentFinal(content.strip(), AgentDelivery(delivery)))
+        except ValueError as exc:
+            raise ValueError("Agent final delivery is invalid") from exc
     if kind == "tool_call":
         call_id = output.get("call_id")
         name = output.get("name")

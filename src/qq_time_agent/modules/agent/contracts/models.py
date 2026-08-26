@@ -3,6 +3,7 @@
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
+from enum import StrEnum
 from typing import Protocol
 from uuid import UUID
 
@@ -36,9 +37,19 @@ class AgentRequest:
     step: int
 
 
+class AgentDelivery(StrEnum):
+    HOLD = "HOLD"
+    NOTIFY = "NOTIFY"
+
+
 @dataclass(frozen=True, slots=True)
 class AgentFinal:
     content: str
+    delivery: AgentDelivery = AgentDelivery.HOLD
+
+    def __post_init__(self) -> None:
+        if not self.content.strip():
+            raise ValueError("Agent final content is required")
 
 
 @dataclass(frozen=True, slots=True)

@@ -8,6 +8,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from qq_time_agent.modules.agent.contracts import (
+    AgentDelivery,
     AgentRun,
     AgentRunStatus,
     ContextScope,
@@ -131,6 +132,7 @@ class SqlAgentRunRepository:
             row.step = run.step
             row.observations = run.observations
             row.final_content = run.final_content
+            row.final_delivery = None if run.final_delivery is None else run.final_delivery.value
             row.failure_class = run.failure_class
             if run.updated_at is None:
                 raise ValueError("AgentRun updated_at is required")
@@ -171,6 +173,7 @@ def _to_run(row: AgentRunRow) -> AgentRun:
         row.step,
         list(row.observations),
         row.final_content,
+        None if row.final_delivery is None else AgentDelivery(row.final_delivery),
         row.failure_class,
         row.created_at,
         row.updated_at,

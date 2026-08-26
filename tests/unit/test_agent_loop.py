@@ -2,8 +2,10 @@ from dataclasses import dataclass
 
 import pytest
 
+from qq_time_agent.modules.agent.application.json_model import _parse
 from qq_time_agent.modules.agent.application.loop import AgentLoop, AgentLoopConfig
 from qq_time_agent.modules.agent.contracts import (
+    AgentDelivery,
     AgentFinal,
     AgentResponse,
     AgentToolCall,
@@ -41,9 +43,17 @@ async def test_agent_loop_observes_tool_then_reports_final() -> None:
     )
     result = await loop.run("owner", "处理一下")
     assert result.content == "已完成"
+    assert result.delivery is AgentDelivery.HOLD
 
 
 @pytest.mark.asyncio
 async def test_agent_loop_rejects_non_owner_and_step_limit() -> None:
     with pytest.raises(ValueError, match="max steps"):
         AgentLoop(Model([]), Tools(), config=AgentLoopConfig(max_steps=0))
+
+
+def test_agent_final_requires_explicit_delivery_decision() -> None:
+    response = _parse({"type": "final", "content": "发现明确的时间变更", "delivery": "NOTIFY"})
+    assert response.final is not None and response.final.delivery is AgentDelivery.NOTIFY
+    with pytest.raises(ValueError, match="delivery"):
+        _parse({"type": "final", "content": "需要更多信息"})

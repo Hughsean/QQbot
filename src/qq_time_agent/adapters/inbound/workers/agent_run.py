@@ -5,7 +5,7 @@ from uuid import UUID
 from qq_time_agent.contracts.clock import Clock
 from qq_time_agent.contracts.jobs import JobLease, JobQueue, JobRequest
 from qq_time_agent.modules.agent.application.run_service import AgentRunService
-from qq_time_agent.modules.agent.contracts import AgentContextPort
+from qq_time_agent.modules.agent.contracts import AgentContextPort, AgentDelivery
 from qq_time_agent.modules.inbox.contracts import InboxContentPort, InboxSourcePort
 from qq_time_agent.modules.notifications.application.ports import NotificationIntentRepository
 from qq_time_agent.modules.notifications.domain.models import (
@@ -51,7 +51,9 @@ class AgentRunJobHandler:
             event_case_id=run.event_case_id,
         )
         result = await self._runs.execute(UUID(raw_run), item.body_text, context)
-        if self._notifications is not None and self._source is not None and self._clock is not None:
+        if self._should_notify(result.delivery):
+            if self._notifications is None or self._source is None or self._clock is None:
+                return
             source = await self._source.get_source(item.inbox_item_id)
             if source is not None and source.source_type in {"MICROSOFT_MAIL", "QQ_MAIL"}:
                 now = self._clock.now()
@@ -62,11 +64,15 @@ class AgentRunJobHandler:
                         f"agent-run:{raw_run}",
                         f"agent-run:{raw_run}:result:v1",
                         "agent-result-v1",
-                        result.content[:4000],
+                        _render_mail_result(item.subject, result.content),
                         now,
                     ),
                     now,
                 )
+
+    @staticmethod
+    def _should_notify(delivery: AgentDelivery) -> bool:
+        return delivery is AgentDelivery.NOTIFY
 
 
 class MailAgentRunScheduler:
@@ -109,3 +115,8 @@ class MailAgentRunScheduler:
                 self._clock.now(),
             )
         )
+
+
+def _render_mail_result(subject: str, content: str) -> str:
+    title = " ".join(subject.split())[:160] or "未命名邮件"
+    return f"邮件事件处理结果《{title}》:\n{content}"[:4000]

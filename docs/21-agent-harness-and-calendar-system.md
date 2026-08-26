@@ -35,6 +35,13 @@ the tool name and JSON arguments, executes the tool, appends a bounded tool obse
 continues until a final response or a safety limit is reached. Tool errors are observations,
 not permission to bypass the tool boundary.
 
+Each final result also carries a persisted delivery decision. A direct QQ result is returned only
+to the current conversation. A mail result creates an active QQ notification only when the Agent
+returns `NOTIFY` for a material, actionable result; uncertainty and requests for more information
+must be `HOLD` in the EventCase. The notification renderer prefixes every mail result with its
+source subject. Legacy polling of `NEEDS_REVIEW` items and standalone clarification templates are
+not permitted.
+
 ## Calendar System
 
 Calendar operations are exposed through a single Calendar System facade. The facade owns:

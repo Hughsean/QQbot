@@ -6,6 +6,8 @@ from enum import StrEnum
 from typing import Protocol
 from uuid import UUID
 
+from qq_time_agent.modules.agent.contracts.models import AgentDelivery
+
 
 class AgentRunStatus(StrEnum):
     PENDING = "PENDING"
@@ -25,6 +27,7 @@ class AgentRun:
     step: int
     observations: list[dict[str, object]] = field(default_factory=list)
     final_content: str | None = None
+    final_delivery: AgentDelivery | None = None
     failure_class: str | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None

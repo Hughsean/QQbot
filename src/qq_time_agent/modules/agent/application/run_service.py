@@ -55,8 +55,12 @@ class AgentRunService:
         run = await self._repository.get(run_id)
         if run is None:
             raise LookupError("AgentRun does not exist")
-        if run.status is AgentRunStatus.COMPLETED and run.final_content is not None:
-            return AgentFinal(run.final_content)
+        if (
+            run.status is AgentRunStatus.COMPLETED
+            and run.final_content is not None
+            and run.final_delivery is not None
+        ):
+            return AgentFinal(run.final_content, run.final_delivery)
         expected_version = run.version
         run.status = AgentRunStatus.RUNNING
         run.updated_at = self._clock.now()
@@ -90,6 +94,7 @@ class AgentRunService:
             raise RuntimeError("AgentRun disappeared during execution")
         current.status = AgentRunStatus.COMPLETED
         current.final_content = result.content[:12000]
+        current.final_delivery = result.delivery
         current.updated_at = self._clock.now()
         await self._repository.save(current, current.version)
         return result

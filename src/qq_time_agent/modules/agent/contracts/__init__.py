@@ -2,6 +2,7 @@
 
 from qq_time_agent.modules.agent.contracts.models import (
     AgentContextPort,
+    AgentDelivery,
     AgentFinal,
     AgentModelPort,
     AgentRequest,
@@ -23,6 +24,7 @@ from qq_time_agent.modules.agent.contracts.runs import (
 __all__ = [
     "AgentContextPort",
     "AgentContextRepository",
+    "AgentDelivery",
     "AgentFinal",
     "AgentModelPort",
     "AgentRequest",
