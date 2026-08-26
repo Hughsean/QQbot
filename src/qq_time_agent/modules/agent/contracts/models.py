@@ -68,6 +68,8 @@ class AgentContextPort(Protocol):
         message: str,
         before: datetime | None = None,
         exclude_id: UUID | None = None,
+        conversation_id: UUID | None = None,
+        event_case_id: UUID | None = None,
     ) -> str: ...
 
 

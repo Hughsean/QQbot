@@ -31,6 +31,7 @@ api           对外控制器和 DTO 映射
 | Scheduling | 约束求解和 Proposal 生成 | Proposal、约束快照 | 写内部日程、发 QQ 消息 |
 | Agenda | 项目内权威日程和忙闲查询 | AgendaEntry、日程版本 | 理解自然语言、发送提醒 |
 | Calendar System | 日程工具边界、目标解析、授权和策略校验 | 日程工具契约，不持有日程事实 | 模型推理、直接写 Agenda/Reminder、Provider SDK、凭据 |
+| Agent | Conversation/EventCase 作用域、AgentRun、上下文选择与工具编排 | Conversation、EventCase、AgentRun、工具调用记录 | 日程事实、直接 Provider 调用 |
 | Reminders | 提醒计划、到期租约、重试和死信 | Reminder、执行租约 | 改写日程、直接依赖 QQ SDK |
 | Actions | 所有日程副作用门禁、幂等执行、提醒一致性和撤销 | ActionRequest、执行结果 | 自行决定用户意图 |
 | Notifications | 规划、渲染并发送 QQ 通知 | 通知意图、投递记录、模板版本、cooldown | 修改 Proposal、Connection 或 Agenda 状态 |

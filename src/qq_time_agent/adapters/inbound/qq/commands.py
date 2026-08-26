@@ -118,12 +118,16 @@ class QqCommandRouter:
         agent = self._agent
         if agent is None:
             raise RuntimeError("Agent is not configured")
-        await self._ingest_text(envelope, content, enqueue_understanding=False)
+        await self._ingest_text(envelope, content)
         ingested = await self._inbox.ingest_qq(envelope, content)
         run = None
         if self._agent_runs is not None:
             run = await self._agent_runs.ensure_run(
-                ingested.inbox_item_id, "owner", envelope.source_type.value
+                ingested.inbox_item_id,
+                "owner",
+                envelope.source_type.value,
+                conversation_key=envelope.thread_id or envelope.sender.provider_id,
+                occurred_at=envelope.occurred_at,
             )
             await self._jobs.enqueue(
                 JobRequest(
@@ -136,7 +140,12 @@ class QqCommandRouter:
         context = ""
         if self._agent_context is not None:
             context = await self._agent_context.build(
-                "owner", content, before=envelope.occurred_at, exclude_id=ingested.inbox_item_id
+                "owner",
+                content,
+                before=envelope.occurred_at,
+                exclude_id=ingested.inbox_item_id,
+                conversation_id=None if run is None else run.conversation_id,
+                event_case_id=None if run is None else run.event_case_id,
             )
         result = (
             await self._agent_runs.execute(run.run_id, content, context)
@@ -177,7 +186,6 @@ class QqCommandRouter:
         envelope: SourceEnvelope,
         text: str,
         assets: tuple[SourceAssetDescriptor, ...] = (),
-        enqueue_understanding: bool = True,
     ) -> str:
         result = await self._inbox.ingest_qq(envelope, text)
         if assets and self._asset_discovery is not None:
@@ -194,21 +202,12 @@ class QqCommandRouter:
             await self._processing.mark_normalized(result.inbox_item_id)
             if envelope.source_type is SourceType.OWNER_NOTE:
                 await self._processing.mark_completed(result.inbox_item_id)
-            elif enqueue_understanding:
-                await self._jobs.enqueue(
-                    JobRequest(
-                        "understanding-run",
-                        {"inbox_item_id": str(result.inbox_item_id)},
-                        f"understanding:{result.inbox_item_id}:v1",
-                        self._clock.now(),
-                    )
-                )
         if envelope.source_type is SourceType.OWNER_NOTE:
             return "已保存主人笔记, 将用于后续检索。"
         if assets:
             return "已接收图片, 正在离线识别并生成建议。"
         label = "转发文本" if envelope.source_type is SourceType.QQ_FORWARD else "输入"
-        return f"已接收{label}, 正在理解并生成建议。"
+        return f"已接收{label}, 将用于后续检索。"
 
     async def _handle(self, command: ParsedCommand) -> str:
         if command.name == "确认":

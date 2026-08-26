@@ -17,7 +17,6 @@ from qq_time_agent.adapters.inbound.workers.provider_readiness import EmbeddingS
 from qq_time_agent.adapters.inbound.workers.runner import JobRunner
 from qq_time_agent.adapters.inbound.workers.scheduling import SchedulingCandidateSource
 from qq_time_agent.adapters.inbound.workers.scheduling_schedule import SchedulingScheduler
-from qq_time_agent.adapters.inbound.workers.understanding_schedule import UnderstandingScheduler
 from qq_time_agent.contracts.clock import Clock
 from qq_time_agent.contracts.jobs import JobLease, JobQueue
 from qq_time_agent.modules.embeddings.contracts import EmbeddingPort
@@ -49,7 +48,6 @@ def build_scheduled_runner(
         PeriodicMailSyncScheduler(
             qq_connections, queue, clock, mail_interval_seconds, "qq-mail-sync"
         ),
-        UnderstandingScheduler(inbox, queue, clock),
         SchedulingScheduler(candidates, queue, clock),
         KnowledgeIndexScheduler(knowledge_query, content, sources, queue, clock),
         DataLifecycleScheduler(queue, clock),

@@ -29,11 +29,49 @@ class AgentRun:
     created_at: datetime | None = None
     updated_at: datetime | None = None
     version: int = 1
+    conversation_id: UUID | None = None
+    event_case_id: UUID | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ContextScope:
+    conversation_id: UUID | None
+    event_case_id: UUID | None
+
+
+class AgentContextRepository(Protocol):
+    async def ensure_scope(
+        self,
+        user_id: str,
+        conversation_key: str | None,
+        event_key: str | None,
+        now: datetime,
+    ) -> ContextScope: ...
+
+    async def attach_item(
+        self,
+        scope: ContextScope,
+        inbox_item_id: UUID,
+        occurred_at: datetime,
+    ) -> None: ...
+
+    async def list_item_ids(
+        self,
+        scope_id: UUID,
+        scope_type: str,
+        exclude_id: UUID,
+        limit: int,
+    ) -> tuple[UUID, ...]: ...
 
 
 class AgentRunRepository(Protocol):
     async def get_or_create(
-        self, inbox_item_id: UUID, user_id: str, source_type: str, now: datetime
+        self,
+        inbox_item_id: UUID,
+        user_id: str,
+        source_type: str,
+        now: datetime,
+        scope: ContextScope | None = None,
     ) -> AgentRun: ...
 
     async def get(self, run_id: UUID) -> AgentRun | None: ...

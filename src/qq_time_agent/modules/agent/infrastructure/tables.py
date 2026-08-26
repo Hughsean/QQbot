@@ -26,6 +26,8 @@ class AgentRunRow(AgentBase):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     version: Mapped[int] = mapped_column(Integer, nullable=False)
+    conversation_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    event_case_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     __table_args__ = (UniqueConstraint("inbox_item_id", name="uq_agent_runs_inbox_item"),)
 
 
@@ -37,3 +39,38 @@ class AgentToolCallRow(AgentBase):
     arguments_hash: Mapped[str] = mapped_column(String(128), nullable=False)
     observation: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class ConversationRow(AgentBase):
+    __tablename__ = "agent_conversations"
+    conversation_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    user_id: Mapped[str] = mapped_column(String(120), nullable=False)
+    channel: Mapped[str] = mapped_column(String(40), nullable=False)
+    conversation_key: Mapped[str] = mapped_column(String(512), nullable=False)
+    summary: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id", "channel", "conversation_key", name="uq_agent_conversation_scope"
+        ),
+    )
+
+
+class EventCaseRow(AgentBase):
+    __tablename__ = "agent_event_cases"
+    event_case_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    user_id: Mapped[str] = mapped_column(String(120), nullable=False)
+    event_key: Mapped[str] = mapped_column(String(512), nullable=False)
+    summary: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    __table_args__ = (UniqueConstraint("user_id", "event_key", name="uq_agent_event_scope"),)
+
+
+class ContextItemRow(AgentBase):
+    __tablename__ = "agent_context_items"
+    scope_type: Mapped[str] = mapped_column(String(20), primary_key=True)
+    scope_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    inbox_item_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

@@ -1,11 +1,14 @@
 """Durable execution boundary for owner and mail Agent runs."""
 
 import hashlib
+from datetime import datetime
+from typing import cast
 from uuid import UUID
 
 from qq_time_agent.contracts.clock import Clock
 from qq_time_agent.modules.agent.application.loop import AgentLoop
 from qq_time_agent.modules.agent.contracts import (
+    AgentContextRepository,
     AgentFinal,
     AgentRun,
     AgentRunRepository,
@@ -19,11 +22,34 @@ class AgentRunService:
         self._repository = repository
         self._loop = loop
         self._clock = clock
-
-    async def ensure_run(self, inbox_item_id: UUID, user_id: str, source_type: str) -> AgentRun:
-        return await self._repository.get_or_create(
-            inbox_item_id, user_id, source_type, self._clock.now()
+        self._context_repository: AgentContextRepository | None = (
+            cast(AgentContextRepository, repository)
+            if hasattr(repository, "ensure_scope")
+            else None
         )
+
+    async def ensure_run(
+        self,
+        inbox_item_id: UUID,
+        user_id: str,
+        source_type: str,
+        conversation_key: str | None = None,
+        event_key: str | None = None,
+        occurred_at: datetime | None = None,
+    ) -> AgentRun:
+        scope = None
+        timestamp = occurred_at or self._clock.now()
+        if self._context_repository is not None and (conversation_key or event_key):
+            scope = await self._context_repository.ensure_scope(
+                user_id, conversation_key, event_key, timestamp
+            )
+            await self._context_repository.attach_item(scope, inbox_item_id, timestamp)
+        return await self._repository.get_or_create(
+            inbox_item_id, user_id, source_type, self._clock.now(), scope
+        )
+
+    async def get(self, run_id: UUID) -> AgentRun | None:
+        return await self._repository.get(run_id)
 
     async def execute(self, run_id: UUID, message: str, context: str = "") -> AgentFinal:
         run = await self._repository.get(run_id)

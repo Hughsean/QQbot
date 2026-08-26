@@ -23,7 +23,6 @@ from qq_time_agent.adapters.inbound.workers.source_asset import (
     SourceAssetFetchJobHandler,
     SourceAssetParseJobHandler,
 )
-from qq_time_agent.adapters.inbound.workers.understanding_agent import UnderstandingAgentJobHandler
 from qq_time_agent.adapters.outbound.ai.deepseek import DeepSeekStructuredAdapter
 from qq_time_agent.adapters.outbound.ollama.embedding import OllamaEmbeddingAdapter
 from qq_time_agent.adapters.outbound.persistence.database import create_database_engine
@@ -97,21 +96,11 @@ from qq_time_agent.modules.scheduling.application.service import SchedulingServi
 from qq_time_agent.modules.scheduling.infrastructure.purge import SchedulingPurgeAdapter
 from qq_time_agent.modules.scheduling.infrastructure.repository import SqlProposalRepository
 from qq_time_agent.modules.understanding.application.query import CandidateQueryService
-from qq_time_agent.modules.understanding.application.service import (
-    TemporalContext,
-    UnderstandingService,
-)
 from qq_time_agent.modules.understanding.infrastructure.purge import UnderstandingPurgeAdapter
 from qq_time_agent.modules.understanding.infrastructure.repository import (
     SqlCandidateRepository,
 )
-from qq_time_agent.modules.workflow.application.understanding_graph import (
-    UnderstandingWorkflow,
-)
 from qq_time_agent.modules.workflow.infrastructure.purge import WorkflowPurgeAdapter
-from qq_time_agent.modules.workflow.infrastructure.repository import (
-    SqlWorkflowCheckpointRepository,
-)
 
 
 class AsyncClosable(Protocol):
@@ -228,22 +217,6 @@ def build_worker() -> tuple[JobRunner, AsyncEngine, tuple[AsyncClosable, ...]]:
     )
     retrieval.configure_query_model(model)
     agent_model = JsonAgentModel(model)
-    understanding = UnderstandingService(
-        normalization_repository,
-        inbox_repository,
-        model,
-        SqlCandidateRepository(sessions),
-        TemporalContext(
-            str(config.schedule.timezone),
-            "owner",
-            config.schedule.default_item_minutes,
-        ),
-        retrieval=retrieval,
-        conversation=inbox,
-    )
-    workflow = UnderstandingWorkflow(
-        understanding, inbox, SqlWorkflowCheckpointRepository(sessions), inbox_repository
-    )
     candidate_queries = CandidateQueryService(SqlCandidateRepository(sessions))
     preferences = UserPreferencesService(
         SqlUserPreferencesRepository(sessions),
@@ -271,11 +244,15 @@ def build_worker() -> tuple[JobRunner, AsyncEngine, tuple[AsyncClosable, ...]]:
         agenda,
     )
     agent = AgentLoop(agent_model, CalendarToolRegistry(agenda, actions))
-    agent_context = AgentContextAssembler(retrieval, inbox)
+    agent_context = AgentContextAssembler(
+        retrieval, inbox, SqlAgentRunRepository(sessions), inbox_repository
+    )
     agent_runs = AgentRunService(SqlAgentRunRepository(sessions), agent, clock)
     agent_scheduler = MailAgentRunScheduler(
         agent_runs, inbox_repository, inbox_repository, queue, clock
     )
+    microsoft_sync.set_agent_scheduler(agent_scheduler)
+    qq_sync.set_agent_scheduler(agent_scheduler)
     agenda_lookup = AgendaSourceLookupService(agenda_repository)
     scheduling = SchedulingService(
         candidate_queries,
@@ -296,7 +273,6 @@ def build_worker() -> tuple[JobRunner, AsyncEngine, tuple[AsyncClosable, ...]]:
             config.credential_encryption_key,
             clock,
         ),
-        "understanding-run": UnderstandingAgentJobHandler(workflow, agent_scheduler),
         "agent-run": AgentRunJobHandler(
             agent_runs,
             inbox_repository,

@@ -177,11 +177,11 @@ async def test_forwarded_confirmation_text_is_t2_data_not_command() -> None:
     assert scheduling.calls == 0
     assert inbox.envelopes[0].source_type is SourceType.QQ_FORWARD
     assert inbox.envelopes[0].trust_level is TrustLevel.T2
-    assert queue.values[0].payload.keys() == {"inbox_item_id"}
+    assert queue.values == []
 
 
 @pytest.mark.asyncio
-async def test_plain_direct_input_is_t1_and_enqueued_once() -> None:
+async def test_plain_direct_input_is_t1_and_not_sent_to_legacy_understanding() -> None:
     inbox = Inbox()
     queue = Queue()
     content = "下周找两小时写报告"
@@ -201,7 +201,7 @@ async def test_plain_direct_input_is_t1_and_enqueued_once() -> None:
     )
     await router.receive(_envelope(content), content)
     assert inbox.envelopes[0].trust_level is TrustLevel.T1
-    assert queue.values[0].idempotency_key.startswith("understanding:")
+    assert queue.values == []
 
 
 @pytest.mark.asyncio
@@ -276,7 +276,7 @@ async def test_plain_owner_message_gets_immediate_read_only_reply() -> None:
     )
     reply = await router.receive(_envelope("你好"), "你好")
     assert reply == "通用:你好"
-    assert inbox.envelopes and queue.values
+    assert inbox.envelopes and queue.values == []
 
 
 @pytest.mark.asyncio

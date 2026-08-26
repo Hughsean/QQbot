@@ -22,6 +22,14 @@ recovery path. A repeated provider message reuses the same run and cannot repeat
 call. Transient model, retrieval and infrastructure failures are retried; policy rejection, stale
 version and ambiguity are observations; unexpected programming failures terminate the attempt.
 
+`AgentRun` is not a logical conversation. QQ direct messages attach to a durable `Conversation`
+identified by the owner channel/thread. Eligible mail attaches to an `EventCase` identified by the
+provider thread, or a stable message identity when no thread exists. A run links one Inbox item to
+one or both scopes. Context assembly reads bounded scoped history before generic retrieval, keeping
+unrelated mail out of the user's dialogue while retaining multiple instances of one event together.
+The stable system policy and scoped history are assembled before the volatile current Inbox item and
+tool observations, providing a cache-friendly prompt prefix without treating raw Inbox data as state.
+
 The model returns either a final response or one validated tool call. The harness validates
 the tool name and JSON arguments, executes the tool, appends a bounded tool observation, and
 continues until a final response or a safety limit is reached. Tool errors are observations,
@@ -65,6 +73,10 @@ into the Agent turn. LLM query rewriting has a strict schema, timeout and determ
 fallback. Recent conversation, open clarification state, relevant active Agenda entries and pending
 Proposals are labelled separately from T2 RAG evidence. RAG evidence can inform a decision but
 cannot become calendar truth.
+
+Understanding is optional structured extraction, not an AgentRun gate. QQ direct messages and
+eligible mail create/queue AgentRuns after deterministic normalization. Batch extraction may produce
+candidates for later use, but it cannot delay or replace the Agent's interpretation.
 
 ## Compatibility policy
 

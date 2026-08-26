@@ -33,6 +33,10 @@ class MailAssetDiscoveryPort(Protocol):
     ) -> tuple[UUID, ...]: ...
 
 
+class AgentRunSchedulerPort(Protocol):
+    async def schedule(self, inbox_item_id: UUID) -> None: ...
+
+
 class MailSyncService:
     def __init__(
         self,
@@ -46,6 +50,7 @@ class MailSyncService:
         deletion: DeletionRequestPort | None = None,
         source_type: SourceType = SourceType.MICROSOFT_MAIL,
         asset_discovery: MailAssetDiscoveryPort | None = None,
+        agent_scheduler: AgentRunSchedulerPort | None = None,
     ) -> None:
         if lookback_days < 1:
             raise ValueError("mail lookback must be positive")
@@ -59,6 +64,10 @@ class MailSyncService:
         self._deletion = deletion
         self._source_type = source_type
         self._asset_discovery = asset_discovery
+        self._agent_scheduler = agent_scheduler
+
+    def set_agent_scheduler(self, scheduler: AgentRunSchedulerPort) -> None:
+        self._agent_scheduler = scheduler
 
     async def synchronize(self, connection_id: UUID) -> MailSyncResult:
         try:
@@ -180,3 +189,5 @@ class MailSyncService:
             content.source_ref,
         )
         await self._inbox.mark_normalized(inbox_item_id)
+        if self._agent_scheduler is not None:
+            await self._agent_scheduler.schedule(inbox_item_id)

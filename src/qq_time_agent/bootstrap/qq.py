@@ -146,7 +146,9 @@ async def run_qq() -> None:
     rag = RetrievalAnswerService(retrieval, model, config.rag_retrieval_limit)
     calendar_tools = CalendarToolRegistry(agenda, actions)
     agent = AgentLoop(JsonAgentModel(model), calendar_tools)
-    agent_context = AgentContextAssembler(retrieval, inbox)
+    agent_context = AgentContextAssembler(
+        retrieval, inbox, SqlAgentRunRepository(sessions), SqlInboxRepository(sessions)
+    )
     agent_runs = AgentRunService(SqlAgentRunRepository(sessions), agent, clock)
     router = QqCommandRouter(
         inbox,

@@ -39,8 +39,16 @@ class AgentRunJobHandler:
         item = await self._content.get_content(UUID(raw_item))
         if item is None:
             raise LookupError("AgentRun source content does not exist")
+        run = await self._runs.get(UUID(raw_run))
+        if run is None:
+            raise LookupError("AgentRun does not exist")
         context = await self._context.build(
-            "owner", item.body_text, before=item.occurred_at, exclude_id=item.inbox_item_id
+            "owner",
+            item.body_text,
+            before=item.occurred_at,
+            exclude_id=item.inbox_item_id,
+            conversation_id=run.conversation_id,
+            event_case_id=run.event_case_id,
         )
         result = await self._runs.execute(UUID(raw_run), item.body_text, context)
         if self._notifications is not None and self._source is not None and self._clock is not None:
@@ -85,7 +93,14 @@ class MailAgentRunScheduler:
             raise LookupError("mail AgentRun source is unavailable")
         if source.source_type not in {"MICROSOFT_MAIL", "QQ_MAIL"}:
             return
-        run = await self._runs.ensure_run(inbox_item_id, "owner", source.source_type)
+        run = await self._runs.ensure_run(
+            inbox_item_id,
+            "owner",
+            source.source_type,
+            conversation_key=source.thread_id or f"mail:{source.source_type}",
+            event_key=source.thread_id or source.external_id,
+            occurred_at=source.occurred_at,
+        )
         await self._queue.enqueue(
             JobRequest(
                 "agent-run",
