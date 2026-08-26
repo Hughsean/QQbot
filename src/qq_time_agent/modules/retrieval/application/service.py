@@ -1,8 +1,14 @@
 """Filtered vector plus lexical retrieval with deterministic weighted RRF."""
 
+import logging
 import re
 from dataclasses import replace
 
+from qq_time_agent.modules.ai_gateway.contracts import (
+    ModelRoute,
+    StructuredModelPort,
+    StructuredRequest,
+)
 from qq_time_agent.modules.embeddings.contracts import EmbeddingPort
 from qq_time_agent.modules.knowledge.contracts import (
     KnowledgeSearchCandidate,
@@ -12,6 +18,7 @@ from qq_time_agent.modules.knowledge.contracts import (
 from qq_time_agent.modules.retrieval.contracts import RetrievalFilters, RetrievedChunk
 
 RRF_K = 60
+LOGGER = logging.getLogger(__name__)
 _TOKEN_PATTERN = re.compile(r'"[^"\n]+"|“[^”\n]+”|[\w\u4e00-\u9fff]+', re.UNICODE)
 
 
@@ -26,6 +33,7 @@ class HybridRetrievalService:
         vector_weight: float,
         lexical_weight: float,
         candidate_limit: int,
+        query_model: StructuredModelPort | None = None,
     ) -> None:
         self._knowledge = knowledge
         self._embeddings = embeddings
@@ -35,15 +43,17 @@ class HybridRetrievalService:
         self._vector_weight = vector_weight
         self._lexical_weight = lexical_weight
         self._candidate_limit = candidate_limit
+        self._query_model = query_model
+
+    def configure_query_model(self, model: StructuredModelPort) -> None:
+        self._query_model = model
 
     async def retrieve(
         self, query: str, filters: RetrievalFilters, limit: int
     ) -> tuple[RetrievedChunk, ...]:
         _validate(query, filters, limit)
-        optimized_query = optimize_query(query)
-        batch = await self._embeddings.embed(
-            (optimized_query,), self._model_id, self._dimensions
-        )
+        optimized_query = await self._rewrite(query)
+        batch = await self._embeddings.embed((optimized_query,), self._model_id, self._dimensions)
         if batch.model_id != self._model_id or batch.dimensions != self._dimensions:
             raise ValueError("Embedding result does not match active Retrieval index")
         vector = await self._knowledge.search_vector(
@@ -70,6 +80,31 @@ class HybridRetrievalService:
             self._candidate_limit,
         )
         return _fuse(vector, lexical, self._vector_weight, self._lexical_weight)[:limit]
+
+    async def _rewrite(self, query: str) -> str:
+        if self._query_model is None:
+            return optimize_query(query)
+        try:
+            response = await self._query_model.invoke(
+                StructuredRequest(
+                    "retrieval-query-rewrite",
+                    "retrieval-query-v1",
+                    ModelRoute.FAST,
+                    '将用户检索问题改写为简洁、可检索的关键词查询。只输出 JSON: {"query":"..."}。',
+                    query[:6000],
+                    "owner",
+                    160,
+                )
+            )
+            value = response.output.get("query")
+            if isinstance(value, str) and value.strip():
+                return optimize_query(value)
+        except Exception as exc:
+            LOGGER.warning(
+                "RAG 查询改写失败: 使用确定性查询回退",
+                extra={"role": "retrieval", "failure_class": type(exc).__name__},
+            )
+        return optimize_query(query)
 
 
 def _fuse(

@@ -1,6 +1,7 @@
 """Pure idempotent ActionRequest aggregate."""
 
 import secrets
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
@@ -9,7 +10,10 @@ from uuid import UUID, uuid4
 
 class ActionType(StrEnum):
     CREATE_AGENDA = "CREATE_AGENDA"
+    UPDATE_AGENDA = "UPDATE_AGENDA"
+    COMPLETE_AGENDA = "COMPLETE_AGENDA"
     CANCEL_AGENDA = "CANCEL_AGENDA"
+    UPDATE_REMINDER = "UPDATE_REMINDER"
 
 
 class ActionStatus(StrEnum):
@@ -34,6 +38,7 @@ class ActionRequest:
     agenda_entry_version: int | None = None
     reminder_id: UUID | None = None
     failure_class: str | None = None
+    operation_payload: dict[str, object] | None = None
 
     @classmethod
     def create_agenda(
@@ -65,6 +70,38 @@ class ActionRequest:
             now,
             agenda_entry_id=entry_id,
             agenda_entry_version=entry_version,
+        )
+
+    @classmethod
+    def calendar_operation(
+        cls,
+        user_id: str,
+        action_type: ActionType,
+        idempotency_key: str,
+        payload: Mapping[str, object],
+        now: datetime,
+    ) -> "ActionRequest":
+        _required(user_id, now)
+        if action_type not in {
+            ActionType.CREATE_AGENDA,
+            ActionType.UPDATE_AGENDA,
+            ActionType.COMPLETE_AGENDA,
+            ActionType.CANCEL_AGENDA,
+            ActionType.UPDATE_REMINDER,
+        }:
+            raise ValueError("unsupported calendar action")
+        if not idempotency_key.strip():
+            raise ValueError("Action idempotency key is required")
+        return cls(
+            uuid4(),
+            user_id,
+            action_type,
+            idempotency_key,
+            ActionStatus.CONFIRMED,
+            now,
+            agenda_entry_id=_payload_uuid(payload, "agenda_entry_id"),
+            agenda_entry_version=_payload_int(payload, "expected_version"),
+            operation_payload=dict(payload),
         )
 
     @property
@@ -109,3 +146,26 @@ def _required(user_id: str, now: datetime) -> None:
         raise ValueError("Action user is required")
     if now.tzinfo is None or now.utcoffset() is None:
         raise ValueError("Action time must be timezone-aware")
+
+
+def _payload_uuid(payload: Mapping[str, object], key: str) -> UUID | None:
+    value = payload.get(key)
+    if value is None:
+        return None
+    if isinstance(value, UUID):
+        return value
+    if isinstance(value, str):
+        try:
+            return UUID(value)
+        except ValueError as exc:
+            raise ValueError(f"{key} must be a UUID") from exc
+    raise ValueError(f"{key} must be a UUID")
+
+
+def _payload_int(payload: Mapping[str, object], key: str) -> int | None:
+    value = payload.get(key)
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        raise ValueError(f"{key} must be positive")
+    return value

@@ -1,13 +1,15 @@
 """Only confirmed Actions may write Agenda and schedule Reminders."""
 
+from collections.abc import Mapping
 from datetime import timedelta
 from uuid import UUID
 
 from qq_time_agent.contracts.clock import Clock
+from qq_time_agent.modules.actions.application.calendar import CalendarActionExecutor
 from qq_time_agent.modules.actions.application.ports import ActionRepository
 from qq_time_agent.modules.actions.contracts import ActionResultView, UndoRequestView
 from qq_time_agent.modules.actions.domain.models import ActionRequest, ActionStatus
-from qq_time_agent.modules.agenda.contracts import AgendaCommandPort, AgendaDraft
+from qq_time_agent.modules.agenda.contracts import AgendaCommandPort, AgendaDraft, AgendaQueryPort
 from qq_time_agent.modules.audit.contracts import AuditEvent, AuditPort
 from qq_time_agent.modules.reminders.contracts import ReminderCommandPort
 from qq_time_agent.modules.scheduling.contracts import SchedulingProposalView
@@ -21,12 +23,30 @@ class ActionService:
         reminders: ReminderCommandPort,
         clock: Clock,
         audit: AuditPort | None = None,
+        agenda_query: AgendaQueryPort | None = None,
     ) -> None:
         self._repository = repository
         self._agenda = agenda
         self._reminders = reminders
         self._clock = clock
         self._audit = audit
+        self._agenda_query = agenda_query
+        self._calendar = (
+            CalendarActionExecutor(repository, agenda, agenda_query, reminders, clock, audit)
+            if agenda_query is not None
+            else None
+        )
+
+    async def execute_calendar_operation(
+        self,
+        user_id: str,
+        operation: str,
+        payload: Mapping[str, object],
+        idempotency_key: str,
+    ) -> ActionResultView:
+        if self._calendar is None:
+            raise RuntimeError("Agenda query port is required for calendar operations")
+        return await self._calendar.execute(user_id, operation, payload, idempotency_key)
 
     async def execute_confirmed(
         self, proposal: SchedulingProposalView, reminder_lead_minutes: int

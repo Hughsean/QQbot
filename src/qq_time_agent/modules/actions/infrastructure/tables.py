@@ -3,7 +3,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Integer, String, UniqueConstraint
+from sqlalchemy import JSON, DateTime, Integer, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -27,5 +27,6 @@ class ActionRow(ActionsBase):
     agenda_entry_version: Mapped[int | None] = mapped_column(Integer)
     reminder_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     failure_class: Mapped[str | None] = mapped_column(String(120))
+    operation_payload: Mapped[dict[str, object] | None] = mapped_column(JSON)
 
     __table_args__ = (UniqueConstraint("idempotency_key", name="uq_actions_idempotency"),)

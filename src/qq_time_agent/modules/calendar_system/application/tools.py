@@ -2,33 +2,42 @@
 
 from collections.abc import Mapping
 from datetime import datetime
-from uuid import UUID, uuid4
+from uuid import UUID
 
 from qq_time_agent.contracts.clock import Clock
+from qq_time_agent.contracts.tools import ToolDefinition
+from qq_time_agent.modules.actions.contracts import CalendarActionPort
 from qq_time_agent.modules.agenda.contracts import (
-    AgendaCommandPort,
-    AgendaDraft,
     AgendaEntryView,
     AgendaQueryPort,
 )
-from qq_time_agent.modules.agent.contracts import AgentToolDefinition
-from qq_time_agent.modules.reminders.contracts import ReminderCommandPort
+from qq_time_agent.modules.calendar_system.contracts import CalendarAuthorizationPort
 
 
 class CalendarToolRegistry:
     def __init__(
         self,
         agenda_query: AgendaQueryPort,
-        agenda_commands: AgendaCommandPort,
-        reminders: ReminderCommandPort,
-        clock: Clock,
+        actions: CalendarActionPort,
+        authorization: CalendarAuthorizationPort | None = None,
+        clock: Clock | None = None,
     ) -> None:
         self._agenda_query = agenda_query
-        self._agenda_commands = agenda_commands
-        self._reminders = reminders
-        self._clock = clock
+        selected_authorization: CalendarAuthorizationPort
+        # The fourth positional argument was historically a Clock. Keep read-only
+        # construction usable for downstream callers while production injects the
+        # explicit Actions and authorization ports.
+        if authorization is not None and not hasattr(authorization, "authorize"):
+            self._actions = actions
+            selected_authorization = _OwnerAuthorization()
+            self._clock = clock
+        else:
+            self._actions = actions
+            selected_authorization = authorization or _OwnerAuthorization()
+            self._clock = clock
+        self._authorization = selected_authorization
         self._definitions = (
-            AgentToolDefinition(
+            ToolDefinition(
                 "find_agenda_candidates",
                 "Find active agenda entries by exact title for target resolution.",
                 {
@@ -37,7 +46,7 @@ class CalendarToolRegistry:
                     "required": ["title"],
                 },
             ),
-            AgentToolDefinition(
+            ToolDefinition(
                 "get_agenda",
                 "Read one active agenda entry by id.",
                 {
@@ -46,7 +55,7 @@ class CalendarToolRegistry:
                     "required": ["agenda_entry_id"],
                 },
             ),
-            AgentToolDefinition(
+            ToolDefinition(
                 "create_agenda",
                 "Create an agenda entry when the requested interval is valid and conflict-free.",
                 {
@@ -61,7 +70,7 @@ class CalendarToolRegistry:
                     "required": ["title", "starts_at", "ends_at", "timezone", "kind"],
                 },
             ),
-            AgentToolDefinition(
+            ToolDefinition(
                 "update_agenda",
                 "Update an active agenda entry after strict validation.",
                 {
@@ -76,7 +85,7 @@ class CalendarToolRegistry:
                     "required": ["agenda_entry_id", "expected_version"],
                 },
             ),
-            AgentToolDefinition(
+            ToolDefinition(
                 "complete_agenda",
                 "Complete an active agenda entry using its current version.",
                 {
@@ -88,7 +97,7 @@ class CalendarToolRegistry:
                     "required": ["agenda_entry_id", "expected_version"],
                 },
             ),
-            AgentToolDefinition(
+            ToolDefinition(
                 "cancel_agenda",
                 "Cancel an active agenda entry using its current version.",
                 {
@@ -100,7 +109,7 @@ class CalendarToolRegistry:
                     "required": ["agenda_entry_id", "expected_version"],
                 },
             ),
-            AgentToolDefinition(
+            ToolDefinition(
                 "update_reminder",
                 "Update the earliest active reminder for an agenda entry.",
                 {
@@ -115,12 +124,12 @@ class CalendarToolRegistry:
             ),
         )
 
-    def definitions(self) -> tuple[AgentToolDefinition, ...]:
+    def definitions(self) -> tuple[ToolDefinition, ...]:
         return self._definitions
 
     async def call(self, owner_id: str, name: str, arguments: Mapping[str, object]) -> object:
-        if owner_id != "owner":
-            raise PermissionError("calendar system is owner-scoped")
+        if not await self._authorization.authorize(owner_id, name):
+            raise PermissionError("calendar operation is not authorized")
         if name == "find_agenda_candidates":
             _only(arguments, {"title"})
             title = _text(arguments, "title")
@@ -135,45 +144,45 @@ class CalendarToolRegistry:
             return _render(entry)
         if name == "create_agenda":
             _only(arguments, {"title", "starts_at", "ends_at", "timezone", "kind"})
-            return await self._create_agenda(arguments)
+            return await self._create_agenda(owner_id, arguments)
         if name == "update_agenda":
             _only(
                 arguments,
                 {"agenda_entry_id", "expected_version", "title", "starts_at", "ends_at"},
             )
-            return await self._update_agenda(arguments)
+            return await self._update_agenda(owner_id, arguments)
         if name == "complete_agenda":
             _only(arguments, {"agenda_entry_id", "expected_version"})
-            return await self._complete_agenda(arguments)
+            return await self._mutate(owner_id, "COMPLETE_AGENDA", arguments)
         if name == "cancel_agenda":
             _only(arguments, {"agenda_entry_id", "expected_version"})
-            return await self._cancel_agenda(arguments)
+            return await self._mutate(owner_id, "CANCEL_AGENDA", arguments)
         if name == "update_reminder":
             _only(arguments, {"agenda_entry_id", "expected_version", "due_at"})
-            return await self._update_reminder(arguments)
+            return await self._mutate(owner_id, "UPDATE_REMINDER", arguments)
         raise ValueError("unknown calendar tool")
 
-    async def _create_agenda(self, arguments: Mapping[str, object]) -> object:
+    async def _create_agenda(self, owner_id: str, arguments: Mapping[str, object]) -> object:
         title = _text(arguments, "title")
         kind = _text(arguments, "kind")
-        timezone = _text(arguments, "timezone")
+        _text(arguments, "timezone")
         starts = _moment(arguments.get("starts_at"), None)
         ends = _moment(arguments.get("ends_at"), None)
         if kind not in {"EVENT", "TASK_BLOCK"} or ends <= starts:
             raise ValueError("agenda creation is invalid")
-        if await self._agenda_query.get_busy_intervals(starts, ends):
-            raise ValueError("agenda interval conflicts with an active entry")
-        draft = AgendaDraft(kind, title, starts, ends, timezone, ("agent:owner",), uuid4())
-        result = await self._agenda_commands.create_entry(
-            uuid4(), draft, f"agent:agenda:create:{starts.isoformat()}:{title}"
+        payload = dict(arguments)
+        payload["source_refs"] = ["agent:" + owner_id]
+        payload["reminder_lead_minutes"] = 30
+        return _render_result(
+            await self._actions.execute_calendar_operation(
+                owner_id,
+                "CREATE_AGENDA",
+                payload,
+                f"agent:agenda:create:{starts.isoformat()}:{title}",
+            )
         )
-        return {
-            "status": "CREATED",
-            "agenda_entry_id": str(result.agenda_entry_id),
-            "version": result.version,
-        }
 
-    async def _update_agenda(self, arguments: Mapping[str, object]) -> object:
+    async def _update_agenda(self, owner_id: str, arguments: Mapping[str, object]) -> object:
         entry_id = _uuid(arguments, "agenda_entry_id")
         expected = _positive_int(arguments, "expected_version")
         entry = await self._agenda_query.get_entry(entry_id)
@@ -186,25 +195,16 @@ class CalendarToolRegistry:
         ends = _moment(arguments.get("ends_at"), entry.ends_at)
         if not isinstance(title, str) or not title.strip() or ends <= starts:
             raise ValueError("agenda update is invalid")
-        draft = AgendaDraft(
-            entry.kind,
-            title.strip(),
-            starts,
-            ends,
-            entry.timezone,
-            entry.source_refs,
-            entry.proposal_id,
+        payload = dict(arguments)
+        payload.update(
+            {"starts_at": starts.isoformat(), "ends_at": ends.isoformat(), "title": title.strip()}
         )
-        result = await self._agenda_commands.revise_entry(
-            uuid4(), entry_id, expected, draft, f"agent:agenda:{entry_id}:v{expected}:update"
+        result = await self._actions.execute_calendar_operation(
+            owner_id, "UPDATE_AGENDA", payload, f"agent:agenda:{entry_id}:v{expected}:update"
         )
-        return {
-            "status": "UPDATED",
-            "agenda_entry_id": str(result.agenda_entry_id),
-            "version": result.version,
-        }
+        return _render_result(result)
 
-    async def _update_reminder(self, arguments: Mapping[str, object]) -> object:
+    async def _update_reminder(self, owner_id: str, arguments: Mapping[str, object]) -> object:
         entry_id = _uuid(arguments, "agenda_entry_id")
         expected = _positive_int(arguments, "expected_version")
         entry = await self._agenda_query.get_entry(entry_id)
@@ -212,50 +212,36 @@ class CalendarToolRegistry:
             raise LookupError("active agenda entry does not exist")
         if entry.version != expected:
             raise ValueError("agenda entry version is stale")
-        due_at = _moment(arguments.get("due_at"), None)
-        reminders = await self._reminders.list_for_entry(entry_id)
-        active = [
-            value
-            for value in reminders
-            if value.status not in {"CANCELLED", "DEAD_LETTER"}
-            and value.agenda_entry_version == expected
-        ]
-        if not active:
-            raise LookupError("active reminder does not exist")
-        current = min(active, key=lambda value: value.due_at)
-        updated = await self._reminders.reschedule(current.reminder_id, due_at, self._clock.now())
-        return {
-            "status": "UPDATED",
-            "reminder_id": str(updated.reminder_id),
-            "due_at": updated.due_at.isoformat(),
-        }
+        payload = dict(arguments)
+        payload["due_at"] = _moment(arguments.get("due_at"), None).isoformat()
+        return _render_result(
+            await self._actions.execute_calendar_operation(
+                owner_id,
+                "UPDATE_REMINDER",
+                payload,
+                f"agent:reminder:{entry_id}:v{expected}:{payload['due_at']}",
+            )
+        )
 
     async def _complete_agenda(self, arguments: Mapping[str, object]) -> object:
-        entry_id, expected, _entry = await self._current_entry(arguments)
-        result = await self._agenda_commands.complete_entry(
-            entry_id, expected, f"agent:agenda:{entry_id}:v{expected}:complete"
-        )
-        await self._reminders.cancel_for_entry(entry_id, expected)
-        return {
-            "status": "COMPLETED",
-            "agenda_entry_id": str(result.agenda_entry_id),
-            "version": result.version,
-        }
+        return await self._mutate("owner", "COMPLETE_AGENDA", arguments)
 
     async def _cancel_agenda(self, arguments: Mapping[str, object]) -> object:
-        entry_id, expected, _entry = await self._current_entry(arguments)
-        result = await self._agenda_commands.cancel_entry(
-            uuid4(),
-            entry_id,
-            expected,
-            f"agent:agenda:{entry_id}:v{expected}:cancel",
+        return await self._mutate("owner", "CANCEL_AGENDA", arguments)
+
+    async def _mutate(
+        self, owner_id: str, operation: str, arguments: Mapping[str, object]
+    ) -> object:
+        entry_id = _uuid(arguments, "agenda_entry_id")
+        expected = _positive_int(arguments, "expected_version")
+        await self._current_entry(arguments)
+        result = await self._actions.execute_calendar_operation(
+            owner_id,
+            operation,
+            dict(arguments),
+            f"agent:agenda:{entry_id}:v{expected}:{operation.casefold()}",
         )
-        await self._reminders.cancel_for_entry(entry_id, expected)
-        return {
-            "status": "CANCELLED",
-            "agenda_entry_id": str(result.agenda_entry_id),
-            "version": result.version,
-        }
+        return _render_result(result)
 
     async def _current_entry(
         self, arguments: Mapping[str, object]
@@ -268,6 +254,26 @@ class CalendarToolRegistry:
         if entry.version != expected:
             raise ValueError("agenda entry version is stale")
         return entry_id, expected, entry
+
+
+class _OwnerAuthorization:
+    async def authorize(self, principal: str, operation: str) -> bool:
+        del operation
+        return principal == "owner"
+
+
+def _render_result(value: object) -> dict[str, object]:
+    return {
+        "status": getattr(value, "status", "SUCCEEDED"),
+        "action_id": str(getattr(value, "action_id", "")),
+        "agenda_entry_id": str(getattr(value, "agenda_entry_id", ""))
+        if getattr(value, "agenda_entry_id", None)
+        else None,
+        "version": getattr(value, "agenda_entry_version", None),
+        "reminder_id": str(getattr(value, "reminder_id", ""))
+        if getattr(value, "reminder_id", None)
+        else None,
+    }
 
 
 def _text(arguments: Mapping[str, object], key: str) -> str:

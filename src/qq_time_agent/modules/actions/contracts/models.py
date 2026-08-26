@@ -1,5 +1,6 @@
 """Confirmed action execution and two-step undo contracts."""
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Protocol
 from uuid import UUID
@@ -37,4 +38,14 @@ class ActionCommandPort(Protocol):
 
     async def confirm_undo(
         self, user_id: str, action_id: UUID, confirmation_token: str
+    ) -> ActionResultView: ...
+
+
+class CalendarActionPort(Protocol):
+    async def execute_calendar_operation(
+        self,
+        user_id: str,
+        operation: str,
+        payload: Mapping[str, object],
+        idempotency_key: str,
     ) -> ActionResultView: ...

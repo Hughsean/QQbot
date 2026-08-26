@@ -61,6 +61,7 @@ def _values(value: ActionRequest) -> dict[str, object]:
         "agenda_entry_version": value.agenda_entry_version,
         "reminder_id": value.reminder_id,
         "failure_class": value.failure_class,
+        "operation_payload": value.operation_payload,
     }
 
 
@@ -78,4 +79,5 @@ def _to_action(row: ActionRow) -> ActionRequest:
         row.agenda_entry_version,
         row.reminder_id,
         row.failure_class,
+        row.operation_payload,
     )
