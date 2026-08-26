@@ -75,6 +75,10 @@ class Agenda:
     async def get_entry(self, entry_id: UUID) -> AgendaEntryView | None:
         return None
 
+    async def find_active_by_title(self, title: str) -> tuple[AgendaEntryView, ...]:
+        del title
+        return ()
+
 
 @dataclass
 class Repository:

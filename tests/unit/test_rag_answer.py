@@ -66,9 +66,7 @@ async def test_answer_returns_safe_unknown_without_model_when_no_evidence() -> N
 
 @pytest.mark.asyncio
 async def test_general_answer_can_handle_plain_message_without_evidence() -> None:
-    model = Model(
-        {"answer": "你好, 我在。", "citations": [], "insufficient_evidence": True}
-    )
+    model = Model({"answer": "你好, 我在。", "citations": [], "insufficient_evidence": True})
     result = await RetrievalAnswerService(Retrieval(()), model, 10).answer_general("你好")
     assert result.answer == "你好, 我在。"
     assert result.insufficient_evidence

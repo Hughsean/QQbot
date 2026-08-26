@@ -20,6 +20,12 @@ class RetryableJobError(RuntimeError):
         self.failure_class = failure_class
 
 
+class PermanentJobError(RuntimeError):
+    def __init__(self, failure_class: str) -> None:
+        super().__init__(failure_class)
+        self.failure_class = failure_class
+
+
 class JobRunner:
     def __init__(
         self,
@@ -74,6 +80,17 @@ class JobRunner:
             await self._queue.fail(job, self._clock.now(), exc.failure_class, retry_at)
             LOGGER.warning(
                 "job failed retryably",
+                extra={
+                    "job_id": job.job_id,
+                    "kind": job.kind,
+                    "attempt": job.attempt_count,
+                    "failure_class": exc.failure_class,
+                },
+            )
+        except PermanentJobError as exc:
+            await self._queue.fail(job, self._clock.now(), exc.failure_class, None)
+            LOGGER.warning(
+                "job rejected permanently",
                 extra={
                     "job_id": job.job_id,
                     "kind": job.kind,

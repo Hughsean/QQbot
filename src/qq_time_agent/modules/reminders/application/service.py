@@ -44,9 +44,7 @@ class ReminderService:
         await self._repository.save(value)
         return _view(value)
 
-    async def reschedule(
-        self, reminder_id: UUID, due_at: datetime, now: datetime
-    ) -> ReminderView:
+    async def reschedule(self, reminder_id: UUID, due_at: datetime, now: datetime) -> ReminderView:
         value = await self._require(reminder_id)
         value.reschedule(due_at, now)
         await self._repository.save(value)

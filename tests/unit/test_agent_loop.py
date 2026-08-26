@@ -1,13 +1,17 @@
+from collections.abc import Mapping
 from dataclasses import dataclass
 
 import pytest
 
-from qq_time_agent.modules.agent.application.json_model import _parse
+from qq_time_agent.contracts.tools import ToolDefinition
+from qq_time_agent.modules.agent.application.json_model import _instruction, _parse
 from qq_time_agent.modules.agent.application.loop import AgentLoop, AgentLoopConfig
 from qq_time_agent.modules.agent.contracts import (
     AgentDelivery,
     AgentFinal,
+    AgentRequest,
     AgentResponse,
+    AgentResponseProtocolError,
     AgentToolCall,
 )
 
@@ -22,10 +26,10 @@ class Model:
 
 
 class Tools:
-    def definitions(self) -> tuple[object, ...]:
+    def definitions(self) -> tuple[ToolDefinition, ...]:
         return ()
 
-    async def call(self, owner_id: str, name: str, arguments: dict[str, object]) -> object:
+    async def call(self, owner_id: str, name: str, arguments: Mapping[str, object]) -> object:
         assert owner_id == "owner" and name == "ping" and arguments == {}
         return {"ok": True}
 
@@ -39,7 +43,7 @@ async def test_agent_loop_observes_tool_then_reports_final() -> None:
                 AgentResponse(final=AgentFinal("已完成")),
             ]
         ),
-        Tools(),  # type: ignore[arg-type]
+        Tools(),
     )
     result = await loop.run("owner", "处理一下")
     assert result.content == "已完成"
@@ -57,5 +61,23 @@ def test_agent_final_uses_safe_hold_default_for_missing_delivery_decision() -> N
     assert response.final is not None and response.final.delivery is AgentDelivery.NOTIFY
     held = _parse({"type": "final", "content": "需要更多信息"})
     assert held.final is not None and held.final.delivery is AgentDelivery.HOLD
-    with pytest.raises(ValueError, match="delivery"):
+    with pytest.raises(AgentResponseProtocolError):
         _parse({"type": "final", "content": "错误字段", "delivery": "SEND"})
+
+
+def test_agent_final_compatibility_is_limited_to_text_only_shapes() -> None:
+    content = _parse({"content": "你好"})
+    assert content.final == AgentFinal("你好", AgentDelivery.HOLD)
+    simple_final = _parse({"final": "你好"})
+    assert simple_final.final == AgentFinal("你好", AgentDelivery.HOLD)
+    nested_final = _parse({"final": {"content": "邮件已更新", "delivery": "NOTIFY"}})
+    assert nested_final.final == AgentFinal("邮件已更新", AgentDelivery.NOTIFY)
+    with pytest.raises(AgentResponseProtocolError):
+        _parse({"content": "不要执行", "name": "update_agenda", "arguments": {}})
+
+
+def test_agent_instruction_contains_the_exact_response_shapes() -> None:
+    request = AgentRequest("系统规则", "你好", "", (), (), 0)
+    instruction = _instruction(request)
+    assert '"type":"final"' in instruction
+    assert '"type":"tool_call"' in instruction

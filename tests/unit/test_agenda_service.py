@@ -25,6 +25,13 @@ class Repository:
     async def get(self, entry_id: UUID) -> AgendaEntry | None:
         return self.values.get(entry_id)
 
+    async def find_active_by_title(self, title: str) -> tuple[AgendaEntry, ...]:
+        return tuple(
+            entry
+            for entry in self.values.values()
+            if entry.status.value == "ACTIVE" and entry.draft.title == title
+        )
+
     async def busy_between(
         self, range_start: datetime, range_end: datetime
     ) -> tuple[AgendaEntry, ...]:

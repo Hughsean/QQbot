@@ -1,45 +1,69 @@
 """Owner-only QQ command routing; forwarded content never reaches this parser."""
 
-import hashlib
 import logging
-import re
-from dataclasses import dataclass
 from datetime import datetime, timedelta
 from uuid import UUID
 
+from qq_time_agent.adapters.inbound.qq.message_syntax import (
+    ParsedCommand,
+)
+from qq_time_agent.adapters.inbound.qq.message_syntax import (
+    as_forwarded as _as_forwarded,
+)
+from qq_time_agent.adapters.inbound.qq.message_syntax import (
+    as_note as _as_note,
+)
+from qq_time_agent.adapters.inbound.qq.message_syntax import (
+    count as _count,
+)
+from qq_time_agent.adapters.inbound.qq.message_syntax import (
+    format_answer as _format_answer,
+)
+from qq_time_agent.adapters.inbound.qq.message_syntax import (
+    forwarded as _forwarded,
+)
+from qq_time_agent.adapters.inbound.qq.message_syntax import (
+    looks_like_time_management as _looks_like_time_management,
+)
+from qq_time_agent.adapters.inbound.qq.message_syntax import (
+    natural_reminder as _natural_reminder,
+)
+from qq_time_agent.adapters.inbound.qq.message_syntax import (
+    noted as _noted,
+)
+from qq_time_agent.adapters.inbound.qq.message_syntax import (
+    parse_command as _parse_command,
+)
+from qq_time_agent.adapters.inbound.qq.message_syntax import (
+    parse_duration as _parse_duration,
+)
+from qq_time_agent.adapters.inbound.qq.message_syntax import (
+    questioned as _questioned,
+)
+from qq_time_agent.adapters.inbound.qq.message_syntax import (
+    subject as _subject,
+)
 from qq_time_agent.contracts.clock import Clock
 from qq_time_agent.contracts.jobs import JobQueue, JobRequest
 from qq_time_agent.contracts.source import (
-    IngressType,
     SourceAssetDescriptor,
     SourceAssetDiscoveryPort,
     SourceEnvelope,
     SourceType,
-    TrustLevel,
 )
 from qq_time_agent.modules.actions.contracts import ActionCommandPort
 from qq_time_agent.modules.agenda.contracts import AgendaCommandPort, AgendaQueryPort
 from qq_time_agent.modules.agent.application.run_service import AgentRunService
 from qq_time_agent.modules.agent.contracts import AgentContextPort, AgentRunPort
-from qq_time_agent.modules.ai_gateway.contracts import (
-    GeneralAnswerPort,
-    GroundedAnswer,
-    RagAnswerPort,
-)
+from qq_time_agent.modules.ai_gateway.contracts import GeneralAnswerPort, RagAnswerPort
 from qq_time_agent.modules.data_lifecycle.contracts import DeletionRequestPort
-from qq_time_agent.modules.inbox.contracts import InboxProcessingPort, QqInboxPort
+from qq_time_agent.modules.inbox.contracts import InboxProcessingPort, IngestResult, QqInboxPort
 from qq_time_agent.modules.normalization.contracts import NormalizationPort
 from qq_time_agent.modules.reminders.contracts import ReminderCommandPort
 from qq_time_agent.modules.scheduling.contracts import SchedulingPort
 from qq_time_agent.modules.understanding.contracts import CandidateQueryPort
 
 LOGGER = logging.getLogger(__name__)
-
-
-@dataclass(frozen=True, slots=True)
-class ParsedCommand:
-    name: str
-    arguments: tuple[str, ...]
 
 
 class QqCommandRouter:
@@ -118,8 +142,8 @@ class QqCommandRouter:
         agent = self._agent
         if agent is None:
             raise RuntimeError("Agent is not configured")
-        await self._ingest_text(envelope, content)
         ingested = await self._inbox.ingest_qq(envelope, content)
+        await self._normalize_ingested_text(envelope, content, ingested)
         run = None
         if self._agent_runs is not None:
             run = await self._agent_runs.ensure_run(
@@ -188,6 +212,21 @@ class QqCommandRouter:
         assets: tuple[SourceAssetDescriptor, ...] = (),
     ) -> str:
         result = await self._inbox.ingest_qq(envelope, text)
+        await self._normalize_ingested_text(envelope, text, result, assets)
+        if envelope.source_type is SourceType.OWNER_NOTE:
+            return "已保存主人笔记, 将用于后续检索。"
+        if assets:
+            return "已接收图片, 正在离线识别并生成建议。"
+        label = "转发文本" if envelope.source_type is SourceType.QQ_FORWARD else "输入"
+        return f"已接收{label}, 将用于后续检索。"
+
+    async def _normalize_ingested_text(
+        self,
+        envelope: SourceEnvelope,
+        text: str,
+        result: IngestResult,
+        assets: tuple[SourceAssetDescriptor, ...] = (),
+    ) -> None:
         if assets and self._asset_discovery is not None:
             await self._asset_discovery.discover(result.inbox_item_id, assets, self._clock.now())
         if result.created:
@@ -202,12 +241,6 @@ class QqCommandRouter:
             await self._processing.mark_normalized(result.inbox_item_id)
             if envelope.source_type is SourceType.OWNER_NOTE:
                 await self._processing.mark_completed(result.inbox_item_id)
-        if envelope.source_type is SourceType.OWNER_NOTE:
-            return "已保存主人笔记, 将用于后续检索。"
-        if assets:
-            return "已接收图片, 正在离线识别并生成建议。"
-        label = "转发文本" if envelope.source_type is SourceType.QQ_FORWARD else "输入"
-        return f"已接收{label}, 将用于后续检索。"
 
     async def _handle(self, command: ParsedCommand) -> str:
         if command.name == "确认":
@@ -355,170 +388,3 @@ class QqCommandRouter:
             return "资料删除暂不可用。"
         result = await self._deletion.record_deletion(args[0])
         return f"资料已删除: {result.subject_ref}"
-
-
-def _forwarded(content: str) -> tuple[bool, str]:
-    value = content.strip()
-    for prefix in ("转发:", "转发\N{FULLWIDTH COLON}"):
-        if value.startswith(prefix):
-            text = value[len(prefix) :].strip()
-            if not text:
-                raise ValueError("转发文本不能为空")
-            return True, text
-    return False, value
-
-
-def _noted(content: str) -> tuple[bool, str]:
-    value = content.strip()
-    for prefix in ("笔记:", "笔记\N{FULLWIDTH COLON}"):
-        if value.startswith(prefix):
-            text = value[len(prefix) :].strip()
-            if not text:
-                raise ValueError("笔记文本不能为空")
-            return True, text
-    return False, value
-
-
-def _questioned(content: str) -> tuple[bool, str]:
-    value = content.strip()
-    for prefix in ("查询:", "查询\N{FULLWIDTH COLON}"):
-        if value.startswith(prefix):
-            question = value[len(prefix) :].strip()
-            if not question:
-                raise ValueError("查询问题不能为空")
-            return True, question
-    return False, value
-
-
-def _format_answer(value: GroundedAnswer) -> str:
-    if not value.citations:
-        return value.answer
-    sources = "\n".join(
-        f"- {citation.source_ref} ({citation.occurred_at.date().isoformat()})"
-        for citation in value.citations
-    )
-    return f"{value.answer}\n来源:\n{sources}"
-
-
-def _as_forwarded(value: SourceEnvelope, content: str) -> SourceEnvelope:
-    content_hash = hashlib.sha256(content.encode()).hexdigest()
-    return SourceEnvelope(
-        SourceType.QQ_FORWARD,
-        IngressType.FORWARDED,
-        value.external_id,
-        value.thread_id,
-        value.occurred_at,
-        value.received_at,
-        value.sender,
-        value.content_ref,
-        f"sha256:{content_hash}",
-        TrustLevel.T2,
-        {"message_kind": "forwarded_text"},
-    )
-
-
-def _as_note(value: SourceEnvelope, content: str) -> SourceEnvelope:
-    content_hash = hashlib.sha256(content.encode()).hexdigest()
-    return SourceEnvelope(
-        SourceType.OWNER_NOTE,
-        IngressType.DIRECT,
-        value.external_id,
-        value.thread_id,
-        value.occurred_at,
-        value.received_at,
-        value.sender,
-        value.content_ref,
-        f"sha256:{content_hash}",
-        TrustLevel.T2,
-        {"message_kind": "owner_note"},
-    )
-
-
-def _subject(source_type: SourceType) -> str:
-    return {
-        SourceType.QQ_FORWARD: "QQ 转发文本",
-        SourceType.OWNER_NOTE: "主人笔记",
-        SourceType.QQ_DIRECT: "QQ 直接输入",
-    }[source_type]
-
-
-def _parse_command(content: str) -> ParsedCommand | None:
-    parts = tuple(content.split())
-    if not parts or parts[0] not in {
-        "确认",
-        "拒绝",
-        "修改",
-        "撤销",
-        "撤销确认",
-        "完成",
-        "推迟",
-        "删除资料",
-        "提醒",
-    }:
-        return None
-    return ParsedCommand(parts[0], parts[1:])
-
-
-def _count(args: tuple[str, ...], expected: int) -> None:
-    if len(args) != expected:
-        raise ValueError("命令参数数量不正确")
-
-
-def _parse_duration(value: str) -> timedelta:
-    normalized = value.strip().lower()
-    units = (
-        ("天", 24 * 60),
-        ("d", 24 * 60),
-        ("小时", 60),
-        ("h", 60),
-        ("分钟", 1),
-        ("分", 1),
-        ("m", 1),
-    )
-    for suffix, minutes in units:
-        if normalized.endswith(suffix):
-            amount = normalized[: -len(suffix)]
-            if not amount.isdigit() or int(amount) < 1:
-                break
-            return timedelta(minutes=int(amount) * minutes)
-    raise ValueError("提前时长必须是正整数天、小时或分钟")
-
-
-def _looks_like_time_management(value: str) -> bool:
-    markers = (
-        "今天",
-        "明天",
-        "后天",
-        "昨天",
-        "下周",
-        "周一",
-        "周二",
-        "周三",
-        "周四",
-        "周五",
-        "周六",
-        "周日",
-        "任务",
-        "日程",
-        "会议",
-        "提醒",
-        "截止",
-        "安排",
-        "改到",
-        "几点",
-        "上午",
-        "下午",
-        "晚上",
-    )
-    if any(marker in value for marker in markers):
-        return True
-    return any(character.isdigit() for character in value) and any(
-        marker in value for marker in ("点", ":", "时", "月", "号", "日")
-    )
-
-
-def _natural_reminder(value: str) -> tuple[str, str] | None:
-    match = re.fullmatch(r"(.+?)提前([1-9][0-9]*)(天|小时|分钟)提醒我", value.strip())
-    if match is None:
-        return None
-    return match.group(1).strip(), match.group(2) + match.group(3)

@@ -64,13 +64,9 @@ class RetrievalAnswerService:
         return await self._invoke(question, chunks)
 
     async def _retrieve(self, question: str) -> tuple[RetrievedChunk, ...]:
-        return await self._retrieval.retrieve(
-            question, RetrievalFilters(), self._retrieval_limit
-        )
+        return await self._retrieval.retrieve(question, RetrievalFilters(), self._retrieval_limit)
 
-    async def _invoke(
-        self, question: str, chunks: tuple[RetrievedChunk, ...]
-    ) -> GroundedAnswer:
+    async def _invoke(self, question: str, chunks: tuple[RetrievedChunk, ...]) -> GroundedAnswer:
         evidence, labels = _evidence(chunks, self._max_context_chars)
         response = await self._model.invoke(
             StructuredRequest(

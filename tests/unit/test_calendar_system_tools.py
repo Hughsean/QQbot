@@ -1,12 +1,13 @@
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 import pytest
 
-from qq_time_agent.modules.agenda.contracts import AgendaEntryRef, AgendaEntryView
+from qq_time_agent.modules.actions.contracts import ActionResultView
+from qq_time_agent.modules.agenda.contracts import AgendaEntryView, BusyInterval
 from qq_time_agent.modules.calendar_system.application.tools import CalendarToolRegistry
-from qq_time_agent.modules.reminders.contracts import ReminderView
 
 NOW = datetime(2026, 8, 26, 9, tzinfo=UTC)
 ENTRY_ID = uuid4()
@@ -23,29 +24,25 @@ class Agenda:
     async def find_active_by_title(self, title: str) -> tuple[AgendaEntryView, ...]:
         return (self.entry,) if title == self.entry.title else ()
 
-    async def revise_entry(
-        self,
-        action_id: UUID,
-        entry_id: UUID,
-        expected_version: int,
-        draft: object,
-        key: str,
-    ) -> AgendaEntryRef:
-        del action_id, draft, key
-        self.updates.append((entry_id, expected_version))
-        return AgendaEntryRef(entry_id, expected_version + 1)
-
-
-@dataclass
-class Reminders:
-    async def list_for_entry(self, entry_id: UUID) -> tuple[ReminderView, ...]:
+    async def get_busy_intervals(
+        self, range_start: datetime, range_end: datetime
+    ) -> tuple[BusyInterval, ...]:
+        del range_start, range_end
         return ()
 
 
 @dataclass
-class FixedClock:
-    def now(self) -> datetime:
-        return NOW
+@dataclass
+class Actions:
+    async def execute_calendar_operation(
+        self,
+        user_id: str,
+        operation: str,
+        payload: Mapping[str, object],
+        idempotency_key: str,
+    ) -> ActionResultView:
+        del user_id, operation, payload, idempotency_key
+        raise AssertionError("stale version must be rejected before Actions")
 
 
 def _entry(version: int = 2) -> AgendaEntryView:
@@ -66,7 +63,7 @@ def _entry(version: int = 2) -> AgendaEntryView:
 @pytest.mark.asyncio
 async def test_calendar_tool_requires_current_version_and_owner() -> None:
     agenda = Agenda(_entry(), [])
-    registry = CalendarToolRegistry(agenda, agenda, Reminders(), FixedClock())
+    registry = CalendarToolRegistry(agenda, Actions())
     with pytest.raises(PermissionError):
         await registry.call("other", "get_agenda", {"agenda_entry_id": str(ENTRY_ID)})
     with pytest.raises(ValueError, match="stale"):

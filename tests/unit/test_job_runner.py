@@ -4,7 +4,11 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from qq_time_agent.adapters.inbound.workers.runner import JobRunner, RetryableJobError
+from qq_time_agent.adapters.inbound.workers.runner import (
+    JobRunner,
+    PermanentJobError,
+    RetryableJobError,
+)
 from qq_time_agent.contracts.jobs import JobLease, JobRequest
 
 
@@ -112,3 +116,18 @@ async def test_runner_dead_letters_unknown_job_kind() -> None:
     runner = JobRunner(queue, {}, FixedClock(now), "worker")
     await runner.run_once()
     assert queue.failures[0][1:] == ("PermanentProvider", None)
+
+
+@pytest.mark.asyncio
+async def test_runner_preserves_explicit_permanent_error_classification() -> None:
+    job = JobLease(uuid4(), "invalid-agent", {}, "worker", 1, 3)
+    queue = MemoryQueue([job])
+
+    async def handle(_: JobLease) -> None:
+        raise PermanentJobError("InvalidAgentResponse")
+
+    runner = JobRunner(
+        queue, {"invalid-agent": handle}, FixedClock(datetime(2026, 8, 13, tzinfo=UTC)), "worker"
+    )
+    await runner.run_once()
+    assert queue.failures == [(job.job_id, "InvalidAgentResponse", None)]

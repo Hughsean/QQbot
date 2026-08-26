@@ -9,6 +9,7 @@ from qq_time_agent.modules.credentials.contracts import CredentialHandle, Creden
 from qq_time_agent.modules.inbox.application.service import InboxService
 from qq_time_agent.modules.inbox.application.sync import MailSyncService
 from qq_time_agent.modules.inbox.contracts import (
+    ConversationContextItem,
     InboxContentView,
     InboxSourceView,
     IngestResult,
@@ -121,6 +122,12 @@ class MemoryInboxRepository:
     async def get_source(self, inbox_item_id: UUID) -> InboxSourceView | None:
         return None
 
+    async def list_recent_conversation(
+        self, user_id: str, before: datetime, exclude_id: UUID, limit: int = 8
+    ) -> tuple[ConversationContextItem, ...]:
+        del user_id, before, exclude_id, limit
+        return ()
+
     async def mark_deleted(self, connection_id: UUID, external_id: str, now: datetime) -> bool:
         if (connection_id, external_id) not in self.external:
             return False
@@ -138,6 +145,10 @@ class MemoryInboxRepository:
         return tuple(
             item_id for item_id, item in self.items.items() if item.status.value == "NORMALIZED"
         )[:limit]
+
+    async def list_needs_review(self, limit: int) -> tuple[InboxSourceView, ...]:
+        del limit
+        return ()
 
     async def list_knowledge_source_ids(
         self, limit: int, after_id: UUID | None = None

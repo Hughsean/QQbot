@@ -2,10 +2,16 @@
 
 from uuid import UUID
 
+from qq_time_agent.adapters.inbound.workers.runner import PermanentJobError
 from qq_time_agent.contracts.clock import Clock
 from qq_time_agent.contracts.jobs import JobLease, JobQueue, JobRequest
 from qq_time_agent.modules.agent.application.run_service import AgentRunService
-from qq_time_agent.modules.agent.contracts import AgentContextPort, AgentDelivery
+from qq_time_agent.modules.agent.contracts import (
+    AgentContextPort,
+    AgentDelivery,
+    AgentResponseProtocolError,
+    AgentRunExecutionPort,
+)
 from qq_time_agent.modules.inbox.contracts import InboxContentPort, InboxSourcePort
 from qq_time_agent.modules.notifications.application.ports import NotificationIntentRepository
 from qq_time_agent.modules.notifications.domain.models import (
@@ -17,7 +23,7 @@ from qq_time_agent.modules.notifications.domain.models import (
 class AgentRunJobHandler:
     def __init__(
         self,
-        runs: AgentRunService,
+        runs: AgentRunExecutionPort,
         content: InboxContentPort,
         context: AgentContextPort,
         source: InboxSourcePort | None = None,
@@ -50,7 +56,10 @@ class AgentRunJobHandler:
             conversation_id=run.conversation_id,
             event_case_id=run.event_case_id,
         )
-        result = await self._runs.execute(UUID(raw_run), item.body_text, context)
+        try:
+            result = await self._runs.execute(UUID(raw_run), item.body_text, context)
+        except AgentResponseProtocolError as exc:
+            raise PermanentJobError("InvalidAgentResponse") from exc
         if self._should_notify(result.delivery):
             if self._notifications is None or self._source is None or self._clock is None:
                 return

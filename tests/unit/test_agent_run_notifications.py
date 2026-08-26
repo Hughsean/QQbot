@@ -1,19 +1,24 @@
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
 import pytest
 
 from qq_time_agent.adapters.inbound.workers.agent_run import AgentRunJobHandler
+from qq_time_agent.adapters.inbound.workers.runner import PermanentJobError
 from qq_time_agent.contracts.jobs import JobLease
 from qq_time_agent.modules.agent.contracts import (
     AgentDelivery,
     AgentFinal,
+    AgentResponseProtocolError,
     AgentRun,
     AgentRunStatus,
 )
 from qq_time_agent.modules.inbox.contracts import InboxContentView, InboxSourceView
-from qq_time_agent.modules.notifications.domain.models import NotificationIntentDraft
+from qq_time_agent.modules.notifications.domain.models import (
+    NotificationIntent,
+    NotificationIntentDraft,
+)
 
 NOW = datetime(2026, 8, 26, tzinfo=UTC)
 
@@ -22,12 +27,15 @@ NOW = datetime(2026, 8, 26, tzinfo=UTC)
 class Runs:
     run: AgentRun
     result: AgentFinal
+    failure: Exception | None = None
 
     async def get(self, run_id: UUID) -> AgentRun | None:
         return self.run if run_id == self.run.run_id else None
 
-    async def execute(self, run_id: UUID, message: str, context: str) -> AgentFinal:
+    async def execute(self, run_id: UUID, message: str, context: str = "") -> AgentFinal:
         assert run_id == self.run.run_id and message == "邮件正文" and context == "事件上下文"
+        if self.failure is not None:
+            raise self.failure
         return self.result
 
 
@@ -57,12 +65,31 @@ class Source:
 class Notifications:
     drafts: list[NotificationIntentDraft] = field(default_factory=list)
 
-    async def add_or_get(
-        self, draft: NotificationIntentDraft, now: datetime
-    ) -> NotificationIntentDraft:
+    async def add_or_get(self, draft: NotificationIntentDraft, now: datetime) -> NotificationIntent:
         assert now == NOW
         self.drafts.append(draft)
-        return draft
+        return NotificationIntent.create(draft, now)
+
+    async def lease_due(
+        self, now: datetime, owner: str, duration: timedelta, limit: int
+    ) -> tuple[NotificationIntent, ...]:
+        del now, owner, duration, limit
+        return ()
+
+    async def save(self, intent: NotificationIntent, expected_version: int) -> None:
+        del intent, expected_version
+
+    async def has_open(self, subject_key: str) -> bool:
+        del subject_key
+        return False
+
+    async def has_recent_sent(self, subject_key: str, since: datetime) -> bool:
+        del subject_key, since
+        return False
+
+    async def recover_expired(self, now: datetime, limit: int) -> int:
+        del now, limit
+        return 0
 
 
 class Clock:
@@ -71,7 +98,9 @@ class Clock:
 
 
 def _handler(
-    delivery: AgentDelivery, source_type: str = "MICROSOFT_MAIL"
+    delivery: AgentDelivery,
+    source_type: str = "MICROSOFT_MAIL",
+    failure: Exception | None = None,
 ) -> tuple[AgentRunJobHandler, JobLease, Notifications]:
     item_id = uuid4()
     run_id = uuid4()
@@ -92,11 +121,11 @@ def _handler(
     )
     notifications = Notifications()
     handler = AgentRunJobHandler(
-        Runs(run, AgentFinal("已识别到时间变更", delivery)),
+        Runs(run, AgentFinal("已识别到时间变更", delivery), failure),
         Content(item),
-        Context(),  # type: ignore[arg-type]
+        Context(),
         Source(source),
-        notifications,  # type: ignore[arg-type]
+        notifications,
         Clock(),
     )
     job = JobLease(
@@ -125,4 +154,14 @@ async def test_mail_agent_notification_is_anchored_to_its_subject() -> None:
 async def test_non_mail_agent_result_cannot_create_proactive_notification() -> None:
     handler, job, notifications = _handler(AgentDelivery.NOTIFY, "QQ_DIRECT")
     await handler(job)
+    assert notifications.drafts == []
+
+
+@pytest.mark.asyncio
+async def test_invalid_agent_response_is_permanently_classified_without_notification() -> None:
+    handler, job, notifications = _handler(
+        AgentDelivery.HOLD, failure=AgentResponseProtocolError("invalid")
+    )
+    with pytest.raises(PermanentJobError, match="InvalidAgentResponse"):
+        await handler(job)
     assert notifications.drafts == []

@@ -1,12 +1,12 @@
 import hashlib
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
 import pytest
 
 from qq_time_agent.adapters.inbound.qq.commands import QqCommandRouter
-from qq_time_agent.contracts.jobs import JobRequest
+from qq_time_agent.contracts.jobs import JobLease, JobRequest, JobStatusView
 from qq_time_agent.contracts.source import (
     IngressType,
     SourceAssetDescriptor,
@@ -77,6 +77,28 @@ class Queue:
     async def enqueue(self, request: JobRequest) -> UUID:
         self.values.append(request)
         return uuid4()
+
+    async def lease_due(
+        self, now: datetime, worker_id: str, limit: int, lease_duration: timedelta
+    ) -> list[JobLease]:
+        del now, worker_id, limit, lease_duration
+        return []
+
+    async def complete(self, lease: JobLease, now: datetime) -> None:
+        del lease, now
+
+    async def fail(
+        self,
+        lease: JobLease,
+        now: datetime,
+        failure_class: str,
+        retry_at: datetime | None,
+    ) -> None:
+        del lease, now, failure_class, retry_at
+
+    async def status(self, job_id: UUID) -> JobStatusView | None:
+        del job_id
+        return None
 
 
 @dataclass
@@ -168,7 +190,7 @@ async def test_forwarded_confirmation_text_is_t2_data_not_command() -> None:
         Forbidden(),  # type: ignore[arg-type]
         Forbidden(),  # type: ignore[arg-type]
         Forbidden(),  # type: ignore[arg-type]
-        queue,  # type: ignore[arg-type]
+        queue,
         Clock(),
         15,
     )
@@ -195,7 +217,7 @@ async def test_plain_direct_input_is_t1_and_not_sent_to_legacy_understanding() -
         Forbidden(),  # type: ignore[arg-type]
         Forbidden(),  # type: ignore[arg-type]
         Forbidden(),  # type: ignore[arg-type]
-        queue,  # type: ignore[arg-type]
+        queue,
         Clock(),
         15,
     )
@@ -219,7 +241,7 @@ async def test_owner_note_is_t2_index_source_without_understanding_job() -> None
         Forbidden(),  # type: ignore[arg-type]
         Forbidden(),  # type: ignore[arg-type]
         Forbidden(),  # type: ignore[arg-type]
-        queue,  # type: ignore[arg-type]
+        queue,
         Clock(),
         15,
     )
@@ -245,7 +267,7 @@ async def test_query_uses_read_only_rag_and_renders_source() -> None:
         Forbidden(),  # type: ignore[arg-type]
         Forbidden(),  # type: ignore[arg-type]
         Forbidden(),  # type: ignore[arg-type]
-        queue,  # type: ignore[arg-type]
+        queue,
         Clock(),
         15,
         Rag(),
@@ -300,6 +322,7 @@ async def test_agent_path_persists_direct_message_without_legacy_understanding_j
     )
     reply = await router.receive(_envelope("刚才那个任务改到明天"), "刚才那个任务改到明天")
     assert reply == "Agent已处理"
+    assert len(inbox.envelopes) == 1
     assert queue.values == []
 
 
@@ -319,7 +342,7 @@ async def test_media_caption_cannot_execute_command_and_discovers_asset() -> Non
         Forbidden(),  # type: ignore[arg-type]
         Forbidden(),  # type: ignore[arg-type]
         Forbidden(),  # type: ignore[arg-type]
-        queue,  # type: ignore[arg-type]
+        queue,
         Clock(),
         15,
         asset_discovery=discovery,

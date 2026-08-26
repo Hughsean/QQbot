@@ -93,6 +93,12 @@ class Reminders:
     async def snooze(self, reminder_id: UUID, delay: timedelta, now: datetime) -> ReminderView:
         raise NotImplementedError
 
+    async def reschedule(self, reminder_id: UUID, due_at: datetime, now: datetime) -> ReminderView:
+        raise NotImplementedError
+
+    async def list_for_entry(self, entry_id: UUID) -> tuple[ReminderView, ...]:
+        return ()
+
     async def lease_due(
         self, now: datetime, worker_id: str, limit: int, lease_duration: timedelta
     ) -> tuple[ReminderLease, ...]:

@@ -37,4 +37,6 @@ async def test_mcp_registry_is_owner_scoped_and_bounded() -> None:
     with pytest.raises(ValueError, match="between"):
         await registry.call("search_knowledge", "owner", {"query": "q", "limit": 31})
     result = await registry.call("search_knowledge", "owner", {"query": "q"})
+    assert isinstance(result, tuple)
+    assert isinstance(result[0], dict)
     assert result[0]["source_ref"] == "mail:1"

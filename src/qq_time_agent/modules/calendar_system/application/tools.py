@@ -4,7 +4,6 @@ from collections.abc import Mapping
 from datetime import datetime
 from uuid import UUID
 
-from qq_time_agent.contracts.clock import Clock
 from qq_time_agent.contracts.tools import ToolDefinition
 from qq_time_agent.modules.actions.contracts import CalendarActionPort
 from qq_time_agent.modules.agenda.contracts import (
@@ -20,22 +19,10 @@ class CalendarToolRegistry:
         agenda_query: AgendaQueryPort,
         actions: CalendarActionPort,
         authorization: CalendarAuthorizationPort | None = None,
-        clock: Clock | None = None,
     ) -> None:
         self._agenda_query = agenda_query
-        selected_authorization: CalendarAuthorizationPort
-        # The fourth positional argument was historically a Clock. Keep read-only
-        # construction usable for downstream callers while production injects the
-        # explicit Actions and authorization ports.
-        if authorization is not None and not hasattr(authorization, "authorize"):
-            self._actions = actions
-            selected_authorization = _OwnerAuthorization()
-            self._clock = clock
-        else:
-            self._actions = actions
-            selected_authorization = authorization or _OwnerAuthorization()
-            self._clock = clock
-        self._authorization = selected_authorization
+        self._actions = actions
+        self._authorization = authorization or _OwnerAuthorization()
         self._definitions = (
             ToolDefinition(
                 "find_agenda_candidates",
@@ -222,12 +209,6 @@ class CalendarToolRegistry:
                 f"agent:reminder:{entry_id}:v{expected}:{payload['due_at']}",
             )
         )
-
-    async def _complete_agenda(self, arguments: Mapping[str, object]) -> object:
-        return await self._mutate("owner", "COMPLETE_AGENDA", arguments)
-
-    async def _cancel_agenda(self, arguments: Mapping[str, object]) -> object:
-        return await self._mutate("owner", "CANCEL_AGENDA", arguments)
 
     async def _mutate(
         self, owner_id: str, operation: str, arguments: Mapping[str, object]

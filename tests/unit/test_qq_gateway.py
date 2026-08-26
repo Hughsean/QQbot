@@ -16,6 +16,7 @@ from qq_time_agent.adapters.inbound.qq.gateway import (
 )
 from qq_time_agent.bootstrap.config_models import OwnerConfig, QqConfig
 from qq_time_agent.contracts.source import SourceAssetDescriptor, SourceEnvelope, TrustLevel
+from qq_time_agent.modules.agent.contracts import AgentResponseProtocolError
 
 
 @dataclass
@@ -152,6 +153,19 @@ async def test_owner_command_errors_are_safe_and_provider_details_are_hidden() -
     reply = await unexpected.process("owner", "m2", "bad", now)
     assert reply == "处理失败, 请稍后重试。"
     assert "provider secret" not in reply
+
+
+@pytest.mark.asyncio
+async def test_agent_protocol_error_has_a_stable_user_facing_reply() -> None:
+    now = datetime(2026, 8, 13, tzinfo=UTC)
+    processor = QqMessageProcessor(
+        OwnerConfig(SecretStr("owner")),
+        FailingIngress(AgentResponseProtocolError("raw provider detail")),
+        FixedClock(now),
+    )
+    reply = await processor.process("owner", "m1", "你好", now)
+    assert reply == "模型回复格式异常, 请稍后重试."
+    assert "provider" not in reply
 
 
 class StopReconnect(RuntimeError):

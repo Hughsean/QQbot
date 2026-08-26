@@ -24,6 +24,7 @@ from qq_time_agent.contracts.source import (
     SourceType,
     TrustLevel,
 )
+from qq_time_agent.modules.agent.contracts import AgentResponseProtocolError
 from qq_time_agent.modules.notifications.contracts import NotificationPreSendTransientError
 
 LOGGER = logging.getLogger(__name__)
@@ -132,6 +133,11 @@ class QqMessageProcessor:
                     return "当前接入未启用图片处理能力。"
                 return await self._ingress.receive(envelope, content, assets)
             return await self._ingress.receive(envelope, content)
+        except AgentResponseProtocolError:
+            LOGGER.warning(
+                "QQ Agent 模型响应格式异常", extra={"failure_class": "InvalidAgentResponse"}
+            )
+            return "模型回复格式异常, 请稍后重试."
         except (LookupError, PermissionError, ValueError) as exc:
             return f"无法执行: {exc}"
         except Exception as exc:

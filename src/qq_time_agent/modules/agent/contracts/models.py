@@ -4,12 +4,19 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 from uuid import UUID
 
 from qq_time_agent.contracts.tools import ToolDefinition
 
+if TYPE_CHECKING:
+    from qq_time_agent.modules.agent.contracts.runs import AgentRun
+
 AgentToolDefinition = ToolDefinition
+
+
+class AgentResponseProtocolError(ValueError):
+    """The model produced JSON outside the Agent response protocol."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -86,3 +93,9 @@ class AgentContextPort(Protocol):
 
 class AgentRunPort(Protocol):
     async def run(self, owner_id: str, message: str, context: str = "") -> AgentFinal: ...
+
+
+class AgentRunExecutionPort(Protocol):
+    async def get(self, run_id: UUID) -> "AgentRun | None": ...
+
+    async def execute(self, run_id: UUID, message: str, context: str = "") -> AgentFinal: ...
