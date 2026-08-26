@@ -85,7 +85,7 @@ class AgentRunJobHandler:
 
 
 class MailAgentRunScheduler:
-    """Create an AgentRun after Understanding has accepted a mail item."""
+    """Create an AgentRun immediately after deterministic mail normalization."""
 
     def __init__(
         self,

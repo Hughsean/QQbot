@@ -4,9 +4,6 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from qq_time_agent.adapters.inbound.workers.proposal_notifications import (
-    ProposalNotificationWorker,
-)
 from qq_time_agent.adapters.inbound.workers.reminders import ReminderWorker
 from qq_time_agent.modules.agenda.contracts import AgendaEntryView
 from qq_time_agent.modules.notifications.contracts import DeliveryRef
@@ -135,34 +132,3 @@ async def test_reminder_worker_sends_stale_dead_letters_and_retries(
         getattr(record, "reminder_id", None) == stale.reminder_id for record in caplog.records
     )
     assert "评审" not in caplog.text
-
-
-@pytest.mark.asyncio
-async def test_proposal_notifications_isolate_one_delivery_failure() -> None:
-    now = datetime(2026, 8, 20, tzinfo=UTC)
-    proposals = tuple(
-        SchedulingProposalView(
-            uuid4(),
-            1,
-            "owner",
-            uuid4(),
-            "EVENT",
-            f"proposal-{index}",
-            None,
-            (),
-            (),
-            "conflict",
-            (),
-            ("source",),
-            now,
-            "PENDING_CONFIRMATION",
-        )
-        for index in range(2)
-    )
-    notifications = Notifications(fail_first_confirmation=True)
-    worker = ProposalNotificationWorker(
-        Scheduling(proposals),  # type: ignore[arg-type]
-        notifications,  # type: ignore[arg-type]
-    )
-    assert await worker.run_once() == 1
-    assert notifications.confirmation_calls == 2

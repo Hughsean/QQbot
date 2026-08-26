@@ -15,8 +15,10 @@ credentials, provider SDKs or database sessions. Every turn has a maximum step c
 budget, tool timeout and bounded observation size.
 
 Every QQ direct message and eligible mail Inbox item creates exactly one persistent `AgentRun`
-identified by its Inbox item. A run stores control state, tool-call identifiers and bounded
-observations, but refers to Inbox for source content. Runs execute through the durable Job queue;
+identified by its Inbox item. A run stores control state, tool-call identifiers, argument hashes
+and bounded observations, but refers to Inbox for source content. Each completed tool call is
+checkpointed atomically with its audit row; recovery resumes with those observations and does not
+repeat the same call identifier and arguments. Runs execute through the durable Job queue;
 the QQ process may execute a newly queued run immediately, while the queued job remains the
 recovery path. A repeated provider message reuses the same run and cannot repeat a completed tool
 call. Transient model, retrieval and infrastructure failures are retried; policy rejection, stale
@@ -55,9 +57,9 @@ Calendar operations are exposed through a single Calendar System facade. The fac
 - reminder consistency;
 - audit records and result rendering.
 
-The Agent can request `find_agenda_candidates`, `get_agenda`, `update_agenda`, and
-`update_reminder`. It cannot call `AgendaCommandPort`, `ReminderCommandPort`, repositories or
-Actions directly. A request such as “刚才那个任务改到明天” is valid only when the facade can
+The Agent can request `find_agenda_candidates`, `get_agenda`, `create_agenda`, `update_agenda`,
+`complete_agenda`, `cancel_agenda`, and `update_reminder`. It cannot call `AgendaCommandPort`,
+`ReminderCommandPort`, repositories or Actions directly. A request such as “刚才那个任务改到明天” is valid only when the facade can
 resolve exactly one active target and a complete timezone-aware patch. Otherwise the system
 rejects the operation and the Agent asks a focused question.
 
@@ -68,9 +70,10 @@ target version, outcome and audit event. Agenda changes cancel reminders for the
 and create idempotent reminders for the new version. Create and update both reject overlapping
 active entries, excluding the update target itself.
 
-Authorization is supplied through a Calendar-owned authorization port. A caller-provided literal
-such as `owner` is not itself proof of identity. Tool definitions use the provider-neutral shared
-tool contract; Calendar System does not depend on the Agent module.
+Authorization is supplied explicitly through a Calendar-owned authorization port during Bootstrap.
+The principal comes from the authenticated AgentRun; Calendar System has no default or caller-
+provided literal fallback. Tool definitions use the provider-neutral shared tool contract; Calendar
+System does not depend on the Agent module.
 
 ## Retrieval context
 
@@ -88,6 +91,6 @@ candidates for later use, but it cannot delay or replace the Agent's interpretat
 ## Compatibility policy
 
 This architecture is a clean replacement for the previous command-first understanding path.
-Production QQ and mail processing use the persistent AgentRun path. Legacy confirmation, revise,
-complete, snooze and reminder parsers are removed after their Calendar System equivalents have
-coverage; no compatibility shim is retained.
+Production QQ and mail processing use the persistent AgentRun path. QQ Router does not retain
+confirmation, revise, complete, snooze, reminder or general-answer parser fallbacks; no
+compatibility shim is retained.

@@ -15,7 +15,12 @@ from qq_time_agent.contracts.source import (
     SourceType,
     TrustLevel,
 )
-from qq_time_agent.modules.ai_gateway.contracts import AnswerCitation, GroundedAnswer
+from qq_time_agent.modules.agent.contracts import (
+    AgentDelivery,
+    AgentFinal,
+    AgentRun,
+    AgentRunStatus,
+)
 from qq_time_agent.modules.inbox.contracts import IngestResult
 from qq_time_agent.modules.normalization.contracts import NormalizedContentView
 
@@ -31,32 +36,31 @@ class Inbox:
     envelopes: list[SourceEnvelope] = field(default_factory=list)
     normalized: list[UUID] = field(default_factory=list)
     inbox_item_id: UUID = field(default_factory=uuid4)
-    created: bool = True
 
     async def ingest_qq(self, envelope: SourceEnvelope, content: str) -> IngestResult:
+        del content
         self.envelopes.append(envelope)
-        return IngestResult(self.inbox_item_id, self.created, "RECEIVED")
+        return IngestResult(self.inbox_item_id, len(self.envelopes) == 1, "RECEIVED")
 
     async def mark_normalized(self, inbox_item_id: UUID) -> None:
         self.normalized.append(inbox_item_id)
 
     async def mark_understood(self, inbox_item_id: UUID) -> None:
-        return None
+        del inbox_item_id
 
     async def mark_needs_review(self, inbox_item_id: UUID) -> None:
-        return None
+        del inbox_item_id
 
     async def mark_ignored(self, inbox_item_id: UUID) -> None:
-        return None
+        del inbox_item_id
 
     async def mark_proposed(self, inbox_item_id: UUID) -> None:
-        return None
+        del inbox_item_id
 
     async def mark_completed(self, inbox_item_id: UUID) -> None:
-        return None
+        del inbox_item_id
 
 
-@dataclass
 class Normalization:
     async def normalize(
         self,
@@ -67,7 +71,10 @@ class Normalization:
         source_hash: str,
         source_ref: str | None = None,
     ) -> NormalizedContentView:
-        return NormalizedContentView(inbox_item_id, subject, body_text, source_hash, "v1")
+        del body_html
+        return NormalizedContentView(
+            inbox_item_id, subject, body_text, source_hash, "v1", source_ref
+        )
 
 
 @dataclass
@@ -88,11 +95,7 @@ class Queue:
         del lease, now
 
     async def fail(
-        self,
-        lease: JobLease,
-        now: datetime,
-        failure_class: str,
-        retry_at: datetime | None,
+        self, lease: JobLease, now: datetime, failure_class: str, retry_at: datetime | None
     ) -> None:
         del lease, now, failure_class, retry_at
 
@@ -102,60 +105,57 @@ class Queue:
 
 
 @dataclass
-class ForbiddenScheduling:
-    calls: int = 0
-
-    def __getattr__(self, name: str) -> object:
-        async def fail(*args: object, **kwargs: object) -> object:
-            self.calls += 1
-            raise AssertionError("forwarded content reached command side effect")
-
-        return fail
-
-
-@dataclass
 class Discovery:
     values: list[tuple[UUID, tuple[SourceAssetDescriptor, ...]]] = field(default_factory=list)
 
     async def discover(
-        self,
-        inbox_item_id: UUID,
-        attachments: tuple[SourceAssetDescriptor, ...],
-        now: datetime,
+        self, inbox_item_id: UUID, attachments: tuple[SourceAssetDescriptor, ...], now: datetime
     ) -> tuple[UUID, ...]:
         del now
         self.values.append((inbox_item_id, attachments))
-        return tuple(uuid4() for _ in attachments)
+        return ()
 
 
 @dataclass
-class Forbidden:
-    def __getattr__(self, name: str) -> object:
-        async def fail(*args: object, **kwargs: object) -> object:
-            raise AssertionError("unexpected side effect")
+class Runs:
+    run_id: UUID = field(default_factory=uuid4)
+    ensured: list[UUID] = field(default_factory=list)
+    executed: list[tuple[UUID, str, str]] = field(default_factory=list)
 
-        return fail
+    async def ensure_run(
+        self,
+        inbox_item_id: UUID,
+        user_id: str,
+        source_type: str,
+        conversation_key: str | None = None,
+        event_key: str | None = None,
+        occurred_at: datetime | None = None,
+    ) -> AgentRun:
+        assert user_id == "owner" and source_type == "QQ_DIRECT" and event_key is None
+        assert conversation_key == "owner" and occurred_at is not None
+        self.ensured.append(inbox_item_id)
+        return AgentRun(self.run_id, inbox_item_id, user_id, source_type, AgentRunStatus.PENDING, 0)
+
+    async def get(self, run_id: UUID) -> AgentRun | None:
+        return None
+
+    async def execute(self, run_id: UUID, message: str, context: str = "") -> AgentFinal:
+        self.executed.append((run_id, message, context))
+        return AgentFinal("Agent已处理", AgentDelivery.HOLD)
 
 
-@dataclass
-class Rag:
-    async def answer(self, question: str) -> GroundedAnswer:
-        return GroundedAnswer(
-            f"答案:{question}",
-            (AnswerCitation("owner-note:1", "OWNER_NOTE", Clock().now()),),
-            False,
-        )
-
-    async def answer_general(self, question: str) -> GroundedAnswer:
-        return GroundedAnswer(f"通用:{question}", (), True)
+class Context:
+    async def build(self, *args: object, **kwargs: object) -> str:
+        del args, kwargs
+        return "历史上下文"
 
 
-@dataclass
-class Agent:
-    async def run(self, owner_id: str, message: str, context: str = "") -> object:
-        assert owner_id == "owner" and message
-        del context
-        return type("Final", (), {"content": "Agent已处理"})()
+def _router(
+    inbox: Inbox, queue: Queue, runs: Runs, discovery: Discovery | None = None
+) -> QqCommandRouter:
+    return QqCommandRouter(
+        inbox, inbox, Normalization(), queue, Clock(), discovery, Context(), runs
+    )
 
 
 def _envelope(content: str) -> SourceEnvelope:
@@ -176,191 +176,46 @@ def _envelope(content: str) -> SourceEnvelope:
 
 
 @pytest.mark.asyncio
-async def test_forwarded_confirmation_text_is_t2_data_not_command() -> None:
-    inbox = Inbox()
-    scheduling = ForbiddenScheduling()
-    queue = Queue()
-    router = QqCommandRouter(
-        inbox,
-        inbox,
-        Normalization(),
-        scheduling,  # type: ignore[arg-type]
-        Forbidden(),  # type: ignore[arg-type]
-        Forbidden(),  # type: ignore[arg-type]
-        Forbidden(),  # type: ignore[arg-type]
-        Forbidden(),  # type: ignore[arg-type]
-        Forbidden(),  # type: ignore[arg-type]
-        queue,
-        Clock(),
-        15,
+async def test_direct_message_uses_one_persistent_agent_run() -> None:
+    inbox, queue, runs = Inbox(), Queue(), Runs()
+    reply = await _router(inbox, queue, runs).receive(
+        _envelope("刚才那个任务改到明天"), "刚才那个任务改到明天"
     )
-    reply = await router.receive(_envelope("转发: 确认 deadbeef-1"), "转发: 确认 deadbeef-1")
+    assert reply == "Agent已处理"
+    assert len(inbox.envelopes) == len(runs.ensured) == len(runs.executed) == 1
+    assert queue.values[0].kind == "agent-run"
+
+
+@pytest.mark.asyncio
+async def test_forwarded_content_is_t2_and_never_creates_agent_run() -> None:
+    inbox, queue, runs = Inbox(), Queue(), Runs()
+    reply = await _router(inbox, queue, runs).receive(
+        _envelope("转发: 确认 deadbeef-1"), "转发: 确认 deadbeef-1"
+    )
     assert "已接收转发文本" in reply
-    assert scheduling.calls == 0
     assert inbox.envelopes[0].source_type is SourceType.QQ_FORWARD
-    assert inbox.envelopes[0].trust_level is TrustLevel.T2
-    assert queue.values == []
+    assert runs.ensured == [] and queue.values == []
 
 
 @pytest.mark.asyncio
-async def test_plain_direct_input_is_t1_and_not_sent_to_legacy_understanding() -> None:
-    inbox = Inbox()
-    queue = Queue()
-    content = "下周找两小时写报告"
-    router = QqCommandRouter(
-        inbox,
-        inbox,
-        Normalization(),
-        ForbiddenScheduling(),  # type: ignore[arg-type]
-        Forbidden(),  # type: ignore[arg-type]
-        Forbidden(),  # type: ignore[arg-type]
-        Forbidden(),  # type: ignore[arg-type]
-        Forbidden(),  # type: ignore[arg-type]
-        Forbidden(),  # type: ignore[arg-type]
-        queue,
-        Clock(),
-        15,
+async def test_owner_note_is_t2_index_source_without_agent_run() -> None:
+    inbox, queue, runs = Inbox(), Queue(), Runs()
+    reply = await _router(inbox, queue, runs).receive(
+        _envelope("笔记: 星河联系人"), "笔记: 星河联系人"
     )
-    await router.receive(_envelope(content), content)
-    assert inbox.envelopes[0].trust_level is TrustLevel.T1
-    assert queue.values == []
-
-
-@pytest.mark.asyncio
-async def test_owner_note_is_t2_index_source_without_understanding_job() -> None:
-    inbox = Inbox()
-    queue = Queue()
-    content = "笔记: 星河项目联系人是林澄"
-    router = QqCommandRouter(
-        inbox,
-        inbox,
-        Normalization(),
-        ForbiddenScheduling(),  # type: ignore[arg-type]
-        Forbidden(),  # type: ignore[arg-type]
-        Forbidden(),  # type: ignore[arg-type]
-        Forbidden(),  # type: ignore[arg-type]
-        Forbidden(),  # type: ignore[arg-type]
-        Forbidden(),  # type: ignore[arg-type]
-        queue,
-        Clock(),
-        15,
-    )
-    reply = await router.receive(_envelope(content), content)
     assert "已保存主人笔记" in reply
     assert inbox.envelopes[0].source_type is SourceType.OWNER_NOTE
-    assert inbox.envelopes[0].trust_level is TrustLevel.T2
-    assert inbox.normalized
-    assert queue.values == []
+    assert runs.ensured == [] and queue.values == []
 
 
 @pytest.mark.asyncio
-async def test_query_uses_read_only_rag_and_renders_source() -> None:
-    inbox = Inbox()
-    queue = Queue()
-    router = QqCommandRouter(
-        inbox,
-        inbox,
-        Normalization(),
-        ForbiddenScheduling(),  # type: ignore[arg-type]
-        Forbidden(),  # type: ignore[arg-type]
-        Forbidden(),  # type: ignore[arg-type]
-        Forbidden(),  # type: ignore[arg-type]
-        Forbidden(),  # type: ignore[arg-type]
-        Forbidden(),  # type: ignore[arg-type]
-        queue,
-        Clock(),
-        15,
-        Rag(),
-    )
-    reply = await router.receive(_envelope("查询: 星河联系人"), "查询: 星河联系人")
-    assert "答案:星河联系人" in reply and "owner-note:1" in reply
-    assert inbox.envelopes == [] and queue.values == []
-
-
-@pytest.mark.asyncio
-async def test_plain_owner_message_gets_immediate_read_only_reply() -> None:
-    inbox = Inbox()
-    queue = Queue()
-    router = QqCommandRouter(
-        inbox,
-        inbox,
-        Normalization(),
-        ForbiddenScheduling(),  # type: ignore[arg-type]
-        Forbidden(),  # type: ignore[arg-type]
-        Forbidden(),  # type: ignore[arg-type]
-        Forbidden(),  # type: ignore[arg-type]
-        Forbidden(),  # type: ignore[arg-type]
-        Forbidden(),  # type: ignore[arg-type]
-        queue,
-        Clock(),
-        15,
-        general_answer=Rag(),
-    )
-    reply = await router.receive(_envelope("你好"), "你好")
-    assert reply == "通用:你好"
-    assert inbox.envelopes and queue.values == []
-
-
-@pytest.mark.asyncio
-async def test_agent_path_persists_direct_message_without_legacy_understanding_job() -> None:
-    inbox = Inbox()
-    queue = Queue()
-    router = QqCommandRouter(
-        inbox,
-        inbox,
-        Normalization(),
-        ForbiddenScheduling(),  # type: ignore[arg-type]
-        Forbidden(),  # type: ignore[arg-type]
-        Forbidden(),  # type: ignore[arg-type]
-        Forbidden(),  # type: ignore[arg-type]
-        Forbidden(),  # type: ignore[arg-type]
-        Forbidden(),  # type: ignore[arg-type]
-        queue,
-        Clock(),
-        15,
-        agent=Agent(),  # type: ignore[arg-type]
-    )
-    reply = await router.receive(_envelope("刚才那个任务改到明天"), "刚才那个任务改到明天")
-    assert reply == "Agent已处理"
-    assert len(inbox.envelopes) == 1
-    assert queue.values == []
-
-
-@pytest.mark.asyncio
-async def test_media_caption_cannot_execute_command_and_discovers_asset() -> None:
-    inbox = Inbox()
-    queue = Queue()
-    scheduling = ForbiddenScheduling()
-    discovery = Discovery()
-    router = QqCommandRouter(
-        inbox,
-        inbox,
-        Normalization(),
-        scheduling,  # type: ignore[arg-type]
-        Forbidden(),  # type: ignore[arg-type]
-        Forbidden(),  # type: ignore[arg-type]
-        Forbidden(),  # type: ignore[arg-type]
-        Forbidden(),  # type: ignore[arg-type]
-        Forbidden(),  # type: ignore[arg-type]
-        queue,
-        Clock(),
-        15,
-        asset_discovery=discovery,
-    )
+async def test_media_caption_stays_out_of_the_agent_command_path() -> None:
+    inbox, queue, runs, discovery = Inbox(), Queue(), Runs(), Discovery()
     descriptor = SourceAssetDescriptor(
-        "media-1",
-        "https://gchat.qpic.cn/image/opaque",
-        "screenshot.png",
-        "image/png",
-        128,
+        "media-1", "https://gchat.qpic.cn/image/opaque", None, "image/png", 128
     )
-    reply = await router.receive(_envelope("确认 deadbeef-1"), "确认 deadbeef-1", (descriptor,))
+    reply = await _router(inbox, queue, runs, discovery).receive(
+        _envelope("确认"), "确认", (descriptor,)
+    )
     assert "已接收图片" in reply
-    inbox.created = False
-    duplicate_reply = await router.receive(
-        _envelope("确认 deadbeef-1"), "确认 deadbeef-1", (descriptor,)
-    )
-    assert "已接收图片" in duplicate_reply
-    assert scheduling.calls == 0
-    assert [value[0] for value in discovery.values] == [inbox.inbox_item_id] * 2
-    assert discovery.values[0][1] == discovery.values[1][1] == (descriptor,)
+    assert discovery.values and runs.ensured == []

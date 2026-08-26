@@ -7,6 +7,9 @@ import pytest
 
 from qq_time_agent.modules.actions.contracts import ActionResultView
 from qq_time_agent.modules.agenda.contracts import AgendaEntryView, BusyInterval
+from qq_time_agent.modules.calendar_system.application.authorization import (
+    OwnerCalendarAuthorization,
+)
 from qq_time_agent.modules.calendar_system.application.tools import CalendarToolRegistry
 
 NOW = datetime(2026, 8, 26, 9, tzinfo=UTC)
@@ -63,7 +66,7 @@ def _entry(version: int = 2) -> AgendaEntryView:
 @pytest.mark.asyncio
 async def test_calendar_tool_requires_current_version_and_owner() -> None:
     agenda = Agenda(_entry(), [])
-    registry = CalendarToolRegistry(agenda, Actions())
+    registry = CalendarToolRegistry(agenda, Actions(), OwnerCalendarAuthorization("owner"))
     with pytest.raises(PermissionError):
         await registry.call("other", "get_agenda", {"agenda_entry_id": str(ENTRY_ID)})
     with pytest.raises(ValueError, match="stale"):

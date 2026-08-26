@@ -1,15 +1,11 @@
 """QQ long-connection process composition root."""
 
 import asyncio
-from datetime import timedelta
 
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from qq_time_agent.adapters.inbound.qq.commands import QqCommandRouter
 from qq_time_agent.adapters.inbound.qq.gateway import OfficialQqGateway
-from qq_time_agent.adapters.inbound.workers.proposal_notifications import (
-    ProposalNotificationWorker,
-)
 from qq_time_agent.adapters.inbound.workers.reminders import ReminderWorker
 from qq_time_agent.adapters.outbound.ai.deepseek import DeepSeekStructuredAdapter
 from qq_time_agent.adapters.outbound.ollama.embedding import OllamaEmbeddingAdapter
@@ -22,6 +18,9 @@ from qq_time_agent.bootstrap.settings import load_runtime_config
 from qq_time_agent.contracts.clock import SystemClock
 from qq_time_agent.modules.actions.application.service import ActionService
 from qq_time_agent.modules.actions.infrastructure.repository import SqlActionRepository
+from qq_time_agent.modules.agenda.application.notification_query import (
+    AgendaNotificationQueryService,
+)
 from qq_time_agent.modules.agenda.application.service import AgendaService
 from qq_time_agent.modules.agenda.infrastructure.repository import SqlAgendaRepository
 from qq_time_agent.modules.agent.application.context import AgentContextAssembler
@@ -29,14 +28,14 @@ from qq_time_agent.modules.agent.application.json_model import JsonAgentModel
 from qq_time_agent.modules.agent.application.loop import AgentLoop
 from qq_time_agent.modules.agent.application.run_service import AgentRunService
 from qq_time_agent.modules.agent.infrastructure.repository import SqlAgentRunRepository
-from qq_time_agent.modules.ai_gateway.application.rag_answer import RetrievalAnswerService
 from qq_time_agent.modules.ai_gateway.application.service import AIGatewayService
 from qq_time_agent.modules.ai_gateway.infrastructure.repository import SqlInvocationRepository
 from qq_time_agent.modules.audit.application.service import AuditService
 from qq_time_agent.modules.audit.infrastructure.repository import SqlAuditRepository
+from qq_time_agent.modules.calendar_system.application.authorization import (
+    OwnerCalendarAuthorization,
+)
 from qq_time_agent.modules.calendar_system.application.tools import CalendarToolRegistry
-from qq_time_agent.modules.data_lifecycle.application.coordinator import DeletionCoordinator
-from qq_time_agent.modules.data_lifecycle.infrastructure.repository import SqlTombstoneRepository
 from qq_time_agent.modules.identity.application.service import UserPreferencesService
 from qq_time_agent.modules.identity.contracts import UserPreferencesView
 from qq_time_agent.modules.identity.infrastructure.repository import (
@@ -45,27 +44,17 @@ from qq_time_agent.modules.identity.infrastructure.repository import (
 from qq_time_agent.modules.inbox.application.asset_discovery import MailAssetDiscoveryService
 from qq_time_agent.modules.inbox.application.service import InboxService
 from qq_time_agent.modules.inbox.infrastructure.asset_repository import SqlSourceAssetRepository
-from qq_time_agent.modules.inbox.infrastructure.purge import InboxPurgeAdapter
 from qq_time_agent.modules.inbox.infrastructure.repository import SqlInboxRepository
-from qq_time_agent.modules.knowledge.infrastructure.purge import KnowledgePurgeAdapter
 from qq_time_agent.modules.knowledge.infrastructure.repository import SqlKnowledgeRepository
 from qq_time_agent.modules.normalization.application.service import NormalizationService
-from qq_time_agent.modules.normalization.infrastructure.purge import NormalizationPurgeAdapter
 from qq_time_agent.modules.normalization.infrastructure.repository import (
     SqlNormalizedContentRepository,
 )
 from qq_time_agent.modules.reminders.application.service import ReminderService
 from qq_time_agent.modules.reminders.infrastructure.repository import SqlReminderRepository
 from qq_time_agent.modules.retrieval.application.service import HybridRetrievalService
-from qq_time_agent.modules.scheduling.application.service import SchedulingService
-from qq_time_agent.modules.scheduling.infrastructure.purge import SchedulingPurgeAdapter
+from qq_time_agent.modules.scheduling.application.pending_query import PendingProposalQueryService
 from qq_time_agent.modules.scheduling.infrastructure.repository import SqlProposalRepository
-from qq_time_agent.modules.understanding.application.query import CandidateQueryService
-from qq_time_agent.modules.understanding.infrastructure.purge import UnderstandingPurgeAdapter
-from qq_time_agent.modules.understanding.infrastructure.repository import (
-    SqlCandidateRepository,
-)
-from qq_time_agent.modules.workflow.infrastructure.purge import WorkflowPurgeAdapter
 
 
 async def run_qq() -> None:
@@ -78,20 +67,6 @@ async def run_qq() -> None:
     ollama = OllamaEmbeddingAdapter(config.ollama)
     inbox = InboxService(SqlInboxRepository(sessions))
     knowledge_repository = SqlKnowledgeRepository(sessions)
-    deletion = DeletionCoordinator(
-        SqlTombstoneRepository(sessions, clock),
-        (
-            SchedulingPurgeAdapter(sessions),
-            UnderstandingPurgeAdapter(sessions),
-            WorkflowPurgeAdapter(sessions),
-            KnowledgePurgeAdapter(knowledge_repository),
-            NormalizationPurgeAdapter(sessions),
-            InboxPurgeAdapter(sessions),
-        ),
-        clock,
-        timedelta(hours=config.retention.source_deletion_hours),
-        AuditService(SqlAuditRepository(sessions)),
-    )
     agenda_repository = SqlAgendaRepository(sessions)
     agenda = AgendaService(agenda_repository)
     reminders = ReminderService(SqlReminderRepository(sessions))
@@ -117,14 +92,6 @@ async def run_qq() -> None:
             config.schedule.default_item_minutes,
         ),
     )
-    candidate_queries = CandidateQueryService(SqlCandidateRepository(sessions))
-    scheduling = SchedulingService(
-        candidate_queries,
-        preferences,
-        agenda,
-        SqlProposalRepository(sessions),
-        clock,
-    )
     retrieval = HybridRetrievalService(
         knowledge_repository,
         ollama,
@@ -142,37 +109,28 @@ async def run_qq() -> None:
         config.deepseek.max_concurrency,
     )
     retrieval.configure_query_model(model)
-    rag = RetrievalAnswerService(retrieval, model, config.rag_retrieval_limit)
-    calendar_tools = CalendarToolRegistry(agenda, actions)
+    calendar_tools = CalendarToolRegistry(agenda, actions, OwnerCalendarAuthorization("owner"))
     agent = AgentLoop(JsonAgentModel(model), calendar_tools)
     agent_context = AgentContextAssembler(
-        retrieval, inbox, SqlAgentRunRepository(sessions), SqlInboxRepository(sessions)
+        retrieval,
+        inbox,
+        SqlAgentRunRepository(sessions),
+        SqlInboxRepository(sessions),
+        AgendaNotificationQueryService(agenda_repository),
+        PendingProposalQueryService(SqlProposalRepository(sessions), clock),
     )
     agent_runs = AgentRunService(SqlAgentRunRepository(sessions), agent, clock)
     router = QqCommandRouter(
         inbox,
         inbox,
         NormalizationService(SqlNormalizedContentRepository(sessions)),
-        scheduling,
-        candidate_queries,
-        actions,
-        agenda,
-        agenda,
-        reminders,
         queue,
         clock,
-        config.schedule.default_reminder_minutes,
-        rag,
-        deletion,
         MailAssetDiscoveryService(
-            SqlSourceAssetRepository(sessions),
-            queue,
-            config.assets.raw_retention_hours,
+            SqlSourceAssetRepository(sessions), queue, config.assets.raw_retention_hours
         ),
-        general_answer=rag,
-        agent=agent,
-        agent_context=agent_context,
-        agent_runs=agent_runs,
+        agent_context,
+        agent_runs,
     )
     gateway = OfficialQqGateway(config.qq, config.owner, router, clock)
     notifications, intent_delivery = build_qq_notification_services(
@@ -185,12 +143,10 @@ async def run_qq() -> None:
         clock,
         "qq-reminders",
     )
-    proposal_notifications = ProposalNotificationWorker(scheduling, notifications)
     gateway_task = asyncio.create_task(gateway.run_forever())
     try:
         await gateway.wait_ready()
         while True:
-            await proposal_notifications.run_once()
             await reminder_worker.run_once()
             await intent_delivery.run_once(clock.now())
             await asyncio.sleep(5)

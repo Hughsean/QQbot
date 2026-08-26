@@ -29,7 +29,7 @@
 - 镜像安全：运行用户 `app`(10001)、镜像内无 `.env` 文件；秘密仅经 Compose env 注入。
 - Ollama 通过 Compose 服务名 `ollama:11434` 访问；应用容器不发布 Ollama 宿主端口。
 - 真实作业：容器 worker 完成 understanding-run ×27、knowledge-index ×27、
-  microsoft-mail-sync、scheduling-propose 与 data-lifecycle-sweep；QQ 容器保持官方长连接无断线日志。
+  microsoft-mail-sync、agent-run 与 data-lifecycle-sweep；QQ 容器保持官方长连接无断线日志。
 - 关键修复：uv 默认 editable 安装导致运行时 `ModuleNotFoundError`，改用 `--no-editable`
   后镜像自包含；uv 基镜像默认 CMD 为 `uv`，已用 `CMD ["qq-time-agent-web"]` 覆盖；
   现行 Compose 通过内部 `ollama` 服务名访问 embedding，不依赖宿主机网关。

@@ -1,6 +1,7 @@
 """Public Scheduling Proposal contracts."""
 
 from qq_time_agent.modules.scheduling.contracts.models import (
+    PendingProposalQueryPort,
     ProposalConflict,
     ProposalSlot,
     SchedulingPort,
@@ -9,6 +10,7 @@ from qq_time_agent.modules.scheduling.contracts.models import (
 )
 
 __all__ = [
+    "PendingProposalQueryPort",
     "ProposalConflict",
     "ProposalSlot",
     "SchedulingPort",

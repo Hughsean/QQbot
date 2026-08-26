@@ -6,12 +6,15 @@ from uuid import UUID, uuid4
 from sqlalchemy import and_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.sql.elements import ColumnElement
 
 from qq_time_agent.modules.agent.contracts import (
     AgentDelivery,
     AgentRun,
     AgentRunStatus,
     ContextScope,
+    ScopedAgentReply,
+    ToolObservation,
 )
 from qq_time_agent.modules.agent.infrastructure.tables import (
     AgentRunRow,
@@ -101,7 +104,7 @@ class SqlAgentRunRepository:
                     )
 
     async def list_item_ids(
-        self, scope_id: UUID, scope_type: str, exclude_id: UUID, limit: int
+        self, scope_id: UUID, scope_type: str, exclude_id: UUID, before: datetime, limit: int
     ) -> tuple[UUID, ...]:
         async with self._sessions() as session:
             values = await session.scalars(
@@ -111,12 +114,37 @@ class SqlAgentRunRepository:
                         ContextItemRow.scope_id == scope_id,
                         ContextItemRow.scope_type == scope_type,
                         ContextItemRow.inbox_item_id != exclude_id,
+                        ContextItemRow.occurred_at < before,
                     )
                 )
                 .order_by(ContextItemRow.occurred_at.desc())
                 .limit(limit)
             )
             return tuple(values)
+
+    async def list_final_replies(
+        self, scope_id: UUID, scope_type: str, before: datetime, limit: int
+    ) -> tuple[ScopedAgentReply, ...]:
+        scope_condition = _scope_run_condition(scope_id, scope_type)
+        async with self._sessions() as session:
+            rows = await session.scalars(
+                select(AgentRunRow)
+                .where(
+                    and_(
+                        scope_condition,
+                        AgentRunRow.status == AgentRunStatus.COMPLETED.value,
+                        AgentRunRow.final_content.is_not(None),
+                        AgentRunRow.updated_at < before,
+                    )
+                )
+                .order_by(AgentRunRow.updated_at.desc(), AgentRunRow.run_id)
+                .limit(limit)
+            )
+            return tuple(
+                ScopedAgentReply(row.run_id, row.final_content, row.updated_at)
+                for row in rows
+                if row.final_content is not None
+            )
 
     async def get(self, run_id: UUID) -> AgentRun | None:
         async with self._sessions() as session:
@@ -139,24 +167,31 @@ class SqlAgentRunRepository:
             row.updated_at = run.updated_at
             row.version = expected_version + 1
 
-    async def record_tool_call(
+    async def checkpoint_tool_call(
         self,
         run_id: UUID,
-        call_id: str,
-        tool_name: str,
-        arguments_hash: str,
-        observation: dict[str, object],
+        observation: ToolObservation,
         now: datetime,
     ) -> None:
         async with self._sessions.begin() as session:
+            run = await session.get(AgentRunRow, run_id, with_for_update=True)
+            if run is None:
+                raise LookupError("AgentRun does not exist")
+            serialized = _serialize_observation(observation)
+            if any(value.get("call_id") == observation.call_id for value in run.observations):
+                return
+            run.observations = [*run.observations, serialized]
+            run.step = len(run.observations)
+            run.updated_at = now
+            run.version += 1
             await session.execute(
                 insert(AgentToolCallRow)
                 .values(
                     run_id=run_id,
-                    call_id=call_id,
-                    tool_name=tool_name,
-                    arguments_hash=arguments_hash,
-                    observation=observation,
+                    call_id=observation.call_id,
+                    tool_name=observation.name,
+                    arguments_hash=observation.arguments_hash,
+                    observation=serialized,
                     created_at=now,
                 )
                 .on_conflict_do_nothing()
@@ -181,6 +216,25 @@ def _to_run(row: AgentRunRow) -> AgentRun:
         row.conversation_id,
         row.event_case_id,
     )
+
+
+def _serialize_observation(value: ToolObservation) -> dict[str, object]:
+    output = value.output if isinstance(value.output, str) else repr(value.output)
+    return {
+        "call_id": value.call_id,
+        "name": value.name,
+        "output": output[:12000],
+        "is_error": value.is_error,
+        "arguments_hash": value.arguments_hash,
+    }
+
+
+def _scope_run_condition(scope_id: UUID, scope_type: str) -> ColumnElement[bool]:
+    if scope_type == "conversation":
+        return AgentRunRow.conversation_id == scope_id
+    if scope_type == "event":
+        return AgentRunRow.event_case_id == scope_id
+    raise ValueError("Agent context scope type is invalid")
 
 
 async def _ensure_conversation(

@@ -64,5 +64,9 @@ class SchedulingPort(Protocol):
     async def list_pending(self, limit: int) -> tuple[SchedulingProposalView, ...]: ...
 
 
+class PendingProposalQueryPort(Protocol):
+    async def list_pending(self, limit: int) -> tuple[SchedulingProposalView, ...]: ...
+
+
 def confirmation_token(proposal_id: UUID, version: int) -> str:
     return f"{proposal_id.hex[:8]}-{version}"

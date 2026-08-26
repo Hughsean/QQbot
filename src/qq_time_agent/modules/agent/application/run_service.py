@@ -1,6 +1,5 @@
 """Durable execution boundary for owner and mail Agent runs."""
 
-import hashlib
 from datetime import datetime
 from typing import cast
 from uuid import UUID
@@ -68,19 +67,15 @@ class AgentRunService:
         try:
 
             async def record(observation: ToolObservation) -> None:
-                await self._repository.record_tool_call(
-                    run_id,
-                    observation.call_id,
-                    observation.name,
-                    hashlib.sha256(observation.call_id.encode()).hexdigest(),
-                    {
-                        "is_error": observation.is_error,
-                        "output_type": type(observation.output).__name__,
-                    },
-                    self._clock.now(),
-                )
+                await self._repository.checkpoint_tool_call(run_id, observation, self._clock.now())
 
-            result = await self._loop.run(run.user_id, message, context, on_tool_call=record)
+            result = await self._loop.run(
+                run.user_id,
+                message,
+                context,
+                _observations(run.observations),
+                record,
+            )
         except Exception as exc:
             current = await self._repository.get(run_id)
             if current is not None:
@@ -98,3 +93,22 @@ class AgentRunService:
         current.updated_at = self._clock.now()
         await self._repository.save(current, current.version)
         return result
+
+
+def _observations(values: list[dict[str, object]]) -> tuple[ToolObservation, ...]:
+    result: list[ToolObservation] = []
+    for value in values:
+        call_id = value.get("call_id")
+        name = value.get("name")
+        output = value.get("output")
+        is_error = value.get("is_error")
+        arguments_hash = value.get("arguments_hash")
+        if (
+            isinstance(call_id, str)
+            and isinstance(name, str)
+            and isinstance(output, str)
+            and isinstance(is_error, bool)
+            and isinstance(arguments_hash, str)
+        ):
+            result.append(ToolObservation(call_id, name, output, is_error, arguments_hash))
+    return tuple(result)

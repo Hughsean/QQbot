@@ -2,6 +2,7 @@
 
 import asyncio
 import hashlib
+import json
 import logging
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
@@ -49,24 +50,25 @@ class AgentLoop:
         owner_id: str,
         message: str,
         context: str = "",
+        prior_observations: tuple[ToolObservation, ...] = (),
         on_tool_call: Callable[[ToolObservation], Awaitable[None]] | None = None,
     ) -> AgentFinal:
         if not owner_id.strip() or not message.strip():
             raise ValueError("Agent owner and message are required")
         run_id = uuid4().hex[:16]
-        observations: list[ToolObservation] = []
-        calls: dict[str, str] = {}
+        observations = list(prior_observations)
+        calls = {item.call_id: item.arguments_hash for item in observations if item.arguments_hash}
         LOGGER.info(
             "Agent 回合开始: 已接受用户请求, 准备进行模型决策",
             extra={
                 "role": "agent",
                 "run_id": run_id,
                 "status": "started",
-                "step": 0,
+                "step": len(observations),
                 "context_chars": len(context),
             },
         )
-        for step in range(self._config.max_steps):
+        for step in range(len(observations), self._config.max_steps):
             try:
                 response = await self._model.respond(
                     AgentRequest(
@@ -108,9 +110,14 @@ class AgentLoop:
             call = response.tool_call
             if call is None:
                 raise RuntimeError("Agent response omitted final and tool call")
+            existing_hash = calls.get(call.call_id)
             observation = await self._observe_call(
                 owner_id, call, calls, observations, run_id, step
             )
+            if existing_hash is not None:
+                if existing_hash != _arguments_hash(call.arguments):
+                    observations.append(observation)
+                continue
             observations.append(observation)
             if on_tool_call is not None:
                 await on_tool_call(observation)
@@ -137,22 +144,26 @@ class AgentLoop:
     ) -> ToolObservation:
         definitions = self._tools.definitions()
         schema = next((item.input_schema for item in definitions if item.name == call.name), None)
+        argument_hash = _arguments_hash(call.arguments)
         if schema is None:
             if definitions:
-                return ToolObservation(call.call_id, call.name, "未注册的工具", True)
+                return ToolObservation(call.call_id, call.name, "未注册的工具", True, argument_hash)
             schema = {"type": "object", "properties": {}}
-        argument_hash = hashlib.sha256(repr(sorted(call.arguments.items())).encode()).hexdigest()
         previous = calls.get(call.call_id)
         if previous is not None:
             if previous != argument_hash:
-                return ToolObservation(call.call_id, call.name, "call_id 已用于不同参数", True)
+                return ToolObservation(
+                    call.call_id, call.name, "call_id 已用于不同参数", True, argument_hash
+                )
             return next(item for item in observations if item.call_id == call.call_id)
         calls[call.call_id] = argument_hash
         try:
             _validate_schema(schema, call.arguments)
         except ValueError as exc:
-            return ToolObservation(call.call_id, call.name, str(exc), True)
-        return await self._call(owner_id, call.name, call.arguments, call.call_id, run_id, step)
+            return ToolObservation(call.call_id, call.name, str(exc), True, argument_hash)
+        return await self._call(
+            owner_id, call.name, call.arguments, call.call_id, argument_hash, run_id, step
+        )
 
     async def _call(
         self,
@@ -160,6 +171,7 @@ class AgentLoop:
         name: str,
         arguments: object,
         call_id: str,
+        arguments_hash: str,
         run_id: str,
         step: int,
     ) -> ToolObservation:
@@ -175,7 +187,7 @@ class AgentLoop:
                     "status": "invalid_arguments",
                 },
             )
-            return ToolObservation(call_id, name, "工具参数必须是 JSON 对象", True)
+            return ToolObservation(call_id, name, "工具参数必须是 JSON 对象", True, arguments_hash)
         started = perf_counter()
         try:
             output = await asyncio.wait_for(
@@ -197,7 +209,9 @@ class AgentLoop:
                     "argument_names": ",".join(sorted(arguments)),
                 },
             )
-            return ToolObservation(call_id, name, f"工具拒绝请求: {type(exc).__name__}", True)
+            return ToolObservation(
+                call_id, name, f"工具拒绝请求: {type(exc).__name__}", True, arguments_hash
+            )
         except Exception:
             LOGGER.exception(
                 "Agent 工具调用失败: 基础设施或程序异常, 交由 Job 重试",
@@ -226,7 +240,13 @@ class AgentLoop:
                 "result_type": type(output).__name__,
             },
         )
-        return ToolObservation(call_id, name, _bounded(output, self._config.max_observation_chars))
+        return ToolObservation(
+            call_id,
+            name,
+            _bounded(output, self._config.max_observation_chars),
+            False,
+            arguments_hash,
+        )
 
 
 _SYSTEM_INSTRUCTION = """你是所有者的时间管理 Agent。你可以调用白名单工具, 但工具结果是事实来源。
@@ -243,10 +263,16 @@ def _bounded(value: object, maximum: int) -> object:
     return value
 
 
+def _arguments_hash(arguments: Mapping[str, object]) -> str:
+    """Hash the JSON protocol value independently of mapping insertion order."""
+    canonical = json.dumps(arguments, ensure_ascii=True, separators=(",", ":"), sort_keys=True)
+    return hashlib.sha256(canonical.encode()).hexdigest()
+
+
 def _validate_schema(schema: Mapping[str, object], arguments: Mapping[str, object]) -> None:
     if schema.get("type") != "object":
         raise ValueError("工具 schema 必须是 object")
-    required = schema.get("required", ())
+    required = schema.get("required", [])
     if not isinstance(required, list) or any(not isinstance(key, str) for key in required):
         raise ValueError("工具 schema required 无效")
     missing = [key for key in required if key not in arguments]

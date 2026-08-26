@@ -18,11 +18,11 @@ class CalendarToolRegistry:
         self,
         agenda_query: AgendaQueryPort,
         actions: CalendarActionPort,
-        authorization: CalendarAuthorizationPort | None = None,
+        authorization: CalendarAuthorizationPort,
     ) -> None:
         self._agenda_query = agenda_query
         self._actions = actions
-        self._authorization = authorization or _OwnerAuthorization()
+        self._authorization = authorization
         self._definitions = (
             ToolDefinition(
                 "find_agenda_candidates",
@@ -235,12 +235,6 @@ class CalendarToolRegistry:
         if entry.version != expected:
             raise ValueError("agenda entry version is stale")
         return entry_id, expected, entry
-
-
-class _OwnerAuthorization:
-    async def authorize(self, principal: str, operation: str) -> bool:
-        del operation
-        return principal == "owner"
 
 
 def _render_result(value: object) -> dict[str, object]:

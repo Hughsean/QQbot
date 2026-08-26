@@ -6,7 +6,7 @@ from enum import StrEnum
 from typing import Protocol
 from uuid import UUID
 
-from qq_time_agent.modules.agent.contracts.models import AgentDelivery
+from qq_time_agent.modules.agent.contracts.models import AgentDelivery, ToolObservation
 
 
 class AgentRunStatus(StrEnum):
@@ -42,6 +42,13 @@ class ContextScope:
     event_case_id: UUID | None
 
 
+@dataclass(frozen=True, slots=True)
+class ScopedAgentReply:
+    run_id: UUID
+    content: str
+    occurred_at: datetime
+
+
 class AgentContextRepository(Protocol):
     async def ensure_scope(
         self,
@@ -63,8 +70,17 @@ class AgentContextRepository(Protocol):
         scope_id: UUID,
         scope_type: str,
         exclude_id: UUID,
+        before: datetime,
         limit: int,
     ) -> tuple[UUID, ...]: ...
+
+    async def list_final_replies(
+        self,
+        scope_id: UUID,
+        scope_type: str,
+        before: datetime,
+        limit: int,
+    ) -> tuple[ScopedAgentReply, ...]: ...
 
 
 class AgentRunRepository(Protocol):
@@ -81,12 +97,9 @@ class AgentRunRepository(Protocol):
 
     async def save(self, run: AgentRun, expected_version: int) -> None: ...
 
-    async def record_tool_call(
+    async def checkpoint_tool_call(
         self,
         run_id: UUID,
-        call_id: str,
-        tool_name: str,
-        arguments_hash: str,
-        observation: dict[str, object],
+        observation: ToolObservation,
         now: datetime,
     ) -> None: ...

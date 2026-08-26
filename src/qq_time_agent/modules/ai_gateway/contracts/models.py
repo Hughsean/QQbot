@@ -2,7 +2,6 @@
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import datetime
 from enum import StrEnum
 from typing import Protocol
 
@@ -39,20 +38,6 @@ class StructuredResponse:
     output_tokens: int
 
 
-@dataclass(frozen=True, slots=True)
-class AnswerCitation:
-    source_ref: str
-    source_type: str
-    occurred_at: datetime
-
-
-@dataclass(frozen=True, slots=True)
-class GroundedAnswer:
-    answer: str
-    citations: tuple[AnswerCitation, ...]
-    insufficient_evidence: bool
-
-
 class ModelFailure(RuntimeError):
     def __init__(self, failure_class: str) -> None:
         super().__init__(failure_class)
@@ -61,11 +46,3 @@ class ModelFailure(RuntimeError):
 
 class StructuredModelPort(Protocol):
     async def invoke(self, request: StructuredRequest) -> StructuredResponse: ...
-
-
-class RagAnswerPort(Protocol):
-    async def answer(self, question: str) -> GroundedAnswer: ...
-
-
-class GeneralAnswerPort(Protocol):
-    async def answer_general(self, question: str) -> GroundedAnswer: ...

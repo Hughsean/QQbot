@@ -8,6 +8,7 @@ from qq_time_agent.modules.agent.contracts.models import (
     AgentRequest,
     AgentResponse,
     AgentResponseProtocolError,
+    AgentRunCommandPort,
     AgentRunExecutionPort,
     AgentRunPort,
     AgentToolCall,
@@ -21,6 +22,7 @@ from qq_time_agent.modules.agent.contracts.runs import (
     AgentRunRepository,
     AgentRunStatus,
     ContextScope,
+    ScopedAgentReply,
 )
 
 __all__ = [
@@ -33,6 +35,7 @@ __all__ = [
     "AgentResponse",
     "AgentResponseProtocolError",
     "AgentRun",
+    "AgentRunCommandPort",
     "AgentRunExecutionPort",
     "AgentRunPort",
     "AgentRunRepository",
@@ -41,5 +44,6 @@ __all__ = [
     "AgentToolDefinition",
     "AgentToolPort",
     "ContextScope",
+    "ScopedAgentReply",
     "ToolObservation",
 ]

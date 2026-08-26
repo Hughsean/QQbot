@@ -32,6 +32,7 @@ class ToolObservation:
     name: str
     output: object
     is_error: bool = False
+    arguments_hash: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -99,3 +100,15 @@ class AgentRunExecutionPort(Protocol):
     async def get(self, run_id: UUID) -> "AgentRun | None": ...
 
     async def execute(self, run_id: UUID, message: str, context: str = "") -> AgentFinal: ...
+
+
+class AgentRunCommandPort(AgentRunExecutionPort, Protocol):
+    async def ensure_run(
+        self,
+        inbox_item_id: UUID,
+        user_id: str,
+        source_type: str,
+        conversation_key: str | None = None,
+        event_key: str | None = None,
+        occurred_at: datetime | None = None,
+    ) -> "AgentRun": ...

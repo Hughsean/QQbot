@@ -12,9 +12,9 @@ The initial implementation is superseded by the persistent AgentRun harness. QQ 
 receive a response in their own conversation. Mail results may notify the owner only when the
 Agent explicitly records a material `NOTIFY` decision; uncertain or incomplete mail remains in its
 EventCase as `HOLD` and never emits an unsolicited clarification. Every mail notification carries
-a deterministic subject anchor. Retrieval exposes a local owner-scoped MCP-compatible registry
-and deterministic query normalization/ranking. Agenda, Reminder and Notification writes remain
-behind their existing command/action ports.
+a deterministic subject anchor. Retrieval is injected directly into the Agent runtime with
+deterministic query normalization/ranking. Agenda, Reminder and Notification writes remain behind
+their existing command/action ports.
 
 ## Safety boundary
 
@@ -47,13 +47,12 @@ trigger a standalone QQ question. The Agent records it as `HOLD` in the related 
 use later mail or a user-initiated conversation to resolve it. A `NOTIFY` mail result is rendered
 with its source subject, so it never appears as an unreferenced message.
 
-## RAG tools
+## RAG runtime
 
-RAG tools are exposed through a local, allow-listed MCP-compatible adapter. The adapter has
-read-only tools for `search_knowledge`, `get_source`, and `list_related_events`. Tool inputs
-are schema validated, owner-scoped, bounded, and time-filtered. Tool output is converted to
-the existing `RetrievedChunk`/source contracts before it reaches a model. No tool can write
-Agenda, Reminder, Proposal, Credential or Notification state.
+RAG is not exposed as an Agent tool or MCP transport. The Context Assembler invokes the
+owner-scoped Retrieval port directly, bounds and labels the returned T2 evidence, then injects it
+into the Agent request. Retrieval cannot write Agenda, Reminder, Proposal, Credential or
+Notification state.
 
 ## Ranking and query optimization
 
@@ -64,7 +63,8 @@ metadata for audit and citation.
 
 ## Reminder updates
 
-The owner may say `提醒 <agenda-id> 提前 <duration>` or `提醒 <agenda-id> 改为 <time>`.
-The command creates a version-checked reminder update action. It never edits the Agenda entry.
+The owner may express a reminder change in natural language. The Agent resolves the target and
+asks the Calendar System to create a version-checked reminder update action. It never edits the
+Agenda entry.
 Relative durations use the owner timezone and all resulting times are timezone-aware. Existing
 reminder occurrences are cancelled/replaced idempotently; sent reminders are not rewritten.
