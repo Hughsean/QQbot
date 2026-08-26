@@ -96,5 +96,6 @@ QQ Time Agent 是一个仅供项目所有者本人使用、以 QQ 为主要交�
   分层保留、追加式审计、tombstone 恢复重放、指标、隔离备份恢复演练与容器运维制品。
   MVP 后已按 ADR-0010 移除 Agent 公网入口和 SSH 反向隧道依赖；阶段 9 按 ADR-0011 扩展
   QQ 邮箱只读 IMAP，仍复用统一 Inbox/Understanding/RAG 与删除门禁。阶段 10 已按 ADR-0013
-  启动统一内容资产与多连接基础实施；Gmail 保持关闭。当前目标生产部署为 Ubuntu Server
-  Docker Compose，Ollama 与应用同栈运行；尚未执行目标主机生产部署
+  启动统一内容资产与多连接基础实施；Gmail 保持关闭。当前生产环境为 Ubuntu Server Docker
+  Compose，Ollama 与应用同栈运行。2026-08-26 已完成首个目标主机部署，数据库迁移至
+  `0017_context_scopes`，Web readiness 与 Ollama GPU 模型探针均通过。
