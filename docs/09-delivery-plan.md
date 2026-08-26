@@ -106,6 +106,8 @@
 更新默认自动执行并返回结果，不再要求用户输入确认码；歧义、冲突、过期版本和策略不允许的操作
 仍由 Calendar System 拒绝并交给 Agent 追问。该决策替代早期“所有日程写入必须用户二次确认”的
 交互要求，但不削弱所有者鉴权、版本校验、幂等和审计门禁。
+QQ 与邮件统一创建持久化 AgentRun，通过 Job 租约、有限重试和死信恢复；Calendar System 不得直接
+调用 Agenda/Reminder 命令端口，所有写入必须经 Actions 形成持久化执行记录与审计。
 
 - 不得在 Credential Vault 完成前保存真实 refresh token。
 - 不得在 Inbox 去重完成前启用周期性邮件同步。

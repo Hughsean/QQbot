@@ -9,6 +9,7 @@ from qq_time_agent.adapters.outbound.persistence.database import database_url
 from qq_time_agent.adapters.outbound.persistence.operations_tables import OperationsBase
 from qq_time_agent.bootstrap.settings import load_runtime_config
 from qq_time_agent.modules.actions.infrastructure.tables import ActionsBase
+from qq_time_agent.modules.agent.infrastructure.tables import AgentBase
 from qq_time_agent.modules.agenda.infrastructure.tables import AgendaBase
 from qq_time_agent.modules.ai_gateway.infrastructure.tables import AIGatewayBase
 from qq_time_agent.modules.audit.infrastructure.tables import AuditBase
@@ -44,6 +45,7 @@ target_metadata = [
     SchedulingBase.metadata,
     IdentityBase.metadata,
     ActionsBase.metadata,
+    AgentBase.metadata,
     RemindersBase.metadata,
     NotificationsBase.metadata,
     KnowledgeBase.metadata,
