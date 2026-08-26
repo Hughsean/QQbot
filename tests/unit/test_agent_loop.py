@@ -52,8 +52,10 @@ async def test_agent_loop_rejects_non_owner_and_step_limit() -> None:
         AgentLoop(Model([]), Tools(), config=AgentLoopConfig(max_steps=0))
 
 
-def test_agent_final_requires_explicit_delivery_decision() -> None:
+def test_agent_final_uses_safe_hold_default_for_missing_delivery_decision() -> None:
     response = _parse({"type": "final", "content": "发现明确的时间变更", "delivery": "NOTIFY"})
     assert response.final is not None and response.final.delivery is AgentDelivery.NOTIFY
+    held = _parse({"type": "final", "content": "需要更多信息"})
+    assert held.final is not None and held.final.delivery is AgentDelivery.HOLD
     with pytest.raises(ValueError, match="delivery"):
-        _parse({"type": "final", "content": "需要更多信息"})
+        _parse({"type": "final", "content": "错误字段", "delivery": "SEND"})

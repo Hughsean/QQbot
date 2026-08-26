@@ -88,8 +88,10 @@ def _parse(output: Mapping[str, object]) -> AgentResponse:
         delivery = output.get("delivery")
         if not isinstance(content, str) or not content.strip():
             raise ValueError("Agent final content is required")
+        if delivery is None:
+            return AgentResponse(final=AgentFinal(content.strip(), AgentDelivery.HOLD))
         if not isinstance(delivery, str):
-            raise ValueError("Agent final delivery is required")
+            raise ValueError("Agent final delivery is invalid")
         try:
             return AgentResponse(final=AgentFinal(content.strip(), AgentDelivery(delivery)))
         except ValueError as exc:
