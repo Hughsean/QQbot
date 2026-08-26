@@ -40,9 +40,7 @@ class NotificationService:
             f"proposal:{proposal.proposal_id}:v{proposal.version}:confirmation", body
         )
 
-    async def send_clarification(
-        self, user_id: str, subject_key: str, content: str
-    ) -> DeliveryRef:
+    async def send_clarification(self, user_id: str, subject_key: str, content: str) -> DeliveryRef:
         if not subject_key.strip() or not content.strip():
             raise ValueError("clarification subject and content are required")
         return await self._send(f"clarification:{subject_key}:v1", content.strip())

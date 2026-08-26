@@ -1,7 +1,9 @@
 """Bounded Agent loop with allow-listed tool execution and observations."""
 
 import asyncio
+import hashlib
 import logging
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from time import perf_counter
 from uuid import uuid4
@@ -13,6 +15,7 @@ from qq_time_agent.modules.agent.contracts import (
     AgentToolPort,
     ToolObservation,
 )
+from qq_time_agent.modules.agent.contracts.models import AgentToolCall
 
 LOGGER = logging.getLogger(__name__)
 
@@ -41,11 +44,18 @@ class AgentLoop:
         self._tools = tools
         self._config = config or AgentLoopConfig()
 
-    async def run(self, owner_id: str, message: str, context: str = "") -> AgentFinal:
+    async def run(
+        self,
+        owner_id: str,
+        message: str,
+        context: str = "",
+        on_tool_call: Callable[[ToolObservation], Awaitable[None]] | None = None,
+    ) -> AgentFinal:
         if not owner_id.strip() or not message.strip():
             raise ValueError("Agent owner and message are required")
         run_id = uuid4().hex[:16]
         observations: list[ToolObservation] = []
+        calls: dict[str, str] = {}
         LOGGER.info(
             "Agent 回合开始: 已接受用户请求, 准备进行模型决策",
             extra={
@@ -98,10 +108,12 @@ class AgentLoop:
             call = response.tool_call
             if call is None:
                 raise RuntimeError("Agent response omitted final and tool call")
-            observation = await self._call(
-                owner_id, call.name, call.arguments, call.call_id, run_id, step
+            observation = await self._observe_call(
+                owner_id, call, calls, observations, run_id, step
             )
             observations.append(observation)
+            if on_tool_call is not None:
+                await on_tool_call(observation)
         LOGGER.warning(
             "Agent 回合停止: 达到最大工具步骤, 未生成最终答复",
             extra={
@@ -113,6 +125,34 @@ class AgentLoop:
             },
         )
         raise RuntimeError("Agent reached the maximum tool steps")
+
+    async def _observe_call(
+        self,
+        owner_id: str,
+        call: AgentToolCall,
+        calls: dict[str, str],
+        observations: list[ToolObservation],
+        run_id: str,
+        step: int,
+    ) -> ToolObservation:
+        definitions = self._tools.definitions()
+        schema = next((item.input_schema for item in definitions if item.name == call.name), None)
+        if schema is None:
+            if definitions:
+                return ToolObservation(call.call_id, call.name, "未注册的工具", True)
+            schema = {"type": "object", "properties": {}}
+        argument_hash = hashlib.sha256(repr(sorted(call.arguments.items())).encode()).hexdigest()
+        previous = calls.get(call.call_id)
+        if previous is not None:
+            if previous != argument_hash:
+                return ToolObservation(call.call_id, call.name, "call_id 已用于不同参数", True)
+            return next(item for item in observations if item.call_id == call.call_id)
+        calls[call.call_id] = argument_hash
+        try:
+            _validate_schema(schema, call.arguments)
+        except ValueError as exc:
+            return ToolObservation(call.call_id, call.name, str(exc), True)
+        return await self._call(owner_id, call.name, call.arguments, call.call_id, run_id, step)
 
     async def _call(
         self,
@@ -142,7 +182,7 @@ class AgentLoop:
                 self._tools.call(owner_id, name, arguments),
                 self._config.tool_timeout_seconds,
             )
-        except Exception as exc:
+        except (PermissionError, LookupError, ValueError) as exc:
             LOGGER.warning(
                 "Agent 工具调用失败: 工具返回异常",
                 extra={
@@ -158,6 +198,20 @@ class AgentLoop:
                 },
             )
             return ToolObservation(call_id, name, f"工具拒绝请求: {type(exc).__name__}", True)
+        except Exception:
+            LOGGER.exception(
+                "Agent 工具调用失败: 基础设施或程序异常, 交由 Job 重试",
+                extra={
+                    "role": "agent",
+                    "run_id": run_id,
+                    "step": step,
+                    "tool": name,
+                    "call_id": call_id,
+                    "status": "unexpected_failure",
+                    "elapsed_ms": round((perf_counter() - started) * 1000),
+                },
+            )
+            raise
         LOGGER.info(
             "Agent 工具调用完成: 已获得受控观察结果",
             extra={
@@ -187,3 +241,45 @@ def _bounded(value: object, maximum: int) -> object:
         text = repr(value)
         return text[:maximum]
     return value
+
+
+def _validate_schema(schema: Mapping[str, object], arguments: Mapping[str, object]) -> None:
+    if schema.get("type") != "object":
+        raise ValueError("工具 schema 必须是 object")
+    required = schema.get("required", ())
+    if not isinstance(required, list) or any(not isinstance(key, str) for key in required):
+        raise ValueError("工具 schema required 无效")
+    missing = [key for key in required if key not in arguments]
+    if missing:
+        raise ValueError(f"工具缺少必填参数: {', '.join(missing)}")
+    properties = schema.get("properties", {})
+    if not isinstance(properties, Mapping):
+        raise ValueError("工具 schema properties 无效")
+    for key, value in arguments.items():
+        rule = properties.get(key)
+        if not isinstance(rule, Mapping):
+            raise ValueError(f"工具参数未在 schema 中声明: {key}")
+        _validate_value(key, value, rule)
+
+
+def _validate_value(key: str, value: object, rule: Mapping[str, object]) -> None:
+    expected = rule.get("type")
+    valid = {
+        "string": isinstance(value, str),
+        "integer": isinstance(value, int) and not isinstance(value, bool),
+        "array": isinstance(value, (list, tuple)),
+        "object": isinstance(value, Mapping),
+    }
+    if isinstance(expected, str) and expected in valid and not valid[expected]:
+        raise ValueError(f"工具参数 {key} 类型不正确")
+    minimum = rule.get("minimum")
+    if (
+        isinstance(minimum, (int, float))
+        and isinstance(value, (int, float))
+        and not isinstance(value, bool)
+        and value < minimum
+    ):
+        raise ValueError(f"工具参数 {key} 小于最小值")
+    enum = rule.get("enum")
+    if isinstance(enum, list) and value not in enum:
+        raise ValueError(f"工具参数 {key} 不在允许值范围")

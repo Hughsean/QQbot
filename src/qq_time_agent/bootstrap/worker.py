@@ -7,6 +7,10 @@ from typing import Protocol
 
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker
 
+from qq_time_agent.adapters.inbound.workers.agent_run import (
+    AgentRunJobHandler,
+    MailAgentRunScheduler,
+)
 from qq_time_agent.adapters.inbound.workers.data_lifecycle import DataLifecycleJobHandler
 from qq_time_agent.adapters.inbound.workers.knowledge import (
     KnowledgeAssetIndexJobHandler,
@@ -19,7 +23,7 @@ from qq_time_agent.adapters.inbound.workers.source_asset import (
     SourceAssetFetchJobHandler,
     SourceAssetParseJobHandler,
 )
-from qq_time_agent.adapters.inbound.workers.understanding import UnderstandingJobHandler
+from qq_time_agent.adapters.inbound.workers.understanding_agent import UnderstandingAgentJobHandler
 from qq_time_agent.adapters.outbound.ai.deepseek import DeepSeekStructuredAdapter
 from qq_time_agent.adapters.outbound.ollama.embedding import OllamaEmbeddingAdapter
 from qq_time_agent.adapters.outbound.persistence.database import create_database_engine
@@ -36,15 +40,23 @@ from qq_time_agent.bootstrap.worker_runtime import build_scheduled_runner
 from qq_time_agent.contracts.clock import SystemClock
 from qq_time_agent.contracts.jobs import JobLease
 from qq_time_agent.contracts.source import SourceType
+from qq_time_agent.modules.actions.application.service import ActionService
+from qq_time_agent.modules.actions.infrastructure.repository import SqlActionRepository
 from qq_time_agent.modules.agenda.application.service import AgendaService
 from qq_time_agent.modules.agenda.application.source_lookup import AgendaSourceLookupService
 from qq_time_agent.modules.agenda.infrastructure.repository import SqlAgendaRepository
+from qq_time_agent.modules.agent.application.context import AgentContextAssembler
+from qq_time_agent.modules.agent.application.json_model import JsonAgentModel
+from qq_time_agent.modules.agent.application.loop import AgentLoop
+from qq_time_agent.modules.agent.application.run_service import AgentRunService
+from qq_time_agent.modules.agent.infrastructure.repository import SqlAgentRunRepository
 from qq_time_agent.modules.ai_gateway.application.service import AIGatewayService
 from qq_time_agent.modules.ai_gateway.infrastructure.repository import SqlInvocationRepository
 from qq_time_agent.modules.ai_gateway.infrastructure.retention import AIGatewayExpiryAdapter
 from qq_time_agent.modules.audit.application.service import AuditService
 from qq_time_agent.modules.audit.infrastructure.repository import SqlAuditRepository
 from qq_time_agent.modules.audit.infrastructure.retention import AuditExpiryAdapter
+from qq_time_agent.modules.calendar_system.application.tools import CalendarToolRegistry
 from qq_time_agent.modules.data_lifecycle.application.coordinator import (
     DeletionCoordinator,
     ExpiryTarget,
@@ -75,6 +87,11 @@ from qq_time_agent.modules.normalization.infrastructure.purge import Normalizati
 from qq_time_agent.modules.normalization.infrastructure.repository import (
     SqlNormalizedContentRepository,
 )
+from qq_time_agent.modules.notifications.infrastructure.repository import (
+    SqlNotificationIntentRepository,
+)
+from qq_time_agent.modules.reminders.application.service import ReminderService
+from qq_time_agent.modules.reminders.infrastructure.repository import SqlReminderRepository
 from qq_time_agent.modules.retrieval.application.service import HybridRetrievalService
 from qq_time_agent.modules.scheduling.application.service import SchedulingService
 from qq_time_agent.modules.scheduling.infrastructure.purge import SchedulingPurgeAdapter
@@ -209,6 +226,8 @@ def build_worker() -> tuple[JobRunner, AsyncEngine, tuple[AsyncClosable, ...]]:
     model = AIGatewayService(
         deepseek, SqlInvocationRepository(sessions), clock, config.deepseek.max_concurrency
     )
+    retrieval.configure_query_model(model)
+    agent_model = JsonAgentModel(model)
     understanding = UnderstandingService(
         normalization_repository,
         inbox_repository,
@@ -242,6 +261,21 @@ def build_worker() -> tuple[JobRunner, AsyncEngine, tuple[AsyncClosable, ...]]:
     )
     agenda_repository = SqlAgendaRepository(sessions)
     agenda = AgendaService(agenda_repository)
+    reminders = ReminderService(SqlReminderRepository(sessions))
+    actions = ActionService(
+        SqlActionRepository(sessions),
+        agenda,
+        reminders,
+        clock,
+        audit,
+        agenda,
+    )
+    agent = AgentLoop(agent_model, CalendarToolRegistry(agenda, actions))
+    agent_context = AgentContextAssembler(retrieval, inbox)
+    agent_runs = AgentRunService(SqlAgentRunRepository(sessions), agent, clock)
+    agent_scheduler = MailAgentRunScheduler(
+        agent_runs, inbox_repository, inbox_repository, queue, clock
+    )
     agenda_lookup = AgendaSourceLookupService(agenda_repository)
     scheduling = SchedulingService(
         candidate_queries,
@@ -262,7 +296,15 @@ def build_worker() -> tuple[JobRunner, AsyncEngine, tuple[AsyncClosable, ...]]:
             config.credential_encryption_key,
             clock,
         ),
-        "understanding-run": UnderstandingJobHandler(workflow),
+        "understanding-run": UnderstandingAgentJobHandler(workflow, agent_scheduler),
+        "agent-run": AgentRunJobHandler(
+            agent_runs,
+            inbox_repository,
+            agent_context,
+            inbox_repository,
+            SqlNotificationIntentRepository(sessions),
+            clock,
+        ),
         "scheduling-propose": SchedulingJobHandler(
             scheduling, candidate_queries, inbox, inbox_repository
         ),

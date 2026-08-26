@@ -19,6 +19,7 @@ from qq_time_agent.contracts.source import (
 )
 from qq_time_agent.modules.actions.contracts import ActionCommandPort
 from qq_time_agent.modules.agenda.contracts import AgendaCommandPort, AgendaQueryPort
+from qq_time_agent.modules.agent.application.run_service import AgentRunService
 from qq_time_agent.modules.agent.contracts import AgentContextPort, AgentRunPort
 from qq_time_agent.modules.ai_gateway.contracts import (
     GeneralAnswerPort,
@@ -62,6 +63,7 @@ class QqCommandRouter:
         general_answer: GeneralAnswerPort | None = None,
         agent: AgentRunPort | None = None,
         agent_context: AgentContextPort | None = None,
+        agent_runs: AgentRunService | None = None,
     ) -> None:
         self._inbox = inbox
         self._processing = processing
@@ -79,6 +81,7 @@ class QqCommandRouter:
         self._general_answer = general_answer
         self._agent = agent
         self._agent_context = agent_context
+        self._agent_runs = agent_runs
         self._deletion = deletion
         self._asset_discovery = asset_discovery
 
@@ -116,10 +119,30 @@ class QqCommandRouter:
         if agent is None:
             raise RuntimeError("Agent is not configured")
         await self._ingest_text(envelope, content, enqueue_understanding=False)
+        ingested = await self._inbox.ingest_qq(envelope, content)
+        run = None
+        if self._agent_runs is not None:
+            run = await self._agent_runs.ensure_run(
+                ingested.inbox_item_id, "owner", envelope.source_type.value
+            )
+            await self._jobs.enqueue(
+                JobRequest(
+                    "agent-run",
+                    {"run_id": str(run.run_id), "inbox_item_id": str(ingested.inbox_item_id)},
+                    f"agent-run:{run.run_id}",
+                    self._clock.now(),
+                )
+            )
         context = ""
         if self._agent_context is not None:
-            context = await self._agent_context.build("owner", content)
-        result = await agent.run("owner", content, context)
+            context = await self._agent_context.build(
+                "owner", content, before=envelope.occurred_at, exclude_id=ingested.inbox_item_id
+            )
+        result = (
+            await self._agent_runs.execute(run.run_id, content, context)
+            if run is not None and self._agent_runs is not None
+            else await agent.run("owner", content, context)
+        )
         LOGGER.info(
             "QQ Agent 处理完成: 返回用户答复",
             extra={

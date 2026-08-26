@@ -28,6 +28,8 @@ from qq_time_agent.modules.agenda.infrastructure.repository import SqlAgendaRepo
 from qq_time_agent.modules.agent.application.context import AgentContextAssembler
 from qq_time_agent.modules.agent.application.json_model import JsonAgentModel
 from qq_time_agent.modules.agent.application.loop import AgentLoop
+from qq_time_agent.modules.agent.application.run_service import AgentRunService
+from qq_time_agent.modules.agent.infrastructure.repository import SqlAgentRunRepository
 from qq_time_agent.modules.ai_gateway.application.rag_answer import RetrievalAnswerService
 from qq_time_agent.modules.ai_gateway.application.service import AIGatewayService
 from qq_time_agent.modules.ai_gateway.infrastructure.repository import SqlInvocationRepository
@@ -55,7 +57,6 @@ from qq_time_agent.modules.normalization.infrastructure.repository import (
 )
 from qq_time_agent.modules.reminders.application.service import ReminderService
 from qq_time_agent.modules.reminders.infrastructure.repository import SqlReminderRepository
-from qq_time_agent.modules.retrieval.application.mcp_tools import RagToolRegistry
 from qq_time_agent.modules.retrieval.application.service import HybridRetrievalService
 from qq_time_agent.modules.scheduling.application.service import SchedulingService
 from qq_time_agent.modules.scheduling.infrastructure.purge import SchedulingPurgeAdapter
@@ -101,6 +102,7 @@ async def run_qq() -> None:
         reminders,
         clock,
         AuditService(SqlAuditRepository(sessions)),
+        agenda,
     )
     preferences = UserPreferencesService(
         SqlUserPreferencesRepository(sessions),
@@ -140,15 +142,12 @@ async def run_qq() -> None:
         clock,
         config.deepseek.max_concurrency,
     )
-    rag = RetrievalAnswerService(
-        retrieval,
-        model,
-        config.rag_retrieval_limit,
-        tools=RagToolRegistry(retrieval),
-    )
-    calendar_tools = CalendarToolRegistry(agenda, agenda, reminders, clock)
+    retrieval.configure_query_model(model)
+    rag = RetrievalAnswerService(retrieval, model, config.rag_retrieval_limit)
+    calendar_tools = CalendarToolRegistry(agenda, actions)
     agent = AgentLoop(JsonAgentModel(model), calendar_tools)
     agent_context = AgentContextAssembler(retrieval, inbox)
+    agent_runs = AgentRunService(SqlAgentRunRepository(sessions), agent, clock)
     router = QqCommandRouter(
         inbox,
         inbox,
@@ -172,6 +171,7 @@ async def run_qq() -> None:
         general_answer=rag,
         agent=agent,
         agent_context=agent_context,
+        agent_runs=agent_runs,
     )
     gateway = OfficialQqGateway(config.qq, config.owner, router, clock)
     notifications, intent_delivery = build_qq_notification_services(

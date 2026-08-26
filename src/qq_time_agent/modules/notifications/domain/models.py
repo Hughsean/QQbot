@@ -10,6 +10,7 @@ class NotificationKind(StrEnum):
     DAILY_DIGEST = "DAILY_DIGEST"
     AGENDA_CONFLICT = "AGENDA_CONFLICT"
     CONNECTION_REAUTH = "CONNECTION_REAUTH"
+    AGENT_RESULT = "AGENT_RESULT"
 
 
 class NotificationIntentState(StrEnum):

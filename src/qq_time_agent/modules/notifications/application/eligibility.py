@@ -45,6 +45,8 @@ class NotificationSourceEligibilityService:
             eligible = preferences.reauth_notifications_enabled and await self._reauth_matches(
                 intent
             )
+        elif intent.draft.kind is NotificationKind.AGENT_RESULT:
+            eligible = True
         return next_allowed_at(now, preferences) if eligible else None
 
     async def _digest_matches(

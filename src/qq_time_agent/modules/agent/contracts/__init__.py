@@ -12,6 +12,7 @@ from qq_time_agent.modules.agent.contracts.models import (
     AgentToolPort,
     ToolObservation,
 )
+from qq_time_agent.modules.agent.contracts.runs import AgentRun, AgentRunRepository, AgentRunStatus
 
 __all__ = [
     "AgentContextPort",
@@ -19,7 +20,10 @@ __all__ = [
     "AgentModelPort",
     "AgentRequest",
     "AgentResponse",
+    "AgentRun",
     "AgentRunPort",
+    "AgentRunRepository",
+    "AgentRunStatus",
     "AgentToolCall",
     "AgentToolDefinition",
     "AgentToolPort",

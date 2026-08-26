@@ -2,14 +2,13 @@
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Protocol
+from uuid import UUID
 
+from qq_time_agent.contracts.tools import ToolDefinition
 
-@dataclass(frozen=True, slots=True)
-class AgentToolDefinition:
-    name: str
-    description: str
-    input_schema: Mapping[str, object]
+AgentToolDefinition = ToolDefinition
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,7 +62,13 @@ class AgentToolPort(Protocol):
 
 
 class AgentContextPort(Protocol):
-    async def build(self, user_id: str, message: str) -> str: ...
+    async def build(
+        self,
+        user_id: str,
+        message: str,
+        before: datetime | None = None,
+        exclude_id: UUID | None = None,
+    ) -> str: ...
 
 
 class AgentRunPort(Protocol):
