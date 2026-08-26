@@ -35,6 +35,16 @@ SAFE_CONTEXT_FIELDS: Final = (
     "tool",
     "call_id",
     "status",
+    "run_id",
+    "path",
+    "source_type",
+    "content_chars",
+    "context_chars",
+    "observation_count",
+    "result_type",
+    "result_chars",
+    "argument_names",
+    "elapsed_ms",
 )
 
 

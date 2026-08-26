@@ -4,6 +4,7 @@ import asyncio
 import logging
 from dataclasses import dataclass
 from time import perf_counter
+from uuid import uuid4
 
 from qq_time_agent.modules.agent.contracts import (
     AgentFinal,
@@ -43,33 +44,73 @@ class AgentLoop:
     async def run(self, owner_id: str, message: str, context: str = "") -> AgentFinal:
         if not owner_id.strip() or not message.strip():
             raise ValueError("Agent owner and message are required")
+        run_id = uuid4().hex[:16]
         observations: list[ToolObservation] = []
-        LOGGER.info("agent run started", extra={"role": "agent", "status": "started"})
+        LOGGER.info(
+            "Agent 回合开始: 已接受用户请求, 准备进行模型决策",
+            extra={
+                "role": "agent",
+                "run_id": run_id,
+                "status": "started",
+                "step": 0,
+                "context_chars": len(context),
+            },
+        )
         for step in range(self._config.max_steps):
-            response = await self._model.respond(
-                AgentRequest(
-                    _SYSTEM_INSTRUCTION,
-                    message,
-                    context[: self._config.max_observation_chars],
-                    self._tools.definitions(),
-                    tuple(observations),
-                    step,
+            try:
+                response = await self._model.respond(
+                    AgentRequest(
+                        _SYSTEM_INSTRUCTION,
+                        message,
+                        context[: self._config.max_observation_chars],
+                        self._tools.definitions(),
+                        tuple(observations),
+                        step,
+                    )
                 )
-            )
+            except Exception as exc:
+                LOGGER.exception(
+                    "Agent 模型回合失败: 未能获得下一步决策",
+                    extra={
+                        "role": "agent",
+                        "run_id": run_id,
+                        "step": step,
+                        "status": "model_failed",
+                        "failure_class": type(exc).__name__,
+                        "observation_count": len(observations),
+                    },
+                )
+                raise
             if response.final is not None:
                 LOGGER.info(
-                    "agent run completed",
-                    extra={"role": "agent", "step": step, "status": "completed"},
+                    "Agent 回合完成: 模型返回最终答复",
+                    extra={
+                        "role": "agent",
+                        "run_id": run_id,
+                        "step": step,
+                        "status": "completed",
+                        "result_type": "final",
+                        "result_chars": len(response.final.content),
+                        "observation_count": len(observations),
+                    },
                 )
                 return response.final
             call = response.tool_call
             if call is None:
                 raise RuntimeError("Agent response omitted final and tool call")
-            observation = await self._call(owner_id, call.name, call.arguments, call.call_id)
+            observation = await self._call(
+                owner_id, call.name, call.arguments, call.call_id, run_id, step
+            )
             observations.append(observation)
         LOGGER.warning(
-            "agent run stopped at safety limit",
-            extra={"role": "agent", "step": self._config.max_steps, "status": "step_limit"},
+            "Agent 回合停止: 达到最大工具步骤, 未生成最终答复",
+            extra={
+                "role": "agent",
+                "run_id": run_id,
+                "step": self._config.max_steps,
+                "status": "step_limit",
+                "observation_count": len(observations),
+            },
         )
         raise RuntimeError("Agent reached the maximum tool steps")
 
@@ -79,11 +120,20 @@ class AgentLoop:
         name: str,
         arguments: object,
         call_id: str,
+        run_id: str,
+        step: int,
     ) -> ToolObservation:
         if not isinstance(arguments, dict):
             LOGGER.warning(
-                "agent tool arguments rejected",
-                extra={"tool": name, "call_id": call_id, "status": "invalid_arguments"},
+                "Agent 工具调用拒绝: 参数不是 JSON 对象",
+                extra={
+                    "role": "agent",
+                    "run_id": run_id,
+                    "step": step,
+                    "tool": name,
+                    "call_id": call_id,
+                    "status": "invalid_arguments",
+                },
             )
             return ToolObservation(call_id, name, "工具参数必须是 JSON 对象", True)
         started = perf_counter()
@@ -94,23 +144,32 @@ class AgentLoop:
             )
         except Exception as exc:
             LOGGER.warning(
-                "agent tool rejected",
+                "Agent 工具调用失败: 工具返回异常",
                 extra={
+                    "role": "agent",
+                    "run_id": run_id,
+                    "step": step,
                     "tool": name,
                     "call_id": call_id,
                     "status": "rejected",
                     "failure_class": type(exc).__name__,
-                    "duration_ms": round((perf_counter() - started) * 1000),
+                    "elapsed_ms": round((perf_counter() - started) * 1000),
+                    "argument_names": ",".join(sorted(arguments)),
                 },
             )
             return ToolObservation(call_id, name, f"工具拒绝请求: {type(exc).__name__}", True)
         LOGGER.info(
-            "agent tool completed",
+            "Agent 工具调用完成: 已获得受控观察结果",
             extra={
+                "role": "agent",
+                "run_id": run_id,
+                "step": step,
                 "tool": name,
                 "call_id": call_id,
                 "status": "completed",
-                "duration_ms": round((perf_counter() - started) * 1000),
+                "elapsed_ms": round((perf_counter() - started) * 1000),
+                "argument_names": ",".join(sorted(arguments)),
+                "result_type": type(output).__name__,
             },
         )
         return ToolObservation(call_id, name, _bounded(output, self._config.max_observation_chars))

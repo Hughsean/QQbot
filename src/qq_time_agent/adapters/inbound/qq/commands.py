@@ -1,6 +1,7 @@
 """Owner-only QQ command routing; forwarded content never reaches this parser."""
 
 import hashlib
+import logging
 import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -30,6 +31,8 @@ from qq_time_agent.modules.normalization.contracts import NormalizationPort
 from qq_time_agent.modules.reminders.contracts import ReminderCommandPort
 from qq_time_agent.modules.scheduling.contracts import SchedulingPort
 from qq_time_agent.modules.understanding.contracts import CandidateQueryPort
+
+LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -85,6 +88,15 @@ class QqCommandRouter:
         content: str,
         assets: tuple[SourceAssetDescriptor, ...] = (),
     ) -> str:
+        LOGGER.info(
+            "QQ 消息进入路由: 开始判断处理路径",
+            extra={
+                "role": "qq",
+                "source_type": envelope.source_type.value,
+                "content_chars": len(content),
+                "path": "asset" if assets else "text",
+            },
+        )
         if assets:
             return await self._ingest_text(envelope, content, assets)
         forwarded, text = _forwarded(content)
@@ -108,6 +120,16 @@ class QqCommandRouter:
         if self._agent_context is not None:
             context = await self._agent_context.build("owner", content)
         result = await agent.run("owner", content, context)
+        LOGGER.info(
+            "QQ Agent 处理完成: 返回用户答复",
+            extra={
+                "role": "qq",
+                "path": "agent",
+                "result_type": "agent_final",
+                "result_chars": len(result.content),
+                "context_chars": len(context),
+            },
+        )
         return result.content
 
     async def _dispatch_text(self, envelope: SourceEnvelope, text: str) -> str:
