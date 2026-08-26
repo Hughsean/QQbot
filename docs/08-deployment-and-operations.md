@@ -189,7 +189,7 @@ QQ 进程由 Compose `qq` 服务运行 `qq-time-agent-qq`。确认卡片与 Remi
 
 不得把 `docker compose config` 或镜像构建验证误报为已部署。2026-08-26 已在目标 Ubuntu
 主机完成首次 Docker Compose 部署：应用镜像在目标机本地构建，数据库从
-`0015_notifications` 升级至 `0017_context_scopes`，Web 的 live/ready 检查均返回 200，
+`0015_notifications` 升级至 `0018_agent_run_delivery`，Web 的 live/ready 检查均返回 200，
 Ollama `qwen3-embedding:4b` 模型和 GPU 计算探针均通过。部署前已生成 PostgreSQL
 custom-format 备份及 SHA-256 校验；未修改生产 Caddy、SSHD 或 systemd。
 

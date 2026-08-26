@@ -98,4 +98,4 @@ QQ Time Agent 是一个仅供项目所有者本人使用、以 QQ 为主要交�
   QQ 邮箱只读 IMAP，仍复用统一 Inbox/Understanding/RAG 与删除门禁。阶段 10 已按 ADR-0013
   启动统一内容资产与多连接基础实施；Gmail 保持关闭。当前生产环境为 Ubuntu Server Docker
   Compose，Ollama 与应用同栈运行。2026-08-26 已完成首个目标主机部署，数据库迁移至
-  `0017_context_scopes`，Web readiness 与 Ollama GPU 模型探针均通过。
+  `0018_agent_run_delivery`，Web readiness 与 Ollama GPU 模型探针均通过。
