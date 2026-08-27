@@ -14,6 +14,7 @@ from botpy.message import C2CMessage  # type: ignore[import-untyped]
 
 from qq_time_agent.bootstrap.config_models import OwnerConfig, QqConfig
 from qq_time_agent.contracts.clock import Clock
+from qq_time_agent.contracts.message_presentation import format_direct_reply
 from qq_time_agent.contracts.source import (
     IngressType,
     QqAssetIngressPort,
@@ -51,7 +52,7 @@ class OfficialQqGateway:
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
     ) -> None:
         self._qq = qq
-        self._processor = QqMessageProcessor(owner, ingress, clock)
+        self._processor = QqMessageProcessor(owner, ingress, clock, qq.display_name)
         self._client_factory = client_factory or (
             lambda processor: _BotpyClient(processor, qq.sandbox)
         )
@@ -99,10 +100,12 @@ class QqMessageProcessor:
         owner: OwnerConfig,
         ingress: QqIngressPort | QqAssetIngressPort,
         clock: Clock,
+        display_name: str = "小智",
     ) -> None:
         self.owner_openid = owner.qq_openid
         self._ingress = ingress
         self._clock = clock
+        self._display_name = display_name
 
     async def process(
         self,
@@ -130,22 +133,25 @@ class QqMessageProcessor:
         try:
             if assets:
                 if not isinstance(self._ingress, QqAssetIngressPort):
-                    return "当前接入未启用图片处理能力。"
+                    return self._direct_reply("当前接入未启用图片处理能力。")
                 return await self._ingress.receive(envelope, content, assets)
             return await self._ingress.receive(envelope, content)
         except AgentResponseProtocolError:
             LOGGER.warning(
                 "QQ Agent 模型响应格式异常", extra={"failure_class": "InvalidAgentResponse"}
             )
-            return "模型回复格式异常, 请稍后重试."
+            return self._direct_reply("模型回复格式异常, 请稍后重试.")
         except (LookupError, PermissionError, ValueError) as exc:
-            return f"无法执行: {exc}"
+            return self._direct_reply(f"无法执行: {exc}")
         except Exception as exc:
             LOGGER.exception(
                 "QQ command processing failed",
                 extra={"failure_class": type(exc).__name__},
             )
-            return "处理失败, 请稍后重试。"
+            return self._direct_reply("处理失败, 请稍后重试。")
+
+    def _direct_reply(self, content: str) -> str:
+        return format_direct_reply(self._display_name, content)
 
 
 class _BotpyClient(botpy.Client):  # type: ignore[misc]
@@ -165,7 +171,10 @@ class _BotpyClient(botpy.Client):  # type: ignore[misc]
     async def on_c2c_message_create(self, message: C2CMessage) -> None:
         assets, unsupported = _qq_assets(getattr(message, "attachments", ()))
         if unsupported:
-            await message.reply(content="当前官方 QQ 接口未提供此附件类型或合并转发的读取权限。")
+            unsupported_reply = self._processor._direct_reply(
+                "当前官方 QQ 接口未提供此附件类型或合并转发的读取权限。"
+            )
+            await message.reply(content=unsupported_reply)
             return
         reply = await self._processor.process(
             str(message.author.user_openid),

@@ -139,6 +139,7 @@ async def run_qq() -> None:
         ),
         agent_context,
         agent_runs,
+        config.qq.display_name,
     )
     gateway = OfficialQqGateway(config.qq, config.owner, router, clock)
     notifications, intent_delivery = build_qq_notification_services(

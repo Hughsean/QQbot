@@ -75,3 +75,13 @@ is resolved as 09:00 in `Asia/Shanghai` unless the user explicitly names another
 Scoped conversation history, retrieved evidence, Agenda facts, pending proposals and prior Agent
 replies are converted to the owner timezone before entering the model context. UTC database session
 values must not leak into the conversational time semantics.
+
+## QQ outbound presentation
+
+The outgoing QQ boundary renders message origin deterministically. A direct Agent reply is
+`<configured QQ display name>：<body>` (default display name: `小智`) and never has an Agent
+category heading. Persistent notification intents are prefixed at delivery time with one of
+`[邮件处理｜Outlook]`, `[邮件处理｜QQ邮箱]`, `[日程摘要]`, `[日程冲突]`, or `[系统通知]`.
+Reminders are rendered separately as `[日程提醒]`. The Agent, email content, retrieval evidence,
+and tool observations may supply only the body; square brackets in those untrusted bodies are
+converted to full-width characters before delivery so they cannot impersonate a source label.

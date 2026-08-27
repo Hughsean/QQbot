@@ -13,10 +13,10 @@ from qq_time_agent.modules.agent.contracts import (
     AgentRunExecutionPort,
 )
 from qq_time_agent.modules.inbox.contracts import InboxContentPort, InboxSourcePort
-from qq_time_agent.modules.notifications.application.ports import NotificationIntentRepository
-from qq_time_agent.modules.notifications.domain.models import (
-    NotificationIntentDraft,
-    NotificationKind,
+from qq_time_agent.modules.notifications.contracts import (
+    AgentMailResultRequest,
+    MailNotificationSource,
+    NotificationIntentCommandPort,
 )
 
 
@@ -27,7 +27,7 @@ class AgentRunJobHandler:
         content: InboxContentPort,
         context: AgentContextPort,
         source: InboxSourcePort | None = None,
-        notifications: NotificationIntentRepository | None = None,
+        notifications: NotificationIntentCommandPort | None = None,
         clock: Clock | None = None,
     ) -> None:
         self._runs = runs
@@ -64,19 +64,13 @@ class AgentRunJobHandler:
             if self._notifications is None or self._source is None or self._clock is None:
                 return
             source = await self._source.get_source(item.inbox_item_id)
-            if source is not None and source.source_type in {"MICROSOFT_MAIL", "QQ_MAIL"}:
+            notification_source = _mail_source(source.source_type) if source is not None else None
+            if notification_source is not None:
                 now = self._clock.now()
-                await self._notifications.add_or_get(
-                    NotificationIntentDraft(
-                        "owner",
-                        NotificationKind.AGENT_RESULT,
-                        f"agent-run:{raw_run}",
-                        f"agent-run:{raw_run}:result:v1",
-                        "agent-result-v1",
-                        _render_mail_result(item.subject, result.content),
-                        now,
-                    ),
-                    now,
+                await self._notifications.schedule_agent_mail_result(
+                    AgentMailResultRequest(
+                        "owner", run.run_id, notification_source, item.subject, result.content, now
+                    )
                 )
 
     @staticmethod
@@ -126,6 +120,9 @@ class MailAgentRunScheduler:
         )
 
 
-def _render_mail_result(subject: str, content: str) -> str:
-    title = " ".join(subject.split())[:160] or "未命名邮件"
-    return f"邮件事件处理结果《{title}》:\n{content}"[:4000]
+def _mail_source(source_type: str) -> MailNotificationSource | None:
+    if source_type == "MICROSOFT_MAIL":
+        return MailNotificationSource.OUTLOOK
+    if source_type == "QQ_MAIL":
+        return MailNotificationSource.QQ_MAIL
+    return None

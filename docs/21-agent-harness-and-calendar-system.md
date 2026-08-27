@@ -54,6 +54,13 @@ must be `HOLD` in the EventCase. The notification renderer prefixes every mail r
 source subject. Legacy polling of `NEEDS_REVIEW` items and standalone clarification templates are
 not permitted.
 
+The QQ presentation boundary, rather than the model, identifies message origin. Direct Agent
+replies use the configured nickname and a full-width colon. Durable mail, digest, conflict and
+connection notifications receive an immutable deterministic heading at send time; mail headings
+also name Outlook or QQ Mail. Reminder delivery has its own deterministic heading. Untrusted
+message bodies cannot create a competing heading because square brackets are escaped before
+delivery.
+
 ## Calendar System
 
 Calendar operations are exposed through a single Calendar System facade. The facade owns:

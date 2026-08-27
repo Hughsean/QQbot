@@ -1,14 +1,13 @@
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
 import pytest
 
 from qq_time_agent.adapters.inbound.workers.reminders import ReminderWorker
-from qq_time_agent.modules.agenda.contracts import AgendaEntryView
+from qq_time_agent.modules.agenda.contracts import AgendaEntryView, BusyInterval
 from qq_time_agent.modules.notifications.contracts import DeliveryRef
-from qq_time_agent.modules.reminders.contracts import ReminderLease
-from qq_time_agent.modules.scheduling.contracts import SchedulingProposalView
+from qq_time_agent.modules.reminders.contracts import ReminderLease, ReminderRef, ReminderView
 
 
 @dataclass
@@ -28,6 +27,32 @@ class Reminders:
     ) -> tuple[ReminderLease, ...]:
         return self.leases
 
+    async def schedule(
+        self, entry_id: UUID, entry_version: int, due_at: datetime, idempotency_key: str
+    ) -> ReminderRef:
+        del entry_id, entry_version, due_at, idempotency_key
+        return ReminderRef(uuid4())
+
+    async def cancel_for_entry(self, entry_id: UUID, expected_version: int) -> int:
+        del entry_id, expected_version
+        return 0
+
+    async def snooze(
+        self, reminder_id: UUID, delay: timedelta, now: datetime
+    ) -> ReminderView:
+        del reminder_id, delay, now
+        raise NotImplementedError
+
+    async def reschedule(
+        self, reminder_id: UUID, due_at: datetime, now: datetime
+    ) -> ReminderView:
+        del reminder_id, due_at, now
+        raise NotImplementedError
+
+    async def list_for_entry(self, entry_id: UUID) -> tuple[ReminderView, ...]:
+        del entry_id
+        return ()
+
     async def mark_sent(self, lease: ReminderLease, delivery_ref: str) -> None:
         self.sent.append(lease.reminder_id)
 
@@ -44,12 +69,19 @@ class Agenda:
     async def get_entry(self, entry_id: UUID) -> AgendaEntryView | None:
         return self.values.get(entry_id)
 
+    async def get_busy_intervals(
+        self, range_start: datetime, range_end: datetime
+    ) -> tuple[BusyInterval, ...]:
+        del range_start, range_end
+        return ()
+
+    async def find_active_by_title(self, title: str) -> tuple[AgendaEntryView, ...]:
+        return tuple(value for value in self.values.values() if value.title == title)
+
 
 @dataclass
 class Notifications:
     fail_reminder: bool = False
-    confirmation_calls: int = 0
-    fail_first_confirmation: bool = False
 
     async def send_reminder(
         self, user_id: str, lease: ReminderLease, entry: AgendaEntryView
@@ -57,23 +89,6 @@ class Notifications:
         if self.fail_reminder:
             raise ConnectionError("QQ unavailable")
         return DeliveryRef("delivery")
-
-    async def send_confirmation(
-        self, user_id: str, proposal: SchedulingProposalView
-    ) -> DeliveryRef:
-        self.confirmation_calls += 1
-        if self.fail_first_confirmation and self.confirmation_calls == 1:
-            raise ConnectionError("QQ unavailable")
-        return DeliveryRef("confirmation")
-
-
-@dataclass
-class Scheduling:
-    values: tuple[SchedulingProposalView, ...]
-
-    async def list_pending(self, limit: int) -> tuple[SchedulingProposalView, ...]:
-        return self.values[:limit]
-
 
 def _entry(version: int = 1) -> AgendaEntryView:
     start = datetime(2026, 8, 20, 1, tzinfo=UTC)
@@ -106,9 +121,9 @@ async def test_reminder_worker_sends_stale_dead_letters_and_retries(
     stale = _lease(entry, 2)
     reminders = Reminders((good, stale))
     worker = ReminderWorker(
-        reminders,  # type: ignore[arg-type]
-        Agenda({entry.agenda_entry_id: entry}),  # type: ignore[arg-type]
-        Notifications(),  # type: ignore[arg-type]
+        reminders,
+        Agenda({entry.agenda_entry_id: entry}),
+        Notifications(),
         Clock(),
         "worker",
     )
@@ -118,9 +133,9 @@ async def test_reminder_worker_sends_stale_dead_letters_and_retries(
 
     failing = Reminders((_lease(entry, 1, 1),))
     await ReminderWorker(
-        failing,  # type: ignore[arg-type]
-        Agenda({entry.agenda_entry_id: entry}),  # type: ignore[arg-type]
-        Notifications(fail_reminder=True),  # type: ignore[arg-type]
+        failing,
+        Agenda({entry.agenda_entry_id: entry}),
+        Notifications(fail_reminder=True),
         Clock(),
         "worker",
     ).run_once()

@@ -91,6 +91,9 @@ from qq_time_agent.modules.normalization.infrastructure.purge import Normalizati
 from qq_time_agent.modules.normalization.infrastructure.repository import (
     SqlNormalizedContentRepository,
 )
+from qq_time_agent.modules.notifications.application.agent_results import (
+    AgentMailResultNotificationService,
+)
 from qq_time_agent.modules.notifications.infrastructure.repository import (
     SqlNotificationIntentRepository,
 )
@@ -284,7 +287,7 @@ def build_worker() -> tuple[JobRunner, AsyncEngine, tuple[AsyncClosable, ...]]:
             inbox_repository,
             agent_context,
             inbox_repository,
-            SqlNotificationIntentRepository(sessions),
+            AgentMailResultNotificationService(SqlNotificationIntentRepository(sessions)),
             clock,
         ),
         "knowledge-index": KnowledgeIndexJobHandler(

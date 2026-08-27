@@ -1,11 +1,58 @@
 """Deterministic notification templates and privacy-safe keys."""
 
-from datetime import date
+from datetime import date, timedelta
 
+from qq_time_agent.contracts.message_presentation import escape_origin_markers
 from qq_time_agent.modules.agenda.contracts import AgendaConflictView, AgendaNotificationItem
 from qq_time_agent.modules.connections.contracts import ReauthReminderCandidate
+from qq_time_agent.modules.notifications.domain.models import NotificationKind
 
 TEMPLATE_VERSION = "notification-v1"
+
+
+def render_outbound(kind: NotificationKind, content: str) -> str:
+    """Attach an unforgeable source label immediately before QQ delivery."""
+    return f"[{_label(kind)}]\n{escape_origin_markers(content)}"
+
+
+def render_reminder(
+    title: str,
+    starts_at: str,
+    lead: timedelta,
+    agenda_entry_id: object,
+    reminder_id: object,
+) -> str:
+    separator = "\N{FULLWIDTH COLON}"
+    return (
+        "[日程提醒]\n"
+        f"日程{separator}{escape_origin_markers(title)}\n"
+        f"时间{separator}{starts_at} (北京时间)\n"
+        f"{_lead_text(lead)}\n"
+        f"回复“完成 {agenda_entry_id}”或“推迟 {reminder_id} 10”。"
+    )
+
+
+def _lead_text(lead: timedelta) -> str:
+    minutes = max(0, round(lead.total_seconds() / 60))
+    if minutes == 0:
+        return "日程即将开始。"
+    if minutes % 1440 == 0:
+        return f"距离开始还有 {minutes // 1440} 天。"
+    if minutes % 60 == 0:
+        return f"距离开始还有 {minutes // 60} 小时。"
+    return f"距离开始还有 {minutes} 分钟。"
+
+
+def _label(kind: NotificationKind) -> str:
+    labels = {
+        NotificationKind.DAILY_DIGEST: "日程摘要",
+        NotificationKind.AGENDA_CONFLICT: "日程冲突",
+        NotificationKind.CONNECTION_REAUTH: "系统通知",
+        NotificationKind.OUTLOOK_MAIL_RESULT: "邮件处理\N{FULLWIDTH VERTICAL LINE}Outlook",
+        NotificationKind.QQ_MAIL_RESULT: "邮件处理\N{FULLWIDTH VERTICAL LINE}QQ邮箱",
+        NotificationKind.AGENT_RESULT: "邮件处理",
+    }
+    return labels[kind]
 
 
 def render_digest(day: date, entries: tuple[AgendaNotificationItem, ...]) -> str:

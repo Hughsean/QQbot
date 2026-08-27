@@ -82,6 +82,13 @@ def test_settings_reject_llm_payload_persistence() -> None:
         EnvironmentSettings.model_validate(values)
 
 
+def test_settings_reject_blank_qq_display_name() -> None:
+    values = _values()
+    values["qq_bot_display_name"] = "  "
+    with raises(ValidationError, match="QQ_BOT_DISPLAY_NAME must not be blank"):
+        EnvironmentSettings.model_validate(values)
+
+
 def test_secret_string_does_not_render_value() -> None:
     secret = SecretStr("synthetic-secret")
     assert "synthetic-secret" not in repr(secret)

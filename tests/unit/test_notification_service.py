@@ -4,12 +4,12 @@ from uuid import uuid4
 
 import pytest
 
-from qq_time_agent.modules.actions.contracts import ActionResultView
 from qq_time_agent.modules.agenda.contracts import AgendaEntryView
 from qq_time_agent.modules.notifications.application.ports import StoredDelivery
+from qq_time_agent.modules.notifications.application.rendering import render_outbound
 from qq_time_agent.modules.notifications.application.service import NotificationService
+from qq_time_agent.modules.notifications.domain.models import NotificationKind
 from qq_time_agent.modules.reminders.contracts import ReminderLease
-from qq_time_agent.modules.scheduling.contracts import ProposalSlot, SchedulingProposalView
 
 
 @dataclass
@@ -41,57 +41,31 @@ class Repository:
 
 
 @pytest.mark.asyncio
-async def test_confirmation_delivery_is_idempotent() -> None:
+async def test_reminder_delivery_is_idempotent_and_source_labelled() -> None:
     start = datetime(2026, 8, 20, 7, tzinfo=UTC)
-    proposal = SchedulingProposalView(
-        uuid4(),
-        1,
-        "owner",
-        uuid4(),
-        "EVENT",
-        "评审",
-        ProposalSlot(start, start + timedelta(hours=1), "Asia/Shanghai"),
-        (),
-        (),
-        "固定时间",
-        (),
-        ("inbox:test",),
-        start + timedelta(days=1),
-        "PENDING_CONFIRMATION",
-    )
     sender = Sender()
     service = NotificationService(sender, Repository(), Clock())
-    assert await service.send_confirmation("owner", proposal) == await service.send_confirmation(
-        "owner", proposal
+    entry = AgendaEntryView(
+        uuid4(), "EVENT", "评审", start, start + timedelta(hours=1), "Asia/Shanghai",
+        "ACTIVE", ("inbox:test",), uuid4(), 2,
+    )
+    lease = ReminderLease(
+        uuid4(), entry.agenda_entry_id, 2, start - timedelta(minutes=30), "key", "worker", 1, 5
+    )
+    assert await service.send_reminder("owner", lease, entry) == await service.send_reminder(
+        "owner", lease, entry
     )
     assert sender.calls == 1
+    assert sender.contents[0].startswith("[日程提醒]\n")
     assert "2026-08-20T15:00+08:00" in sender.contents[0]
+    assert "距离开始还有 30 分钟。" in sender.contents[0]
 
 
 @pytest.mark.asyncio
-async def test_conflict_result_and_reminder_rendering_with_version_gate() -> None:
+async def test_reminder_version_gate_and_outbound_source_labels() -> None:
     start = datetime(2026, 8, 20, 7, tzinfo=UTC)
     sender = Sender()
     service = NotificationService(sender, Repository(), Clock())
-    conflict = SchedulingProposalView(
-        uuid4(),
-        1,
-        "owner",
-        uuid4(),
-        "EVENT",
-        "冲突会议",
-        None,
-        (),
-        (),
-        "冲突",
-        (),
-        ("inbox:test",),
-        start + timedelta(days=1),
-        "PENDING_CONFIRMATION",
-    )
-    await service.send_confirmation("owner", conflict)
-    action = ActionResultView(uuid4(), "CREATE_AGENDA", "SUCCEEDED", uuid4(), 1, uuid4())
-    await service.send_result("owner", action)
     entry = AgendaEntryView(
         uuid4(),
         "EVENT",
@@ -121,5 +95,16 @@ async def test_conflict_result_and_reminder_rendering_with_version_gate() -> Non
             ),
             entry,
         )
-    assert sender.calls == 3
-    assert "2026-08-20T15:00+08:00" in sender.contents[2]
+    assert sender.calls == 1
+    assert "2026-08-20T15:00+08:00" in sender.contents[0]
+    assert render_outbound(NotificationKind.DAILY_DIGEST, "[系统通知]") == (
+        "[日程摘要]\n\N{FULLWIDTH LEFT SQUARE BRACKET}系统通知\N{FULLWIDTH RIGHT SQUARE BRACKET}"
+    )
+    assert render_outbound(NotificationKind.AGENDA_CONFLICT, "冲突") == "[日程冲突]\n冲突"
+    assert render_outbound(NotificationKind.CONNECTION_REAUTH, "授权失效") == "[系统通知]\n授权失效"
+    assert render_outbound(
+        NotificationKind.OUTLOOK_MAIL_RESULT, "主题\N{FULLWIDTH COLON}会议"
+    ) == "[邮件处理\N{FULLWIDTH VERTICAL LINE}Outlook]\n主题\N{FULLWIDTH COLON}会议"
+    assert render_outbound(
+        NotificationKind.QQ_MAIL_RESULT, "主题\N{FULLWIDTH COLON}账单"
+    ) == "[邮件处理\N{FULLWIDTH VERTICAL LINE}QQ邮箱]\n主题\N{FULLWIDTH COLON}账单"

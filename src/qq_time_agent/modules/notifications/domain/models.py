@@ -10,6 +10,9 @@ class NotificationKind(StrEnum):
     DAILY_DIGEST = "DAILY_DIGEST"
     AGENDA_CONFLICT = "AGENDA_CONFLICT"
     CONNECTION_REAUTH = "CONNECTION_REAUTH"
+    OUTLOOK_MAIL_RESULT = "OUTLOOK_MAIL_RESULT"
+    QQ_MAIL_RESULT = "QQ_MAIL_RESULT"
+    # Only retained so historical persisted intents can still be read and settled.
     AGENT_RESULT = "AGENT_RESULT"
 
 

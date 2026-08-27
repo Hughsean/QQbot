@@ -12,6 +12,7 @@ from qq_time_agent.adapters.inbound.qq.message_syntax import (
 )
 from qq_time_agent.contracts.clock import Clock
 from qq_time_agent.contracts.jobs import JobQueue, JobRequest
+from qq_time_agent.contracts.message_presentation import format_direct_reply
 from qq_time_agent.contracts.source import (
     SourceAssetDescriptor,
     SourceAssetDiscoveryPort,
@@ -36,6 +37,7 @@ class QqCommandRouter:
         asset_discovery: SourceAssetDiscoveryPort | None,
         agent_context: AgentContextPort,
         agent_runs: AgentRunCommandPort,
+        display_name: str = "小智",
     ) -> None:
         self._inbox = inbox
         self._processing = processing
@@ -45,6 +47,7 @@ class QqCommandRouter:
         self._agent_context = agent_context
         self._agent_runs = agent_runs
         self._asset_discovery = asset_discovery
+        self._display_name = display_name
 
     async def receive(
         self,
@@ -111,7 +114,7 @@ class QqCommandRouter:
                 "context_chars": len(context),
             },
         )
-        return result.content
+        return self._format_direct_reply(result.content)
 
     async def _ingest_text(
         self,
@@ -122,11 +125,14 @@ class QqCommandRouter:
         result = await self._inbox.ingest_qq(envelope, text)
         await self._normalize_ingested_text(envelope, text, result, assets)
         if envelope.source_type is SourceType.OWNER_NOTE:
-            return "已保存主人笔记, 将用于后续检索。"
+            return self._format_direct_reply("已保存主人笔记, 将用于后续检索。")
         if assets:
-            return "已接收图片, 正在离线识别并生成建议。"
+            return self._format_direct_reply("已接收图片, 正在离线识别并生成建议。")
         label = "转发文本" if envelope.source_type is SourceType.QQ_FORWARD else "输入"
-        return f"已接收{label}, 将用于后续检索。"
+        return self._format_direct_reply(f"已接收{label}, 将用于后续检索。")
+
+    def _format_direct_reply(self, content: str) -> str:
+        return format_direct_reply(self._display_name, content)
 
     async def _normalize_ingested_text(
         self,

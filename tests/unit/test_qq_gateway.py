@@ -144,14 +144,16 @@ async def test_owner_command_errors_are_safe_and_provider_details_are_hidden() -
     expected = QqMessageProcessor(
         OwnerConfig(SecretStr("owner")), FailingIngress(ValueError("bad command")), FixedClock(now)
     )
-    assert await expected.process("owner", "m1", "bad", now) == "无法执行: bad command"
+    assert await expected.process("owner", "m1", "bad", now) == (
+        "小智\N{FULLWIDTH COLON}无法执行: bad command"
+    )
     unexpected = QqMessageProcessor(
         OwnerConfig(SecretStr("owner")),
         FailingIngress(RuntimeError("provider secret detail")),
         FixedClock(now),
     )
     reply = await unexpected.process("owner", "m2", "bad", now)
-    assert reply == "处理失败, 请稍后重试。"
+    assert reply == "小智\N{FULLWIDTH COLON}处理失败, 请稍后重试。"
     assert "provider secret" not in reply
 
 
@@ -164,7 +166,7 @@ async def test_agent_protocol_error_has_a_stable_user_facing_reply() -> None:
         FixedClock(now),
     )
     reply = await processor.process("owner", "m1", "你好", now)
-    assert reply == "模型回复格式异常, 请稍后重试."
+    assert reply == "小智\N{FULLWIDTH COLON}模型回复格式异常, 请稍后重试."
     assert "provider" not in reply
 
 

@@ -149,7 +149,7 @@ async def test_delivery_leases_revalidates_and_sends_once() -> None:
     sender = Sender()
     service = NotificationIntentDeliveryService(repository, Eligibility(NOW), sender, "qq-1")
     assert await service.run_once(NOW) == 1
-    assert sender.values == ["digest"]
+    assert sender.values == ["[日程摘要]\ndigest"]
     assert repository.saved == [NotificationIntentState.SENT]
 
 

@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 import pytest
@@ -15,10 +15,7 @@ from qq_time_agent.modules.agent.contracts import (
     AgentRunStatus,
 )
 from qq_time_agent.modules.inbox.contracts import InboxContentView, InboxSourceView
-from qq_time_agent.modules.notifications.domain.models import (
-    NotificationIntent,
-    NotificationIntentDraft,
-)
+from qq_time_agent.modules.notifications.contracts import AgentMailResultRequest
 
 NOW = datetime(2026, 8, 26, tzinfo=UTC)
 
@@ -63,33 +60,10 @@ class Source:
 
 @dataclass
 class Notifications:
-    drafts: list[NotificationIntentDraft] = field(default_factory=list)
+    requests: list[AgentMailResultRequest] = field(default_factory=list)
 
-    async def add_or_get(self, draft: NotificationIntentDraft, now: datetime) -> NotificationIntent:
-        assert now == NOW
-        self.drafts.append(draft)
-        return NotificationIntent.create(draft, now)
-
-    async def lease_due(
-        self, now: datetime, owner: str, duration: timedelta, limit: int
-    ) -> tuple[NotificationIntent, ...]:
-        del now, owner, duration, limit
-        return ()
-
-    async def save(self, intent: NotificationIntent, expected_version: int) -> None:
-        del intent, expected_version
-
-    async def has_open(self, subject_key: str) -> bool:
-        del subject_key
-        return False
-
-    async def has_recent_sent(self, subject_key: str, since: datetime) -> bool:
-        del subject_key, since
-        return False
-
-    async def recover_expired(self, now: datetime, limit: int) -> int:
-        del now, limit
-        return 0
+    async def schedule_agent_mail_result(self, request: AgentMailResultRequest) -> None:
+        self.requests.append(request)
 
 
 class Clock:
@@ -138,23 +112,25 @@ def _handler(
 async def test_mail_agent_hold_result_never_creates_unsolicited_notification() -> None:
     handler, job, notifications = _handler(AgentDelivery.HOLD)
     await handler(job)
-    assert notifications.drafts == []
+    assert notifications.requests == []
 
 
 @pytest.mark.asyncio
 async def test_mail_agent_notification_is_anchored_to_its_subject() -> None:
     handler, job, notifications = _handler(AgentDelivery.NOTIFY)
     await handler(job)
-    assert len(notifications.drafts) == 1
-    draft = notifications.drafts[0]
-    assert draft.content == "邮件事件处理结果《项目评审时间调整》:\n已识别到时间变更"
+    assert len(notifications.requests) == 1
+    request = notifications.requests[0]
+    assert request.source.value == "OUTLOOK"
+    assert request.subject == "项目评审时间调整"
+    assert request.content == "已识别到时间变更"
 
 
 @pytest.mark.asyncio
 async def test_non_mail_agent_result_cannot_create_proactive_notification() -> None:
     handler, job, notifications = _handler(AgentDelivery.NOTIFY, "QQ_DIRECT")
     await handler(job)
-    assert notifications.drafts == []
+    assert notifications.requests == []
 
 
 @pytest.mark.asyncio
@@ -164,4 +140,4 @@ async def test_invalid_agent_response_is_permanently_classified_without_notifica
     )
     with pytest.raises(PermanentJobError, match="InvalidAgentResponse"):
         await handler(job)
-    assert notifications.drafts == []
+    assert notifications.requests == []

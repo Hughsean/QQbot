@@ -26,6 +26,7 @@ class QqConfig:
     app_id: SecretStr
     secret: SecretStr
     sandbox: bool
+    display_name: str = "小智"
 
 
 @dataclass(frozen=True, slots=True)

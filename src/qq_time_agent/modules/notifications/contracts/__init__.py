@@ -1,5 +1,10 @@
 """Public Notification contracts."""
 
+from qq_time_agent.modules.notifications.contracts.agent_results import (
+    AgentMailResultRequest,
+    MailNotificationSource,
+    NotificationIntentCommandPort,
+)
 from qq_time_agent.modules.notifications.contracts.models import (
     DeliveryRef,
     NotificationIntentMetrics,
@@ -11,7 +16,10 @@ from qq_time_agent.modules.notifications.contracts.models import (
 )
 
 __all__ = [
+    "AgentMailResultRequest",
     "DeliveryRef",
+    "MailNotificationSource",
+    "NotificationIntentCommandPort",
     "NotificationIntentMetrics",
     "NotificationMetricsPort",
     "NotificationPort",

@@ -56,6 +56,7 @@ class EnvironmentSettings(BaseSettings):
     qq_bot_app_id: SecretStr
     qq_bot_secret: SecretStr
     qq_bot_sandbox: bool = True
+    qq_bot_display_name: str = Field(default="小智", min_length=1, max_length=32)
     microsoft_tenant: str = "common"
     microsoft_client_id: SecretStr
     qq_mail_imap_host: str = "imap.qq.com"
@@ -124,6 +125,8 @@ class EnvironmentSettings(BaseSettings):
             raise ValueError("PERSIST_LLM_PAYLOADS must remain false")
         if self.qq_mail_imap_host != "imap.qq.com" or self.qq_mail_imap_port != 993:
             raise ValueError("QQ Mail IMAP must use imap.qq.com:993")
+        if not self.qq_bot_display_name.strip():
+            raise ValueError("QQ_BOT_DISPLAY_NAME must not be blank")
         return self
 
     def _validate_container_boundaries(self) -> None:
@@ -185,7 +188,12 @@ def _to_runtime_config(value: EnvironmentSettings) -> RuntimeConfig:
             value.app_signing_key,
         ),
         owner=OwnerConfig(value.owner_qq_openid),
-        qq=QqConfig(value.qq_bot_app_id, value.qq_bot_secret, value.qq_bot_sandbox),
+        qq=QqConfig(
+            value.qq_bot_app_id,
+            value.qq_bot_secret,
+            value.qq_bot_sandbox,
+            value.qq_bot_display_name.strip(),
+        ),
         database=DatabaseConfig(
             value.database_host,
             value.database_port,

@@ -181,7 +181,7 @@ async def test_direct_message_uses_one_persistent_agent_run() -> None:
     reply = await _router(inbox, queue, runs).receive(
         _envelope("刚才那个任务改到明天"), "刚才那个任务改到明天"
     )
-    assert reply == "Agent已处理"
+    assert reply == "小智\N{FULLWIDTH COLON}Agent已处理"
     assert len(inbox.envelopes) == len(runs.ensured) == len(runs.executed) == 1
     assert queue.values[0].kind == "agent-run"
 
@@ -218,4 +218,5 @@ async def test_media_caption_stays_out_of_the_agent_command_path() -> None:
         _envelope("确认"), "确认", (descriptor,)
     )
     assert "已接收图片" in reply
+    assert reply.startswith("小智\N{FULLWIDTH COLON}")
     assert discovery.values and runs.ensured == []

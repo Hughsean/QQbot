@@ -97,6 +97,9 @@ PERSIST_LLM_PAYLOADS=false
 `QQ_MAIL_SANDBOX_ADDRESS`、`QQ_MAIL_SANDBOX_AUTH_CODE` 只在显式 `--sandbox` 测试中读取，普通
 RuntimeConfig 不加载它们，也不得打印值。
 
+`QQ_BOT_DISPLAY_NAME` 是直接 Agent 回复的显示昵称，默认为 `小智`；它不影响邮件、提醒、摘要、
+冲突和系统通知的确定性来源标题。
+
 ### 秘密配置
 
 ```text

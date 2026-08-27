@@ -6,6 +6,7 @@ from qq_time_agent.modules.notifications.application.ports import (
     NotificationEligibilityPort,
     NotificationIntentRepository,
 )
+from qq_time_agent.modules.notifications.application.rendering import render_outbound
 from qq_time_agent.modules.notifications.contracts import (
     NotificationPreSendPermanentError,
     NotificationPreSendTransientError,
@@ -52,7 +53,9 @@ class NotificationIntentDeliveryService:
                 await self._repository.save(value, expected)
                 continue
             try:
-                delivery_id = await self._sender.send_active(value.draft.content)
+                delivery_id = await self._sender.send_active(
+                    render_outbound(value.draft.kind, value.draft.content)
+                )
             except NotificationPreSendTransientError as exc:
                 delay = timedelta(seconds=min(60, 2**value.attempt_count))
                 value.mark_pre_send_failure(type(exc).__name__, now, now + delay, 3)
