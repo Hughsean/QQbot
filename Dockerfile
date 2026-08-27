@@ -29,9 +29,9 @@ RUN apt-get update \
     && useradd --system --uid 10001 --gid app --create-home app
 WORKDIR /app
 COPY --from=build --chown=app:app /app/.venv /app/.venv
-# Keep the built source tree in the runtime image. The package version intentionally stays
-# stable between source fixes, so relying on the installed local wheel alone can serve stale code.
-COPY --from=build --chown=app:app /app/src /app/src
+# Keep the current build-context source tree in the runtime image. The package version intentionally
+# stays stable between source fixes, so relying on the installed local wheel alone can serve stale code.
+COPY --chown=app:app src/ ./src/
 COPY --chown=app:app alembic.ini alembic.ini
 COPY --chown=app:app alembic/ alembic/
 USER app
