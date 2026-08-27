@@ -15,7 +15,8 @@ RUN uv sync --frozen --no-dev --no-editable --no-cache
 FROM ghcr.io/astral-sh/uv@sha256:e5b65587bce7de595f299855d7385fe7fca39b8a74baa261ba1b7147afa78e58 AS runtime
 ENV PYTHONUNBUFFERED=1 \
     TZ=Asia/Shanghai \
-    PATH="/app/.venv/bin:$PATH"
+    PATH="/app/.venv/bin:$PATH" \
+    PYTHONPATH="/app/src"
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         ca-certificates \
@@ -28,6 +29,9 @@ RUN apt-get update \
     && useradd --system --uid 10001 --gid app --create-home app
 WORKDIR /app
 COPY --from=build --chown=app:app /app/.venv /app/.venv
+# Keep the built source tree in the runtime image. The package version intentionally stays
+# stable between source fixes, so relying on the installed local wheel alone can serve stale code.
+COPY --from=build --chown=app:app /app/src /app/src
 COPY --chown=app:app alembic.ini alembic.ini
 COPY --chown=app:app alembic/ alembic/
 USER app
