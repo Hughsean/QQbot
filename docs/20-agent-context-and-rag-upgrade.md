@@ -72,3 +72,6 @@ reminder occurrences are cancelled/replaced idempotently; sent reminders are not
 The runtime clock is canonical UTC; container or host local timezone settings cannot change the
 meaning of persisted instants. The owner timezone is injected into each Agent turn so “明天 9 点”
 is resolved as 09:00 in `Asia/Shanghai` unless the user explicitly names another timezone.
+Scoped conversation history, retrieved evidence, Agenda facts, pending proposals and prior Agent
+replies are converted to the owner timezone before entering the model context. UTC database session
+values must not leak into the conversational time semantics.

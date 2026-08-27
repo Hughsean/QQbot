@@ -20,6 +20,9 @@ stated, relative dates and clock times are interpreted in the configured owner t
 default `Asia/Shanghai`) and converted to ISO-8601 values with the correct offset before Calendar
 System execution. Calendar records keep the UTC instant plus their original IANA timezone for
 display.
+All model-facing calendar reads and owner-facing reminder/proposal messages render instants in the
+configured owner timezone. Calendar tool writes require ISO-8601 offsets. An offset-bearing value is
+an absolute instant and must never be stripped and reinterpreted as a local wall-clock value.
 
 Every QQ direct message and eligible mail Inbox item creates exactly one persistent `AgentRun`
 identified by its Inbox item. A run stores control state, tool-call identifiers, argument hashes

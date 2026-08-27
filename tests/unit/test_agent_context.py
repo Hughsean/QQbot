@@ -151,3 +151,5 @@ async def test_context_uses_prior_scope_only_and_includes_agent_calendar_facts()
     assert "[agenda-fact]" in context and "version=3" in context
     assert "[pending-proposal]" in context
     assert "[knowledge T2] knowledge:1" in context
+    assert "2026-08-28T18:00:00+08:00" in context
+    assert "+00:00" not in context

@@ -3,6 +3,7 @@
 from datetime import datetime, timedelta
 from uuid import UUID
 
+from qq_time_agent.contracts.time import local_iso, resolve_timezone
 from qq_time_agent.modules.agenda.contracts import AgendaNotificationQueryPort
 from qq_time_agent.modules.agent.contracts import AgentContextRepository, ScopedAgentReply
 from qq_time_agent.modules.inbox.contracts import ConversationContextPort, InboxContentPort
@@ -22,6 +23,7 @@ class AgentContextAssembler:
         inbox_content: InboxContentPort | None = None,
         agenda: AgendaNotificationQueryPort | None = None,
         proposals: PendingProposalQueryPort | None = None,
+        owner_timezone: str = "Asia/Shanghai",
     ) -> None:
         self._retrieval = retrieval
         self._conversation = conversation
@@ -29,6 +31,8 @@ class AgentContextAssembler:
         self._inbox_content = inbox_content
         self._agenda = agenda
         self._proposals = proposals
+        resolve_timezone(owner_timezone)
+        self._owner_timezone = owner_timezone
 
     async def build(
         self,
@@ -42,7 +46,8 @@ class AgentContextAssembler:
         chunks = await self._retrieval.retrieve(message, RetrievalFilters(), 6)
         blocks = [
             (
-                f"[knowledge T2] {item.source_ref} {item.occurred_at.isoformat()}\n"
+                f"[knowledge T2] {item.source_ref} "
+                f"{local_iso(item.occurred_at, self._owner_timezone)}\n"
                 f"{item.content[:1600]}"
             )
             for item in chunks
@@ -80,12 +85,15 @@ class AgentContextAssembler:
                 [
                     (
                         f"[scoped-context] {item.source_ref} "
-                        f"{item.occurred_at.isoformat()}\n{item.body_text[:1200]}"
+                        f"{local_iso(item.occurred_at, self._owner_timezone)}\n"
+                        f"{item.body_text[:1200]}"
                     )
                     for item in scoped_items
                 ]
                 + [
-                    f"[prior-agent-response] {item.occurred_at.isoformat()}\n{item.content[:1200]}"
+                    f"[prior-agent-response] "
+                    f"{local_iso(item.occurred_at, self._owner_timezone)}\n"
+                    f"{item.content[:1200]}"
                     for item in replies
                 ]
                 + blocks
@@ -97,7 +105,7 @@ class AgentContextAssembler:
             blocks = [
                 (
                     f"[conversation] {item.source_ref} "
-                    f"{item.occurred_at.isoformat()}\n{item.body[:1200]}"
+                    f"{local_iso(item.occurred_at, self._owner_timezone)}\n{item.body[:1200]}"
                 )
                 for item in recent
             ] + blocks
@@ -108,26 +116,37 @@ class AgentContextAssembler:
             blocks = [
                 (
                     f"[agenda-fact] id={item.agenda_entry_id} version={item.version} "
-                    f"kind={item.kind} starts_at={item.starts_at.isoformat()} "
-                    f"ends_at={item.ends_at.isoformat()}\n{item.title[:400]}"
+                    f"kind={item.kind} starts_at={local_iso(item.starts_at, self._owner_timezone)} "
+                    f"ends_at={local_iso(item.ends_at, self._owner_timezone)}\n{item.title[:400]}"
                 )
                 for item in entries[:8]
             ] + blocks
         if self._proposals is not None:
             proposals = await self._proposals.list_pending(8)
             blocks = [
-                _proposal_block(item.proposal_id, item.version, item.title, item.recommended_slot)
+                _proposal_block(
+                    item.proposal_id,
+                    item.version,
+                    item.title,
+                    item.recommended_slot,
+                    self._owner_timezone,
+                )
                 for item in proposals
                 if item.user_id == user_id
             ] + blocks
         return "\n\n".join(blocks)[:12000]
 
 
-def _proposal_block(proposal_id: UUID, version: int, title: str, slot: object) -> str:
+def _proposal_block(
+    proposal_id: UUID, version: int, title: str, slot: object, owner_timezone: str
+) -> str:
     starts_at = getattr(slot, "starts_at", None)
     ends_at = getattr(slot, "ends_at", None)
     if isinstance(starts_at, datetime) and isinstance(ends_at, datetime):
-        timing = f"starts_at={starts_at.isoformat()} ends_at={ends_at.isoformat()}"
+        timing = (
+            f"starts_at={local_iso(starts_at, owner_timezone)} "
+            f"ends_at={local_iso(ends_at, owner_timezone)}"
+        )
     else:
         timing = "no recommended slot"
     return f"[pending-proposal] id={proposal_id} version={version} {timing}\n{title[:400]}"

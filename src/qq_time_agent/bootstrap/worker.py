@@ -258,6 +258,7 @@ def build_worker() -> tuple[JobRunner, AsyncEngine, tuple[AsyncClosable, ...]]:
         inbox_repository,
         AgendaNotificationQueryService(agenda_repository),
         PendingProposalQueryService(SqlProposalRepository(sessions), clock),
+        str(config.schedule.timezone),
     )
     agent_runs = AgentRunService(SqlAgentRunRepository(sessions), agent, clock)
     agent_scheduler = MailAgentRunScheduler(

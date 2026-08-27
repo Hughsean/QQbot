@@ -125,6 +125,7 @@ async def run_qq() -> None:
         SqlInboxRepository(sessions),
         AgendaNotificationQueryService(agenda_repository),
         PendingProposalQueryService(SqlProposalRepository(sessions), clock),
+        str(config.schedule.timezone),
     )
     agent_runs = AgentRunService(SqlAgentRunRepository(sessions), agent, clock)
     router = QqCommandRouter(
@@ -141,7 +142,7 @@ async def run_qq() -> None:
     )
     gateway = OfficialQqGateway(config.qq, config.owner, router, clock)
     notifications, intent_delivery = build_qq_notification_services(
-        sessions, preferences, agenda_repository, gateway, clock
+        sessions, preferences, agenda_repository, gateway, clock, str(config.schedule.timezone)
     )
     reminder_worker = ReminderWorker(
         reminders,

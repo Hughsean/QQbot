@@ -35,7 +35,6 @@ class Agenda:
 
 
 @dataclass
-@dataclass
 class Actions:
     async def execute_calendar_operation(
         self,
@@ -51,6 +50,7 @@ class Actions:
 @dataclass
 class CapturingActions:
     payload: Mapping[str, object] | None = None
+    operation: str | None = None
 
     async def execute_calendar_operation(
         self,
@@ -59,8 +59,9 @@ class CapturingActions:
         payload: Mapping[str, object],
         idempotency_key: str,
     ) -> ActionResultView:
-        del user_id, operation, idempotency_key
+        del user_id, idempotency_key
         self.payload = payload
+        self.operation = operation
         return ActionResultView(uuid4(), "CREATE_AGENDA", "SUCCEEDED", ENTRY_ID, 1, uuid4())
 
 
@@ -94,7 +95,7 @@ async def test_calendar_tool_requires_current_version_and_owner() -> None:
 
 
 @pytest.mark.asyncio
-async def test_owner_calendar_time_is_interpreted_in_beijing_even_with_wrong_model_offset() -> None:
+async def test_calendar_time_with_offset_keeps_its_absolute_instant() -> None:
     actions = CapturingActions()
     registry = CalendarToolRegistry(
         Agenda(_entry(), []), actions, OwnerCalendarAuthorization("owner"), "Asia/Shanghai"
@@ -111,4 +112,57 @@ async def test_owner_calendar_time_is_interpreted_in_beijing_even_with_wrong_mod
         },
     )
     assert actions.payload is not None
-    assert actions.payload["starts_at"] == "2026-08-27T09:00:00+08:00"
+    assert actions.payload["starts_at"] == "2026-08-27T17:00:00+08:00"
+
+
+@pytest.mark.asyncio
+async def test_calendar_time_without_offset_is_rejected() -> None:
+    actions = CapturingActions()
+    registry = CalendarToolRegistry(
+        Agenda(_entry(), []), actions, OwnerCalendarAuthorization("owner"), "Asia/Shanghai"
+    )
+    with pytest.raises(ValueError, match="timezone offset"):
+        await registry.call(
+            "owner",
+            "create_agenda",
+            {
+                "title": "北京时间会议",
+                "starts_at": "2026-08-27T09:00:00",
+                "ends_at": "2026-08-27T10:00:00",
+                "timezone": "Asia/Shanghai",
+                "kind": "EVENT",
+            },
+        )
+    assert actions.payload is None
+
+
+@pytest.mark.asyncio
+async def test_calendar_reads_are_displayed_in_owner_timezone() -> None:
+    registry = CalendarToolRegistry(
+        Agenda(_entry(), []), Actions(), OwnerCalendarAuthorization("owner"), "Asia/Shanghai"
+    )
+    value = await registry.call("owner", "get_agenda", {"agenda_entry_id": str(ENTRY_ID)})
+    assert isinstance(value, dict)
+    assert value["starts_at"] == "2026-08-26T17:00:00+08:00"
+    assert value["timezone"] == "Asia/Shanghai"
+    assert value["calendar_timezone"] == "UTC"
+
+
+@pytest.mark.asyncio
+async def test_reminder_update_uses_owner_timezone_normalization() -> None:
+    actions = CapturingActions()
+    registry = CalendarToolRegistry(
+        Agenda(_entry(), []), actions, OwnerCalendarAuthorization("owner"), "Asia/Shanghai"
+    )
+    await registry.call(
+        "owner",
+        "update_reminder",
+        {
+            "agenda_entry_id": str(ENTRY_ID),
+            "expected_version": 2,
+            "due_at": "2026-08-27T01:00:00Z",
+        },
+    )
+    assert actions.operation == "UPDATE_REMINDER"
+    assert actions.payload is not None
+    assert actions.payload["due_at"] == "2026-08-27T09:00:00+08:00"

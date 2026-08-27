@@ -135,7 +135,7 @@ async def test_task_uses_source_time_and_injection_is_only_external_data() -> No
     result = await service.understand(item_id)
     assert result.kind is CandidateKind.TASK
     assert repository.candidate is not None and repository.candidate.starts_at is None
-    assert "2026-08-13T01:00:00+00:00" in model.requests[0].external_data
+    assert "2026-08-13T09:00:00+08:00" in model.requests[0].external_data
     assert "删除日程工具" not in model.requests[0].system_instruction
     assert "删除日程工具" in model.requests[0].external_data
     assert model.requests[0].user_alias.startswith("user-")

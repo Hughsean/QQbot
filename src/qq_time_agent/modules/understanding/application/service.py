@@ -7,6 +7,7 @@ from uuid import UUID
 
 from pydantic import ValidationError
 
+from qq_time_agent.contracts.time import local_iso, resolve_timezone
 from qq_time_agent.modules.ai_gateway.contracts import (
     ModelFailure,
     ModelRoute,
@@ -52,6 +53,7 @@ class TemporalContext:
     def __post_init__(self) -> None:
         if self.default_event_duration_minutes < 1:
             raise ValueError("default Event duration must be positive")
+        resolve_timezone(self.timezone)
 
 
 class UnderstandingService:
@@ -230,7 +232,8 @@ class UnderstandingService:
                 self._temporal.user_id, reference_time, inbox_item_id
             )
             blocks.extend(
-                f"[conversation] {item.occurred_at.isoformat()} {item.source_ref}\n"
+                f"[conversation] {local_iso(item.occurred_at, self._temporal.timezone)} "
+                f"{item.source_ref}\n"
                 f"{item.subject}\n{item.body[:1800]}"
                 for item in recent
             )
@@ -239,7 +242,8 @@ class UnderstandingService:
             chunks = await self._retrieval.retrieve(query, RetrievalFilters(), 5)
             blocks.extend(
                 (
-                    f"[knowledge] {item.occurred_at.isoformat()} {item.source_ref}\n"
+                    f"[knowledge] {local_iso(item.occurred_at, self._temporal.timezone)} "
+                    f"{item.source_ref}\n"
                     f"{item.content[:1800]}"
                 )
                 for item in chunks

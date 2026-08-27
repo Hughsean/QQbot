@@ -21,9 +21,11 @@ class Clock:
 @dataclass
 class Sender:
     calls: int = 0
+    contents: list[str] = field(default_factory=list)
 
     async def send_active(self, content: str) -> str:
         self.calls += 1
+        self.contents.append(content)
         return "delivery-1"
 
 
@@ -63,6 +65,7 @@ async def test_confirmation_delivery_is_idempotent() -> None:
         "owner", proposal
     )
     assert sender.calls == 1
+    assert "2026-08-20T15:00+08:00" in sender.contents[0]
 
 
 @pytest.mark.asyncio
@@ -119,3 +122,4 @@ async def test_conflict_result_and_reminder_rendering_with_version_gate() -> Non
             entry,
         )
     assert sender.calls == 3
+    assert "2026-08-20T15:00+08:00" in sender.contents[2]

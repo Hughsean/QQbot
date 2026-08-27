@@ -83,6 +83,10 @@ def _instruction(request: AgentRequest) -> str:
         )
         + "\n可用工具:\n"
         + tools
+        + "\nExplain and compare times in the owner's local timezone. Do not present UTC or Z "
+        "timestamps as the user's schedule time unless explicitly requested. An ISO-8601 tool "
+        "argument that includes an offset is an absolute instant: never strip its offset and "
+        "reinterpret it in another timezone."
     )
 
 

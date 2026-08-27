@@ -32,11 +32,12 @@ def build_qq_notification_services(
     agenda_repository: AgendaRepository,
     gateway: OfficialQqGateway,
     clock: Clock,
+    owner_timezone: str = "Asia/Shanghai",
 ) -> tuple[NotificationService, NotificationIntentDeliveryService]:
     agenda = AgendaNotificationQueryService(agenda_repository)
     connections = ConnectionNotificationQueryService(SqlConnectionRepository(sessions))
     return (
-        NotificationService(gateway, SqlDeliveryRepository(sessions), clock),
+        NotificationService(gateway, SqlDeliveryRepository(sessions), clock, owner_timezone),
         NotificationIntentDeliveryService(
             SqlNotificationIntentRepository(sessions),
             NotificationSourceEligibilityService(preferences, agenda, connections),
