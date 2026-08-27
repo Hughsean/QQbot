@@ -47,6 +47,11 @@ the tool name and JSON arguments, executes the tool, appends a bounded tool obse
 continues until a final response or a safety limit is reached. Tool errors are observations,
 not permission to bypass the tool boundary.
 
+The allow-list also includes a narrowly scoped Identity tool for registering an owner group-chat
+display alias. The tool is callable only by the authenticated owner AgentRun and writes only
+Identity-owned alias state. Context assembly reads those aliases as trusted attribution rules for
+forwarded transcript speaker labels; it does not make the transcript itself trusted or actionable.
+
 Each final result also carries a persisted delivery decision. A direct QQ result is returned only
 to the current conversation. A mail result creates an active QQ notification only when the Agent
 returns `NOTIFY` for a material, actionable result; uncertainty and requests for more information

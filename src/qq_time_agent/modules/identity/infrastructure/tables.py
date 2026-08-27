@@ -1,8 +1,8 @@
 """SQLAlchemy table exclusively owned by Identity."""
 
-from datetime import time
+from datetime import datetime, time
 
-from sqlalchemy import Boolean, Integer, String, Time
+from sqlalchemy import Boolean, DateTime, Integer, String, Time
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -30,3 +30,12 @@ class UserPreferencesRow(IdentityBase):
     quiet_hours_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False)
     quiet_start: Mapped[time] = mapped_column(Time(), nullable=False)
     quiet_end: Mapped[time] = mapped_column(Time(), nullable=False)
+
+
+class OwnerGroupAliasRow(IdentityBase):
+    __tablename__ = "identity_owner_group_aliases"
+
+    user_id: Mapped[str] = mapped_column(String(120), primary_key=True)
+    normalized_alias: Mapped[str] = mapped_column(String(128), primary_key=True)
+    alias: Mapped[str] = mapped_column(String(128), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

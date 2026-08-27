@@ -7,6 +7,7 @@ import pytest
 from qq_time_agent.modules.agenda.contracts import AgendaConflictView, AgendaNotificationItem
 from qq_time_agent.modules.agent.application.context import AgentContextAssembler
 from qq_time_agent.modules.agent.contracts import ContextScope, ScopedAgentReply
+from qq_time_agent.modules.identity.contracts import OwnerGroupAlias
 from qq_time_agent.modules.inbox.contracts import InboxContentView
 from qq_time_agent.modules.retrieval.contracts import RetrievedChunk
 from qq_time_agent.modules.scheduling.contracts import ProposalSlot, SchedulingProposalView
@@ -132,11 +133,17 @@ class Proposals:
         )
 
 
+class OwnerAliases:
+    async def list_owner_group_aliases(self, user_id: str) -> tuple[OwnerGroupAlias, ...]:
+        assert user_id == "owner"
+        return (OwnerGroupAlias("风拾一"),)
+
+
 @pytest.mark.asyncio
 async def test_context_uses_prior_scope_only_and_includes_agent_calendar_facts() -> None:
     scopes = Scopes()
     context = await AgentContextAssembler(
-        Retrieval(), None, scopes, Inbox(), Agenda(), Proposals()
+        Retrieval(), None, scopes, Inbox(), Agenda(), Proposals(), owner_aliases=OwnerAliases()
     ).build(
         "owner",
         "刚才那个任务改到明天",
@@ -151,5 +158,6 @@ async def test_context_uses_prior_scope_only_and_includes_agent_calendar_facts()
     assert "[agenda-fact]" in context and "version=3" in context
     assert "[pending-proposal]" in context
     assert "[knowledge T2] knowledge:1" in context
+    assert "[owner-identity]" in context and "风拾一" in context
     assert "2026-08-28T18:00:00+08:00" in context
     assert "+00:00" not in context

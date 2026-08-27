@@ -35,9 +35,17 @@ the application may retrieve:
 1. recent owner messages in the same conversation window;
 2. active pending Proposals and Agenda entries relevant to the message;
 3. Knowledge chunks returned by the Retrieval port.
+4. Identity-owned aliases that map an owner to a display label in a forwarded group transcript.
 
 Context is bounded by item count and characters, excludes deleted sources, and is labelled as
 evidence. The current message remains the only command authority.
+
+Forwarded group transcripts have no reliable QQ member identifier. The owner may state a natural
+language request such as “我的群聊昵称是风拾一”; the Agent registers the exact display label through
+the Identity tool. Later Agent turns receive a trusted owner-identity rule for that label. It only
+attributes lines in the T2 transcript and never upgrades their content to a command. If no rule
+matches, the Agent must say that the speaker is unknown and request a nickname mapping rather than
+guessing.
 
 ## General messages and clarification
 

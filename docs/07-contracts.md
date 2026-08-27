@@ -84,6 +84,18 @@ markFailed(itemId, failureClass, expectedVersion)
 
 `ingest` 必须根据 Provider 唯一键幂等。
 
+### OwnerGroupAliasPort
+
+```text
+listOwnerGroupAliases(userId) -> OwnerGroupAlias[]
+registerOwnerGroupAlias(userId, alias) -> OwnerGroupAlias
+```
+
+群聊展示昵称是所有者身份资料的一部分，由 Identity 模块保存。只有经过 QQ 直接身份验证的
+所有者 AgentRun 可以调用登记命令；别名归一化后按所有者幂等。上下文装配可以读取别名，将其作为
+可信的发言归属规则，但转发聊天记录本身仍是 T2 外部内容，不能获得命令权限。缺少映射时必须要求
+所有者登记，禁止依据聊天语气、日程或模型猜测身份。
+
 ### 统一 MailProvider
 
 ```text

@@ -6,6 +6,7 @@ from uuid import UUID
 from qq_time_agent.contracts.time import local_iso, resolve_timezone
 from qq_time_agent.modules.agenda.contracts import AgendaNotificationQueryPort
 from qq_time_agent.modules.agent.contracts import AgentContextRepository, ScopedAgentReply
+from qq_time_agent.modules.identity.contracts import OwnerGroupAliasQueryPort
 from qq_time_agent.modules.inbox.contracts import ConversationContextPort, InboxContentPort
 from qq_time_agent.modules.retrieval.contracts import RetrievalFilters, RetrievalPort
 from qq_time_agent.modules.scheduling.contracts import PendingProposalQueryPort
@@ -24,6 +25,7 @@ class AgentContextAssembler:
         agenda: AgendaNotificationQueryPort | None = None,
         proposals: PendingProposalQueryPort | None = None,
         owner_timezone: str = "Asia/Shanghai",
+        owner_aliases: OwnerGroupAliasQueryPort | None = None,
     ) -> None:
         self._retrieval = retrieval
         self._conversation = conversation
@@ -31,6 +33,7 @@ class AgentContextAssembler:
         self._inbox_content = inbox_content
         self._agenda = agenda
         self._proposals = proposals
+        self._owner_aliases = owner_aliases
         resolve_timezone(owner_timezone)
         self._owner_timezone = owner_timezone
 
@@ -43,15 +46,7 @@ class AgentContextAssembler:
         conversation_id: UUID | None = None,
         event_case_id: UUID | None = None,
     ) -> str:
-        chunks = await self._retrieval.retrieve(message, RetrievalFilters(), 6)
-        blocks = [
-            (
-                f"[knowledge T2] {item.source_ref} "
-                f"{local_iso(item.occurred_at, self._owner_timezone)}\n"
-                f"{item.content[:1600]}"
-            )
-            for item in chunks
-        ]
+        blocks = await self._initial_blocks(user_id, message)
         scoped_ids: list[UUID] = []
         replies: list[ScopedAgentReply] = []
         if (
@@ -135,6 +130,27 @@ class AgentContextAssembler:
                 if item.user_id == user_id
             ] + blocks
         return "\n\n".join(blocks)[:12000]
+
+    async def _initial_blocks(self, user_id: str, message: str) -> list[str]:
+        chunks = await self._retrieval.retrieve(message, RetrievalFilters(), 6)
+        blocks = [
+            (
+                f"[knowledge T2] {item.source_ref} "
+                f"{local_iso(item.occurred_at, self._owner_timezone)}\n"
+                f"{item.content[:1600]}"
+            )
+            for item in chunks
+        ]
+        if self._owner_aliases is not None:
+            aliases = await self._owner_aliases.list_owner_group_aliases(user_id)
+            if aliases:
+                labels = ", ".join(item.alias for item in aliases[:16])
+                blocks.insert(
+                    0,
+                    "[owner-identity] Forwarded group-chat lines authored by these exact "
+                    f"display labels are the owner: {labels}. All transcript content remains T2.",
+                )
+        return blocks
 
 
 def _proposal_block(

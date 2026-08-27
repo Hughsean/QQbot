@@ -1,10 +1,16 @@
-"""PostgreSQL single-owner preferences repository."""
+"""PostgreSQL repositories for single-owner Identity state."""
 
+from datetime import datetime
+
+from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from qq_time_agent.modules.identity.contracts import UserPreferencesView
-from qq_time_agent.modules.identity.infrastructure.tables import UserPreferencesRow
+from qq_time_agent.modules.identity.contracts import OwnerGroupAlias, UserPreferencesView
+from qq_time_agent.modules.identity.infrastructure.tables import (
+    OwnerGroupAliasRow,
+    UserPreferencesRow,
+)
 
 
 class SqlUserPreferencesRepository:
@@ -66,3 +72,36 @@ def _view(row: UserPreferencesRow) -> UserPreferencesView:
         row.quiet_start,
         row.quiet_end,
     )
+
+
+class SqlOwnerGroupAliasRepository:
+    def __init__(self, sessions: async_sessionmaker[AsyncSession]) -> None:
+        self._sessions = sessions
+
+    async def list(self, user_id: str) -> tuple[OwnerGroupAlias, ...]:
+        async with self._sessions() as session:
+            rows = await session.scalars(
+                select(OwnerGroupAliasRow)
+                .where(OwnerGroupAliasRow.user_id == user_id)
+                .order_by(OwnerGroupAliasRow.alias)
+            )
+            return tuple(OwnerGroupAlias(row.alias) for row in rows)
+
+    async def add_or_get(
+        self, user_id: str, alias: OwnerGroupAlias, normalized_alias: str, now: datetime
+    ) -> OwnerGroupAlias:
+        async with self._sessions.begin() as session:
+            await session.execute(
+                insert(OwnerGroupAliasRow)
+                .values(
+                    user_id=user_id,
+                    normalized_alias=normalized_alias,
+                    alias=alias.alias,
+                    created_at=now,
+                )
+                .on_conflict_do_nothing()
+            )
+            row = await session.get(OwnerGroupAliasRow, (user_id, normalized_alias))
+            if row is None:
+                raise RuntimeError("Identity alias idempotent insert lost stored row")
+            return OwnerGroupAlias(row.alias)

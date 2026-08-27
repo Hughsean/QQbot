@@ -67,9 +67,11 @@ from qq_time_agent.modules.data_lifecycle.application.coordinator import (
     RetentionCoordinator,
 )
 from qq_time_agent.modules.data_lifecycle.infrastructure.repository import SqlTombstoneRepository
+from qq_time_agent.modules.identity.application.aliases import OwnerGroupAliasService
 from qq_time_agent.modules.identity.application.service import UserPreferencesService
 from qq_time_agent.modules.identity.contracts import UserPreferencesView
 from qq_time_agent.modules.identity.infrastructure.repository import (
+    SqlOwnerGroupAliasRepository,
     SqlUserPreferencesRepository,
 )
 from qq_time_agent.modules.inbox.application.connection_deletion import (
@@ -235,6 +237,7 @@ def build_worker() -> tuple[JobRunner, AsyncEngine, tuple[AsyncClosable, ...]]:
             config.schedule.default_item_minutes,
         ),
     )
+    owner_aliases = OwnerGroupAliasService(SqlOwnerGroupAliasRepository(sessions), clock)
     agenda_repository = SqlAgendaRepository(sessions)
     agenda = AgendaService(agenda_repository)
     reminders = ReminderService(SqlReminderRepository(sessions))
@@ -262,6 +265,7 @@ def build_worker() -> tuple[JobRunner, AsyncEngine, tuple[AsyncClosable, ...]]:
         AgendaNotificationQueryService(agenda_repository),
         PendingProposalQueryService(SqlProposalRepository(sessions), clock),
         str(config.schedule.timezone),
+        owner_aliases,
     )
     agent_runs = AgentRunService(SqlAgentRunRepository(sessions), agent, clock)
     agent_scheduler = MailAgentRunScheduler(

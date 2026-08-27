@@ -17,7 +17,7 @@ api           对外控制器和 DTO 映射
 
 | 模块 | 唯一职责 | 拥有的数据 | 不负责 |
 |---|---|---|---|
-| Identity | 唯一所有者身份、QQ 白名单、偏好 | 单用户、身份映射、偏好 | OAuth token、邮件、排程 |
+| Identity | 唯一所有者身份、QQ 白名单、群聊展示昵称映射和偏好 | 单用户、身份映射、偏好 | OAuth token、邮件、排程 |
 | Connections | 外部连接生命周期和能力 | 多连接元数据、账号 fingerprint、授权状态 | 保存明文凭据、同步邮件 |
 | Credential Vault | 加密保存和读取凭据 | 密文、密钥版本、凭据引用 | 业务状态、OAuth 页面 |
 | Inbox | 原始信息信封、资产、去重、处理状态 | InboxItem、原始内容引用、SourceAsset 元数据 | AI 理解、执行操作、解析文件 |
@@ -45,7 +45,7 @@ api           对外控制器和 DTO 映射
 
 | 数据 | 所有者 | 其他模块访问方式 |
 |---|---|---|
-| 用户偏好 | Identity | `UserPreferencesPort` |
+| 用户偏好、所有者群聊别名 | Identity | `UserPreferencesPort`、`OwnerGroupAliasPort` |
 | 连接状态 | Connections | `ConnectionQueryPort` |
 | token/授权码 | Credential Vault | 短生命周期 `CredentialHandle` |
 | 原始邮件/消息 | Inbox | `InboxContentPort`，按授权读取 |
@@ -130,6 +130,8 @@ Audit ◄── 接收所有关键领域事件
 - RAG/Retrieval 不得充当 Agenda、Task、Proposal、Confirmation 或 Reminder 的事实源。
 - Knowledge 不得直接调用 DeepSeek；Embeddings 不得把 Ollama DTO 传给 Knowledge。
 - 检索结果只能作为带来源的 T2 上下文，不能提升为命令或绕过确认。
+- 只有 Identity 已登记的所有者群聊展示昵称可以用于标注转发聊天记录中的发言归属；该标注不改变
+  聊天记录正文的 T2 信任级别。未知展示昵称不得由模型猜测为所有者。
 - Data Lifecycle 不得直接执行跨模块 SQL 删除；任何备份恢复都必须在 Retrieval 启用前重放 Tombstone。
 - Notifications 不得根据用户文本自行改变业务状态。
 - Actions 和 Calendar System 不得在没有有效所有者授权、当前版本和明确自动化规则时执行。

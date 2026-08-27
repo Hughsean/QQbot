@@ -16,6 +16,7 @@ from qq_time_agent.bootstrap.qq_notifications import build_qq_notification_servi
 from qq_time_agent.bootstrap.runtime import configure_event_loop_policy
 from qq_time_agent.bootstrap.settings import load_runtime_config
 from qq_time_agent.contracts.clock import SystemClock
+from qq_time_agent.contracts.tools import ToolDispatcher
 from qq_time_agent.modules.actions.application.service import ActionService
 from qq_time_agent.modules.actions.infrastructure.repository import SqlActionRepository
 from qq_time_agent.modules.agenda.application.notification_query import (
@@ -36,9 +37,12 @@ from qq_time_agent.modules.calendar_system.application.authorization import (
     OwnerCalendarAuthorization,
 )
 from qq_time_agent.modules.calendar_system.application.tools import CalendarToolRegistry
+from qq_time_agent.modules.identity.application.aliases import OwnerGroupAliasService
 from qq_time_agent.modules.identity.application.service import UserPreferencesService
+from qq_time_agent.modules.identity.application.tools import OwnerGroupAliasToolRegistry
 from qq_time_agent.modules.identity.contracts import UserPreferencesView
 from qq_time_agent.modules.identity.infrastructure.repository import (
+    SqlOwnerGroupAliasRepository,
     SqlUserPreferencesRepository,
 )
 from qq_time_agent.modules.inbox.application.asset_discovery import MailAssetDiscoveryService
@@ -92,6 +96,7 @@ async def run_qq() -> None:
             config.schedule.default_item_minutes,
         ),
     )
+    owner_aliases = OwnerGroupAliasService(SqlOwnerGroupAliasRepository(sessions), clock)
     retrieval = HybridRetrievalService(
         knowledge_repository,
         ollama,
@@ -109,12 +114,15 @@ async def run_qq() -> None:
         config.deepseek.max_concurrency,
     )
     retrieval.configure_query_model(model)
-    calendar_tools = CalendarToolRegistry(
-        agenda, actions, OwnerCalendarAuthorization("owner"), str(config.schedule.timezone)
+    tools = ToolDispatcher(
+        CalendarToolRegistry(
+            agenda, actions, OwnerCalendarAuthorization("owner"), str(config.schedule.timezone)
+        ),
+        OwnerGroupAliasToolRegistry(owner_aliases),
     )
     agent = AgentLoop(
         JsonAgentModel(model),
-        calendar_tools,
+        tools,
         owner_timezone=str(config.schedule.timezone),
         clock=clock,
     )
@@ -126,6 +134,7 @@ async def run_qq() -> None:
         AgendaNotificationQueryService(agenda_repository),
         PendingProposalQueryService(SqlProposalRepository(sessions), clock),
         str(config.schedule.timezone),
+        owner_aliases,
     )
     agent_runs = AgentRunService(SqlAgentRunRepository(sessions), agent, clock)
     router = QqCommandRouter(
