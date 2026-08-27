@@ -3,6 +3,7 @@
 from collections.abc import Mapping
 from datetime import datetime
 from uuid import UUID
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from qq_time_agent.contracts.tools import ToolDefinition
 from qq_time_agent.modules.actions.contracts import CalendarActionPort
@@ -19,10 +20,16 @@ class CalendarToolRegistry:
         agenda_query: AgendaQueryPort,
         actions: CalendarActionPort,
         authorization: CalendarAuthorizationPort,
+        owner_timezone: str = "Asia/Shanghai",
     ) -> None:
+        try:
+            ZoneInfo(owner_timezone)
+        except ZoneInfoNotFoundError as exc:
+            raise ValueError("calendar owner timezone is invalid") from exc
         self._agenda_query = agenda_query
         self._actions = actions
         self._authorization = authorization
+        self._owner_timezone = owner_timezone
         self._definitions = (
             ToolDefinition(
                 "find_agenda_candidates",
@@ -152,14 +159,20 @@ class CalendarToolRegistry:
     async def _create_agenda(self, owner_id: str, arguments: Mapping[str, object]) -> object:
         title = _text(arguments, "title")
         kind = _text(arguments, "kind")
-        _text(arguments, "timezone")
-        starts = _moment(arguments.get("starts_at"), None)
-        ends = _moment(arguments.get("ends_at"), None)
+        timezone = _text(arguments, "timezone")
+        starts = _owner_moment(arguments.get("starts_at"), timezone, self._owner_timezone)
+        ends = _owner_moment(arguments.get("ends_at"), timezone, self._owner_timezone)
         if kind not in {"EVENT", "TASK_BLOCK"} or ends <= starts:
             raise ValueError("agenda creation is invalid")
         payload = dict(arguments)
-        payload["source_refs"] = ["agent:" + owner_id]
-        payload["reminder_lead_minutes"] = 30
+        payload.update(
+            {
+                "starts_at": starts.isoformat(),
+                "ends_at": ends.isoformat(),
+                "source_refs": ["agent:" + owner_id],
+                "reminder_lead_minutes": 30,
+            }
+        )
         return _render_result(
             await self._actions.execute_calendar_operation(
                 owner_id,
@@ -178,8 +191,12 @@ class CalendarToolRegistry:
         if entry.version != expected:
             raise ValueError("agenda entry version is stale")
         title = arguments.get("title", entry.title)
-        starts = _moment(arguments.get("starts_at"), entry.starts_at)
-        ends = _moment(arguments.get("ends_at"), entry.ends_at)
+        starts = _owner_moment(
+            arguments.get("starts_at"), entry.timezone, self._owner_timezone, entry.starts_at
+        )
+        ends = _owner_moment(
+            arguments.get("ends_at"), entry.timezone, self._owner_timezone, entry.ends_at
+        )
         if not isinstance(title, str) or not title.strip() or ends <= starts:
             raise ValueError("agenda update is invalid")
         payload = dict(arguments)
@@ -200,7 +217,9 @@ class CalendarToolRegistry:
         if entry.version != expected:
             raise ValueError("agenda entry version is stale")
         payload = dict(arguments)
-        payload["due_at"] = _moment(arguments.get("due_at"), None).isoformat()
+        payload["due_at"] = _owner_moment(
+            arguments.get("due_at"), self._owner_timezone, self._owner_timezone
+        ).isoformat()
         return _render_result(
             await self._actions.execute_calendar_operation(
                 owner_id,
@@ -278,7 +297,12 @@ def _positive_int(arguments: Mapping[str, object], key: str) -> int:
     return value
 
 
-def _moment(value: object, fallback: datetime | None) -> datetime:
+def _owner_moment(
+    value: object,
+    timezone: str,
+    owner_timezone: str,
+    fallback: datetime | None = None,
+) -> datetime:
     if value is None and fallback is not None:
         return fallback
     if not isinstance(value, str):
@@ -287,6 +311,10 @@ def _moment(value: object, fallback: datetime | None) -> datetime:
         parsed = datetime.fromisoformat(value)
     except ValueError as exc:
         raise ValueError("calendar time must be ISO-8601") from exc
+    if timezone == owner_timezone:
+        # Treat model-produced wall-clock values as owner local time, even if it
+        # incorrectly attached Z. This prevents an accidental eight-hour shift.
+        return parsed.replace(tzinfo=None).replace(tzinfo=ZoneInfo(owner_timezone))
     if parsed.tzinfo is None or parsed.utcoffset() is None:
         raise ValueError("calendar time must include timezone")
     return parsed

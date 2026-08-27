@@ -8,7 +8,9 @@ from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from time import perf_counter
 from uuid import uuid4
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from qq_time_agent.contracts.clock import Clock, SystemClock
 from qq_time_agent.modules.agent.contracts import (
     AgentFinal,
     AgentModelPort,
@@ -40,10 +42,18 @@ class AgentLoop:
         model: AgentModelPort,
         tools: AgentToolPort,
         config: AgentLoopConfig | None = None,
+        owner_timezone: str = "Asia/Shanghai",
+        clock: Clock | None = None,
     ) -> None:
+        try:
+            self._owner_zone = ZoneInfo(owner_timezone)
+        except ZoneInfoNotFoundError as exc:
+            raise ValueError("Agent owner timezone is invalid") from exc
         self._model = model
         self._tools = tools
         self._config = config or AgentLoopConfig()
+        self._owner_timezone = owner_timezone
+        self._clock = clock or SystemClock()
 
     async def run(
         self,
@@ -56,6 +66,10 @@ class AgentLoop:
         if not owner_id.strip() or not message.strip():
             raise ValueError("Agent owner and message are required")
         run_id = uuid4().hex[:16]
+        reference_time = self._clock.now()
+        if reference_time.tzinfo is None or reference_time.utcoffset() is None:
+            raise ValueError("Agent reference time must be timezone-aware")
+        owner_time = reference_time.astimezone(self._owner_zone)
         observations = list(prior_observations)
         calls = {item.call_id: item.arguments_hash for item in observations if item.arguments_hash}
         LOGGER.info(
@@ -78,6 +92,8 @@ class AgentLoop:
                         self._tools.definitions(),
                         tuple(observations),
                         step,
+                        self._owner_timezone,
+                        owner_time,
                     )
                 )
             except Exception as exc:

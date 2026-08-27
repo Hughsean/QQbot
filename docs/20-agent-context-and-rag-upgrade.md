@@ -68,3 +68,7 @@ asks the Calendar System to create a version-checked reminder update action. It 
 Agenda entry.
 Relative durations use the owner timezone and all resulting times are timezone-aware. Existing
 reminder occurrences are cancelled/replaced idempotently; sent reminders are not rewritten.
+
+The runtime clock is canonical UTC; container or host local timezone settings cannot change the
+meaning of persisted instants. The owner timezone is injected into each Agent turn so “明天 9 点”
+is resolved as 09:00 in `Asia/Shanghai` unless the user explicitly names another timezone.

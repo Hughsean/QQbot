@@ -43,6 +43,8 @@ class AgentRequest:
     tools: tuple[AgentToolDefinition, ...]
     observations: tuple[ToolObservation, ...]
     step: int
+    owner_timezone: str = "Asia/Shanghai"
+    reference_time: datetime | None = None
 
 
 class AgentDelivery(StrEnum):

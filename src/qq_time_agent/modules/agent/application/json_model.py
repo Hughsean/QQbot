@@ -67,6 +67,20 @@ def _instruction(request: AgentRequest) -> str:
         "与该邮件相关的结果时才用 NOTIFY; 需要更多信息、内容不完整、仅供记录或不确定时"
         "必须用 HOLD, 绝不能主动发送泛化追问.\n"
         + request.system_instruction
+        + "\n时间规则: 所有者时区为 "
+        + request.owner_timezone
+        + "。"
+        + (
+            "本回合参考时间为 "
+            + request.reference_time.isoformat()
+            + "。用户未明确指定其他时区时, 所有今天/明天/后天、上午/下午和提醒时间"
+            "都必须按该时区解释; 传给日程工具的时间必须携带正确的 UTC 偏移。"
+            if request.reference_time is not None
+            else (
+                "相对日期和时间必须按该时区解释, 并在调用日程工具时"
+                "转换为带正确偏移的 ISO-8601 时间。"
+            )
+        )
         + "\n可用工具:\n"
         + tools
     )
@@ -86,6 +100,10 @@ def _external_data(request: AgentRequest) -> str:
             for item in request.observations
         ],
         "step": request.step,
+        "owner_timezone": request.owner_timezone,
+        "reference_time": (
+            request.reference_time.isoformat() if request.reference_time is not None else None
+        ),
     }
     return json.dumps(value, ensure_ascii=False)
 

@@ -1,5 +1,7 @@
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import UTC, datetime
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -23,6 +25,23 @@ class Model:
     async def respond(self, request: object) -> AgentResponse:
         del request
         return self.responses.pop(0)
+
+
+@dataclass
+class CapturingModel:
+    request: AgentRequest | None = None
+
+    async def respond(self, request: AgentRequest) -> AgentResponse:
+        self.request = request
+        return AgentResponse(final=AgentFinal("完成"))
+
+
+@dataclass
+class FixedClock:
+    value: datetime
+
+    def now(self) -> datetime:
+        return self.value
 
 
 class Tools:
@@ -56,6 +75,23 @@ async def test_agent_loop_rejects_non_owner_and_step_limit() -> None:
         AgentLoop(Model([]), Tools(), config=AgentLoopConfig(max_steps=0))
 
 
+@pytest.mark.asyncio
+async def test_agent_loop_passes_owner_local_reference_time_to_model() -> None:
+    model = CapturingModel()
+    loop = AgentLoop(
+        model,
+        Tools(),
+        owner_timezone="Asia/Shanghai",
+        clock=FixedClock(datetime(2026, 8, 27, 1, tzinfo=UTC)),
+    )
+    await loop.run("owner", "明天上午九点")
+    assert model.request is not None
+    assert model.request.owner_timezone == "Asia/Shanghai"
+    assert model.request.reference_time == datetime(2026, 8, 27, 1, tzinfo=UTC).astimezone(
+        ZoneInfo("Asia/Shanghai")
+    )
+
+
 def test_agent_final_uses_safe_hold_default_for_missing_delivery_decision() -> None:
     response = _parse({"type": "final", "content": "发现明确的时间变更", "delivery": "NOTIFY"})
     assert response.final is not None and response.final.delivery is AgentDelivery.NOTIFY
@@ -81,3 +117,20 @@ def test_agent_instruction_contains_the_exact_response_shapes() -> None:
     instruction = _instruction(request)
     assert '"type":"final"' in instruction
     assert '"type":"tool_call"' in instruction
+
+
+def test_agent_instruction_declares_owner_timezone_and_reference_time() -> None:
+    request = AgentRequest(
+        "系统规则",
+        "明天上午九点",
+        "",
+        (),
+        (),
+        0,
+        "Asia/Shanghai",
+        datetime(2026, 8, 27, 9, tzinfo=UTC),
+    )
+    instruction = _instruction(request)
+    assert "所有者时区为 Asia/Shanghai" in instruction
+    assert "2026-08-27T09:00:00+00:00" in instruction
+    assert "正确的 UTC 偏移" in instruction

@@ -244,7 +244,12 @@ def build_worker() -> tuple[JobRunner, AsyncEngine, tuple[AsyncClosable, ...]]:
         agenda,
     )
     agent = AgentLoop(
-        agent_model, CalendarToolRegistry(agenda, actions, OwnerCalendarAuthorization("owner"))
+        agent_model,
+        CalendarToolRegistry(
+            agenda, actions, OwnerCalendarAuthorization("owner"), str(config.schedule.timezone)
+        ),
+        owner_timezone=str(config.schedule.timezone),
+        clock=clock,
     )
     agent_context = AgentContextAssembler(
         retrieval,

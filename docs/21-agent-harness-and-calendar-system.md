@@ -14,6 +14,13 @@ It may only call allow-listed tool contracts. It cannot access ORM entities, rep
 credentials, provider SDKs or database sessions. Every turn has a maximum step count, model
 budget, tool timeout and bounded observation size.
 
+All internal clocks use UTC instants and do not depend on the host timezone. The Agent receives the
+owner timezone and a current reference time on every turn; when no other timezone is explicitly
+stated, relative dates and clock times are interpreted in the configured owner timezone (by
+default `Asia/Shanghai`) and converted to ISO-8601 values with the correct offset before Calendar
+System execution. Calendar records keep the UTC instant plus their original IANA timezone for
+display.
+
 Every QQ direct message and eligible mail Inbox item creates exactly one persistent `AgentRun`
 identified by its Inbox item. A run stores control state, tool-call identifiers, argument hashes
 and bounded observations, but refers to Inbox for source content. Each completed tool call is

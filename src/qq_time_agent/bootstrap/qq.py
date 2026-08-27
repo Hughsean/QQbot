@@ -109,8 +109,15 @@ async def run_qq() -> None:
         config.deepseek.max_concurrency,
     )
     retrieval.configure_query_model(model)
-    calendar_tools = CalendarToolRegistry(agenda, actions, OwnerCalendarAuthorization("owner"))
-    agent = AgentLoop(JsonAgentModel(model), calendar_tools)
+    calendar_tools = CalendarToolRegistry(
+        agenda, actions, OwnerCalendarAuthorization("owner"), str(config.schedule.timezone)
+    )
+    agent = AgentLoop(
+        JsonAgentModel(model),
+        calendar_tools,
+        owner_timezone=str(config.schedule.timezone),
+        clock=clock,
+    )
     agent_context = AgentContextAssembler(
         retrieval,
         inbox,

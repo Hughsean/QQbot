@@ -24,4 +24,5 @@ def create_database_engine(config: DatabaseConfig) -> AsyncEngine:
         pool_size=5,
         max_overflow=5,
         hide_parameters=True,
+        connect_args={"options": "-c timezone=UTC"},
     )

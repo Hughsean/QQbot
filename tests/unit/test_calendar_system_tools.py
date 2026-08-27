@@ -48,6 +48,22 @@ class Actions:
         raise AssertionError("stale version must be rejected before Actions")
 
 
+@dataclass
+class CapturingActions:
+    payload: Mapping[str, object] | None = None
+
+    async def execute_calendar_operation(
+        self,
+        user_id: str,
+        operation: str,
+        payload: Mapping[str, object],
+        idempotency_key: str,
+    ) -> ActionResultView:
+        del user_id, operation, idempotency_key
+        self.payload = payload
+        return ActionResultView(uuid4(), "CREATE_AGENDA", "SUCCEEDED", ENTRY_ID, 1, uuid4())
+
+
 def _entry(version: int = 2) -> AgendaEntryView:
     return AgendaEntryView(
         ENTRY_ID,
@@ -75,3 +91,24 @@ async def test_calendar_tool_requires_current_version_and_owner() -> None:
             "update_agenda",
             {"agenda_entry_id": str(ENTRY_ID), "expected_version": 1},
         )
+
+
+@pytest.mark.asyncio
+async def test_owner_calendar_time_is_interpreted_in_beijing_even_with_wrong_model_offset() -> None:
+    actions = CapturingActions()
+    registry = CalendarToolRegistry(
+        Agenda(_entry(), []), actions, OwnerCalendarAuthorization("owner"), "Asia/Shanghai"
+    )
+    await registry.call(
+        "owner",
+        "create_agenda",
+        {
+            "title": "北京时间会议",
+            "starts_at": "2026-08-27T09:00:00Z",
+            "ends_at": "2026-08-27T10:00:00Z",
+            "timezone": "Asia/Shanghai",
+            "kind": "EVENT",
+        },
+    )
+    assert actions.payload is not None
+    assert actions.payload["starts_at"] == "2026-08-27T09:00:00+08:00"
