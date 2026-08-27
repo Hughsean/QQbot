@@ -8,7 +8,9 @@ ENV UV_COMPILE_BYTECODE=1 \
 COPY pyproject.toml uv.lock .python-version ./
 COPY src/ ./src/
 COPY docs/README.md ./docs/README.md
-RUN uv sync --frozen --no-dev --no-editable
+# The application version is intentionally stable between source-only fixes. Do not reuse a
+# cached wheel for this local package, otherwise Docker may ship an older source tree.
+RUN uv sync --frozen --no-dev --no-editable --no-cache
 
 FROM ghcr.io/astral-sh/uv@sha256:e5b65587bce7de595f299855d7385fe7fca39b8a74baa261ba1b7147afa78e58 AS runtime
 ENV PYTHONUNBUFFERED=1 \
