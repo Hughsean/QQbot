@@ -6,8 +6,9 @@ import logging
 import re
 import secrets
 from collections.abc import Awaitable, Callable, Mapping
+from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
 
 import botpy  # type: ignore[import-untyped]
 from botpy import Intents
@@ -36,6 +37,7 @@ _DIAGNOSTIC_MAX_ENTRIES = 120
 _SAFE_FIELD_NAME = re.compile(r"^[A-Za-z0-9_]{1,64}$")
 _SAFE_MIME_TYPE = re.compile(r"^[a-z0-9!#$&^_.+-]+/[a-z0-9!#$&^_.+-]+$")
 _SAFE_ATTACHMENT_NUMBERS = frozenset({"size", "width", "height"})
+_PROBE_BUTTON_IDS = frozenset({"qq-time-probe-a", "qq-time-probe-b"})
 
 
 def _summarize_raw_event(payload: object) -> dict[str, object]:  # noqa: C901
@@ -102,6 +104,13 @@ def _log_raw_event_diagnostic(payload: object) -> None:
         )
 
 
+@dataclass(frozen=True, slots=True)
+class InteractionProbeResult:
+    interaction_id: str
+    button_id: str
+    acknowledged: bool
+
+
 class GatewayClient(Protocol):
     async def start(self, app_id: str, secret: str) -> None: ...
 
@@ -125,7 +134,12 @@ class OfficialQqGateway:
         self._qq = qq
         self._processor = QqMessageProcessor(owner, ingress, clock, qq.display_name)
         self._client_factory = client_factory or (
-            lambda processor: _BotpyClient(processor, qq.sandbox, qq.diagnostic_raw_event_once)
+            lambda processor: _BotpyClient(
+                processor,
+                qq.sandbox,
+                qq.diagnostic_raw_event_once,
+                qq.interaction_probe_enabled,
+            )
         )
         self._sleep = sleep
         self._client: GatewayClient | None = None
@@ -154,6 +168,18 @@ class OfficialQqGateway:
         return await self._client.send_active(
             self._processor.owner_openid.get_secret_value(), content
         )
+
+    async def probe_interaction(self, timeout_seconds: float = 60.0) -> InteractionProbeResult:
+        if not self._qq.sandbox or not self._qq.interaction_probe_enabled:
+            raise RuntimeError("QQ interaction probe is disabled")
+        if self._client is None:
+            raise NotificationPreSendTransientError("QQ gateway is not connected")
+        probe = getattr(self._client, "probe_interaction", None)
+        if not callable(probe):
+            raise RuntimeError("QQ interaction probe is unavailable")
+        return await cast(
+            Callable[[str, float], Awaitable[InteractionProbeResult]], probe
+        )(self._processor.owner_openid.get_secret_value(), timeout_seconds)
 
     async def wait_ready(self, timeout_seconds: float = 30.0) -> None:
         deadline = asyncio.get_running_loop().time() + timeout_seconds
@@ -234,9 +260,13 @@ class _BotpyClient(botpy.Client):  # type: ignore[misc]
         processor: QqMessageProcessor,
         sandbox: bool,
         diagnostic_raw_event_once: bool = False,
+        interaction_probe_enabled: bool = False,
     ) -> None:
         super().__init__(
-            intents=Intents(public_messages=True),
+            intents=Intents(
+                public_messages=True,
+                interaction=interaction_probe_enabled,
+            ),
             timeout=10,
             is_sandbox=sandbox,
             bot_log=False,
@@ -244,6 +274,9 @@ class _BotpyClient(botpy.Client):  # type: ignore[misc]
         self._processor = processor
         self._ready = asyncio.Event()
         self._diagnostic_raw_event_once = diagnostic_raw_event_once
+        self._interaction_probe_enabled = interaction_probe_enabled
+        self._interaction_probe_future: asyncio.Future[InteractionProbeResult] | None = None
+        self._interaction_probe_token: str | None = None
 
     async def _bot_login(self, token: Any) -> None:
         await super()._bot_login(token)
@@ -310,8 +343,83 @@ class _BotpyClient(botpy.Client):  # type: ignore[misc]
         result = await self.api.post_c2c_message(openid=openid, content=content)
         return _delivery_id(result)
 
+    async def probe_interaction(
+        self, openid: str, timeout_seconds: float
+    ) -> InteractionProbeResult:
+        if not self._interaction_probe_enabled:
+            raise RuntimeError("QQ interaction probe is disabled")
+        if self._interaction_probe_future is not None:
+            raise RuntimeError("QQ interaction probe is already pending")
+        loop = asyncio.get_running_loop()
+        future: asyncio.Future[InteractionProbeResult] = loop.create_future()
+        token = secrets.token_urlsafe(18)
+        self._interaction_probe_future = future
+        self._interaction_probe_token = token
+        keyboard = {
+            "content": {
+                "rows": [
+                    {"buttons": [_probe_button("qq-time-probe-a", "测试按钮 A", token)]},
+                    {"buttons": [_probe_button("qq-time-probe-b", "测试按钮 B", token)]},
+                ]
+            }
+        }
+        try:
+            await self.api.post_c2c_message(
+                openid=openid,
+                msg_type=2,
+                markdown={"content": "QQ 交互能力测试\n请点击任意测试按钮。"},
+                keyboard=keyboard,
+            )
+            return await asyncio.wait_for(future, timeout_seconds)
+        finally:
+            if self._interaction_probe_future is future:
+                self._interaction_probe_future = None
+                self._interaction_probe_token = None
+
+    async def on_interaction_create(self, interaction: Any) -> None:
+        future = self._interaction_probe_future
+        token = self._interaction_probe_token
+        if future is None or future.done() or token is None:
+            return
+        user_openid = str(getattr(interaction, "user_openid", ""))
+        if not self._processor.is_owner(user_openid):
+            LOGGER.info("QQ interaction probe rejected", extra={"reason": "owner_gate"})
+            return
+        data = getattr(interaction, "data", None)
+        resolved = getattr(data, "resolved", None)
+        button_id = str(getattr(resolved, "button_id", ""))
+        button_data = getattr(resolved, "button_data", None)
+        if button_id not in _PROBE_BUTTON_IDS or button_data != token:
+            LOGGER.info("QQ interaction probe ignored", extra={"reason": "button_mismatch"})
+            return
+        interaction_id = str(getattr(interaction, "id", ""))
+        try:
+            await self.api.on_interaction_result(interaction_id, code=0)
+        except Exception:
+            LOGGER.exception(
+                "QQ interaction probe acknowledgement failed",
+                extra={"failure_class": "InteractionAcknowledgementError"},
+            )
+            return
+        future.set_result(InteractionProbeResult(interaction_id, button_id, True))
+        await self.api.post_c2c_message(openid=user_openid, content="测试按钮已收到。")
+
     async def wait_ready(self, timeout_seconds: float) -> None:
         await asyncio.wait_for(self._ready.wait(), timeout_seconds)
+
+
+def _probe_button(button_id: str, label: str, token: str) -> dict[str, object]:
+    return {
+        "id": button_id,
+        "render_data": {"label": label, "visited_label": label, "style": 1},
+        "action": {
+            "type": 2,
+            "permission": {"type": 2, "specify_role_ids": [], "specify_user_ids": []},
+            "click_limit": 1,
+            "data": token,
+            "at_bot_show_channel_list": False,
+        },
+    }
 
 
 def _qq_assets(  # noqa: C901

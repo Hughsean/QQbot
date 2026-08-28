@@ -69,6 +69,24 @@ async def test_official_qq_gateway_login_and_active_c2c_message() -> None:
             await running
 
 
+async def test_official_qq_interaction_probe() -> None:
+    config = load_runtime_config()
+    if not config.qq.interaction_probe_enabled:
+        pytest.skip("QQ interaction probe is disabled")
+    gateway = OfficialQqGateway(config.qq, config.owner, RecordingIngress(), FixedClock())
+    running = asyncio.create_task(gateway.run_forever())
+    try:
+        await gateway.wait_ready(30)
+        result = await gateway.probe_interaction(60)
+        assert result.acknowledged is True
+        assert result.button_id in {"qq-time-probe-a", "qq-time-probe-b"}
+        assert result.interaction_id
+    finally:
+        running.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await running
+
+
 async def test_official_qq_owner_c2c_receive_and_reply() -> None:
     config = load_runtime_config()
     ingress = RecordingIngress()

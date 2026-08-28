@@ -9,6 +9,7 @@ import pytest
 from pydantic import SecretStr
 
 from qq_time_agent.adapters.inbound.qq.gateway import (
+    InteractionProbeResult,
     OfficialQqGateway,
     QqMessageProcessor,
     _BotpyClient,
@@ -520,6 +521,86 @@ async def test_gateway_ready_send_and_cancel_close_client() -> None:
     with pytest.raises(asyncio.CancelledError):
         await running
     assert client.closed
+
+
+@pytest.mark.asyncio
+async def test_interaction_probe_sends_keyboard_acknowledges_owner_and_confirms() -> None:
+    processor = QqMessageProcessor(
+        OwnerConfig(SecretStr("owner")),
+        RecordingIngress(),
+        FixedClock(datetime(2026, 8, 13, tzinfo=UTC)),
+    )
+    client = _BotpyClient(processor, True, interaction_probe_enabled=True)
+    calls: list[tuple[str, dict[str, object]]] = []
+    acked: list[tuple[str, int]] = []
+
+    class Api:
+        async def post_c2c_message(self, **kwargs: object) -> dict[str, str]:
+            calls.append(("message", kwargs))
+            return {"id": "probe-message"}
+
+        async def on_interaction_result(self, interaction_id: str, code: int) -> None:
+            acked.append((interaction_id, code))
+
+    client.api = Api()
+    pending = asyncio.create_task(client.probe_interaction("owner", 1))
+    await asyncio.sleep(0)
+    payload = calls[0][1]
+    keyboard = payload["keyboard"]
+    assert payload["msg_type"] == 2
+    assert payload["markdown"] == {"content": "QQ 交互能力测试\n请点击任意测试按钮。"}
+    assert isinstance(keyboard, dict)
+    button = keyboard["content"]["rows"][0]["buttons"][0]
+    interaction = SimpleNamespace(
+        id="interaction-1",
+        user_openid="owner",
+        data=SimpleNamespace(
+            resolved=SimpleNamespace(button_id=button["id"], button_data=button["action"]["data"])
+        ),
+    )
+    await client.on_interaction_create(interaction)
+    result = await pending
+
+    assert result == InteractionProbeResult("interaction-1", "qq-time-probe-a", True)
+    assert acked == [("interaction-1", 0)]
+    assert calls[-1] == ("message", {"openid": "owner", "content": "测试按钮已收到。"})
+
+
+@pytest.mark.asyncio
+async def test_interaction_probe_ignores_non_owner_without_ack() -> None:
+    processor = QqMessageProcessor(
+        OwnerConfig(SecretStr("owner")),
+        RecordingIngress(),
+        FixedClock(datetime(2026, 8, 13, tzinfo=UTC)),
+    )
+    client = _BotpyClient(processor, True, interaction_probe_enabled=True)
+    calls: list[dict[str, object]] = []
+
+    async def post_c2c_message(**kwargs: object) -> None:
+        calls.append(kwargs)
+
+    async def on_interaction_result(interaction_id: str, code: int) -> None:
+        del interaction_id, code
+        pytest.fail("unexpected ack")
+
+    client.api = SimpleNamespace(
+        post_c2c_message=post_c2c_message,
+        on_interaction_result=on_interaction_result,
+    )
+    pending = asyncio.create_task(client.probe_interaction("owner", 0.01))
+    await asyncio.sleep(0)
+    await client.on_interaction_create(
+        SimpleNamespace(
+            id="interaction-1",
+            user_openid="other",
+            data=SimpleNamespace(
+                resolved=SimpleNamespace(button_id="qq-time-probe-a", button_data="wrong")
+            ),
+        )
+    )
+    with pytest.raises(asyncio.TimeoutError):
+        await pending
+    assert len(calls) == 1
 
 
 def test_qq_provider_response_mapping_is_contained() -> None:

@@ -27,6 +27,22 @@ def test_settings_diagnostic_flag_can_be_enabled() -> None:
     assert _to_runtime_config(settings).qq.diagnostic_raw_event_once is True
 
 
+def test_settings_interaction_probe_defaults_off() -> None:
+    values = _values()
+    values["qq_interaction_probe_enabled"] = False
+    settings = EnvironmentSettings.model_validate(values)
+    assert settings.qq_interaction_probe_enabled is False
+    assert _to_runtime_config(settings).qq.interaction_probe_enabled is False
+
+
+def test_settings_reject_interaction_probe_outside_sandbox() -> None:
+    values = _values()
+    values["qq_bot_sandbox"] = False
+    values["qq_interaction_probe_enabled"] = True
+    with raises(ValidationError, match="requires QQ_BOT_SANDBOX"):
+        EnvironmentSettings.model_validate(values)
+
+
 def test_settings_accept_200k_agent_context_profile() -> None:
     values = _values()
     values.update(
