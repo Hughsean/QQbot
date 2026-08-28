@@ -10,6 +10,7 @@ from qq_time_agent.modules.ai_gateway.contracts import (
     ModelRoute,
     StructuredRequest,
     StructuredResponse,
+    TokenBudget,
 )
 
 
@@ -48,6 +49,31 @@ def _request() -> StructuredRequest:
         "private body must never be persisted",
         "user-safe",
     )
+
+
+def test_structured_request_validates_provider_neutral_token_budget() -> None:
+    request = StructuredRequest(
+        "agent.loop",
+        "v1",
+        ModelRoute.FAST,
+        "Return JSON",
+        "data",
+        "user-safe",
+        100,
+        TokenBudget(1_000, 50),
+    )
+    assert request.token_budget == TokenBudget(1_000, 50)
+    with pytest.raises(ValueError, match="output reservation"):
+        StructuredRequest(
+            "agent.loop",
+            "v1",
+            ModelRoute.FAST,
+            "Return JSON",
+            "data",
+            "user-safe",
+            950,
+            TokenBudget(1_000, 50),
+        )
 
 
 @pytest.mark.asyncio

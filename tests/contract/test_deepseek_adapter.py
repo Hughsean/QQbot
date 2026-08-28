@@ -10,6 +10,7 @@ from qq_time_agent.modules.ai_gateway.contracts import (
     ModelFailure,
     ModelRoute,
     StructuredRequest,
+    TokenBudget,
 )
 
 
@@ -26,7 +27,9 @@ def _config() -> DeepSeekConfig:
     )
 
 
-def _request(route: ModelRoute = ModelRoute.FAST) -> StructuredRequest:
+def _request(
+    route: ModelRoute = ModelRoute.FAST, token_budget: TokenBudget | None = None
+) -> StructuredRequest:
     return StructuredRequest(
         "test",
         "v1",
@@ -35,6 +38,7 @@ def _request(route: ModelRoute = ModelRoute.FAST) -> StructuredRequest:
         "<EXTERNAL_DATA>x</EXTERNAL_DATA>",
         "user-safe",
         100,
+        token_budget,
     )
 
 
@@ -62,6 +66,57 @@ async def test_deepseek_json_contract_has_no_tools_and_maps_usage() -> None:
     assert captured["thinking"] == {"type": "disabled"}
     assert "tools" not in captured and "tool_choice" not in captured
     assert "api_key" not in json.dumps(captured)
+
+
+@pytest.mark.asyncio
+async def test_deepseek_preflights_exact_serialized_request_before_network() -> None:
+    sent: list[bytes] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        sent.append(request.content)
+        return httpx.Response(500)
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    adapter = DeepSeekStructuredAdapter(_config(), client)
+    with pytest.raises(ModelFailure, match="ContextBudgetExceeded"):
+        await adapter.invoke(_request(token_budget=TokenBudget(150, 1)))
+    assert sent == []
+
+
+@pytest.mark.asyncio
+async def test_deepseek_sends_the_same_compact_utf8_bytes_used_by_preflight() -> None:
+    captured: list[bytes] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        captured.append(request.content)
+        return httpx.Response(
+            200,
+            json={
+                "model": "deepseek-v4-flash",
+                "choices": [{"finish_reason": "stop", "message": {"content": "{}"}}],
+                "usage": {"prompt_tokens": 1, "completion_tokens": 1},
+            },
+        )
+
+    request = StructuredRequest(
+        "test",
+        "v1",
+        ModelRoute.FAST,
+        "只返回 JSON",
+        "<EXTERNAL_DATA>明天</EXTERNAL_DATA>",
+        "user-safe",
+        100,
+        TokenBudget(1_000, 10),
+    )
+    adapter = DeepSeekStructuredAdapter(
+        _config(), httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    )
+    await adapter.invoke(request)
+    assert len(captured) == 1
+    decoded = captured[0].decode("utf-8")
+    assert "明天" in decoded
+    assert "\\u660e" not in decoded
+    assert decoded == json.dumps(json.loads(decoded), ensure_ascii=False, separators=(",", ":"))
 
 
 @pytest.mark.asyncio

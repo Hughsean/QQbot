@@ -11,6 +11,7 @@ from qq_time_agent.modules.agent.contracts import (
     AgentModelPort,
     AgentRequest,
     AgentResponse,
+    AgentResponseMode,
     AgentResponseProtocolError,
     AgentToolCall,
 )
@@ -18,15 +19,23 @@ from qq_time_agent.modules.ai_gateway.contracts import (
     ModelRoute,
     StructuredModelPort,
     StructuredRequest,
+    TokenBudget,
 )
 
 LOGGER = logging.getLogger(__name__)
 
 
 class JsonAgentModel(AgentModelPort):
-    def __init__(self, model: StructuredModelPort, user_alias: str = "owner") -> None:
+    def __init__(
+        self,
+        model: StructuredModelPort,
+        user_alias: str = "owner",
+        max_context_tokens: int = 12_000,
+        safety_margin_tokens: int = 512,
+    ) -> None:
         self._model = model
         self._user_alias = user_alias
+        self._token_budget = TokenBudget(max_context_tokens, safety_margin_tokens)
 
     async def respond(self, request: AgentRequest) -> AgentResponse:
         response = await self._model.invoke(
@@ -37,7 +46,8 @@ class JsonAgentModel(AgentModelPort):
                 _instruction(request),
                 _external_data(request),
                 self._user_alias,
-                1200,
+                request.max_output_tokens,
+                self._token_budget,
             )
         )
         return _parse(response.output)
@@ -55,12 +65,21 @@ def _instruction(request: AgentRequest) -> str:
         ],
         ensure_ascii=False,
     )
+    if request.response_mode is AgentResponseMode.FINAL_ONLY:
+        response_contract = (
+            "这是最终汇总回合。只返回以下形状, 不得调用任何工具:\n"
+            '{"type":"final","content":"给用户的答复","delivery":"HOLD"}\n'
+        )
+    else:
+        response_contract = (
+            "输出只能严格是以下两种形状之一:\n"
+            '{"type":"final","content":"给用户的答复","delivery":"HOLD"}\n'
+            '{"type":"tool_call","call_id":"本回合唯一标识","name":"工具名","arguments":{}}\n'
+        )
     return (
         "只返回一个 JSON 对象, 不得使用 Markdown, 代码块或额外文字. 你是一个有界 Agent, "
-        "输出只能严格是以下两种形状之一:\n"
-        '{"type":"final","content":"给用户的答复","delivery":"HOLD"}\n'
-        '{"type":"tool_call","call_id":"本回合唯一标识","name":"工具名","arguments":{}}\n'
-        "不得省略 type, 不得使用 final、answer、result 等替代字段. "
+        + response_contract
+        + "不得省略 type, 不得使用 final、answer、result 等替代字段. "
         "tool_call.arguments 必须符合对应 input_schema. 不得伪造工具结果.\n"
         "final 必须包含 delivery, 取值只能是 HOLD 或 NOTIFY. 对用户直接消息, delivery 仅用于"
         "记录, 回复始终会立即送达当前会话. 对无人请求的邮件事件, 只有存在明确、可操作、"
@@ -117,9 +136,13 @@ def _external_data(request: AgentRequest) -> str:
 
 def _parse(output: Mapping[str, object]) -> AgentResponse:
     kind = output.get("type")
-    if kind in {"final", "answer", "final_answer"}:
+    if kind == "final":
+        if set(output) != {"type", "content", "delivery"}:
+            _raise_invalid(output, "final_keys")
         return _final_response(output.get("content"), output.get("delivery"), output)
     if kind == "tool_call":
+        if set(output) != {"type", "call_id", "name", "arguments"}:
+            _raise_invalid(output, "tool_call_keys")
         call_id = output.get("call_id")
         name = output.get("name")
         arguments = output.get("arguments")
@@ -131,17 +154,7 @@ def _parse(output: Mapping[str, object]) -> AgentResponse:
             or not isinstance(arguments, dict)
         ):
             _raise_invalid(output, "tool_call_fields")
-        return AgentResponse(tool_call=AgentToolCall(call_id, name, arguments))
-    if kind is None and set(output).issubset({"content", "delivery"}):
-        return _final_response(output.get("content"), output.get("delivery"), output)
-    if kind is None and set(output).issubset({"final", "delivery"}):
-        final = output.get("final")
-        if isinstance(final, str):
-            return _final_response(final, output.get("delivery"), output)
-        if isinstance(final, Mapping) and set(final).issubset({"content", "delivery"}):
-            return _final_response(
-                final.get("content"), final.get("delivery", output.get("delivery")), output
-            )
+        return AgentResponse(tool_call=AgentToolCall(call_id.strip(), name.strip(), arguments))
     _raise_invalid(output, "response_type")
 
 
@@ -150,8 +163,6 @@ def _final_response(
 ) -> AgentResponse:
     if not isinstance(content, str) or not content.strip():
         _raise_invalid(output, "final_content")
-    if delivery is None:
-        return AgentResponse(final=AgentFinal(content.strip(), AgentDelivery.HOLD))
     if not isinstance(delivery, str):
         _raise_invalid(output, "final_delivery")
     try:

@@ -10,7 +10,7 @@ from uuid import UUID
 from qq_time_agent.contracts.tools import ToolDefinition
 
 if TYPE_CHECKING:
-    from qq_time_agent.modules.agent.contracts.runs import AgentRun
+    from qq_time_agent.modules.agent.contracts.runs import AgentRun, AgentRunExecution
 
 AgentToolDefinition = ToolDefinition
 
@@ -35,6 +35,11 @@ class ToolObservation:
     arguments_hash: str = ""
 
 
+class AgentResponseMode(StrEnum):
+    TOOL_OR_FINAL = "TOOL_OR_FINAL"
+    FINAL_ONLY = "FINAL_ONLY"
+
+
 @dataclass(frozen=True, slots=True)
 class AgentRequest:
     system_instruction: str
@@ -45,6 +50,12 @@ class AgentRequest:
     step: int
     owner_timezone: str = "Asia/Shanghai"
     reference_time: datetime | None = None
+    max_output_tokens: int = 1200
+    response_mode: AgentResponseMode = AgentResponseMode.TOOL_OR_FINAL
+
+    def __post_init__(self) -> None:
+        if self.max_output_tokens < 1:
+            raise ValueError("Agent output token limit must be positive")
 
 
 class AgentDelivery(StrEnum):
@@ -101,7 +112,9 @@ class AgentRunPort(Protocol):
 class AgentRunExecutionPort(Protocol):
     async def get(self, run_id: UUID) -> "AgentRun | None": ...
 
-    async def execute(self, run_id: UUID, message: str, context: str = "") -> AgentFinal: ...
+    async def execute(
+        self, run_id: UUID, message: str, context: str = ""
+    ) -> "AgentRunExecution": ...
 
 
 class AgentRunCommandPort(AgentRunExecutionPort, Protocol):

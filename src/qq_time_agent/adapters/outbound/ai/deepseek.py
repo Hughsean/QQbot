@@ -12,6 +12,7 @@ from qq_time_agent.modules.ai_gateway.contracts import (
     ModelRoute,
     StructuredRequest,
     StructuredResponse,
+    estimate_tokens,
 )
 
 RETRYABLE = {408, 409, 429, 500, 502, 503, 504}
@@ -43,7 +44,9 @@ class DeepSeekStructuredAdapter:
             "thinking": {"type": "disabled"},
             "user_id": request.user_alias,
         }
-        response = await self._post(payload, timeout)
+        serialized = _serialize_payload(payload)
+        _preflight(request, serialized)
+        response = await self._post(serialized, timeout)
         try:
             body = response.json()
             choice = _mapping(_sequence(body, "choices")[0])
@@ -74,16 +77,17 @@ class DeepSeekStructuredAdapter:
             return self._config.reasoning_model, self._config.reasoning_timeout_seconds
         return self._config.fast_model, self._config.fast_timeout_seconds
 
-    async def _post(self, payload: dict[str, object], timeout: float) -> httpx.Response:
+    async def _post(self, content: bytes, timeout: float) -> httpx.Response:
         attempts = self._config.max_retries + 1
         url = self._config.base_url.rstrip("/") + "/chat/completions"
         for attempt in range(attempts):
             try:
                 response = await self._client.post(
                     url,
-                    json=payload,
+                    content=content,
                     headers={
-                        "Authorization": ("Bearer " + self._config.api_key.get_secret_value())
+                        "Authorization": ("Bearer " + self._config.api_key.get_secret_value()),
+                        "Content-Type": "application/json",
                     },
                     timeout=timeout,
                 )
@@ -100,6 +104,21 @@ class DeepSeekStructuredAdapter:
                 continue
             raise ModelFailure(failure)
         raise AssertionError("unreachable")
+
+
+def _serialize_payload(payload: Mapping[str, object]) -> bytes:
+    """Produce once the exact UTF-8 bytes used for preflight and transmission."""
+    return json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+
+
+def _preflight(request: StructuredRequest, content: bytes) -> None:
+    budget = request.token_budget
+    if budget is None:
+        return
+    serialized_tokens = estimate_tokens(content.decode("utf-8"))
+    total = serialized_tokens + request.max_output_tokens + budget.safety_margin_tokens
+    if total > budget.max_context_tokens:
+        raise ModelFailure("ContextBudgetExceeded")
 
 
 def _failure(status: int) -> str:

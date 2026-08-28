@@ -6,19 +6,28 @@ import json
 import logging
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
+from datetime import datetime
 from time import perf_counter
 from uuid import uuid4
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from qq_time_agent.contracts.clock import Clock, SystemClock
+from qq_time_agent.modules.agent.application.observation_codec import (
+    canonicalize_observation_output,
+    observation_token_text,
+)
 from qq_time_agent.modules.agent.contracts import (
     AgentFinal,
     AgentModelPort,
     AgentRequest,
+    AgentResponse,
+    AgentResponseMode,
+    AgentResponseProtocolError,
     AgentToolPort,
     ToolObservation,
 )
 from qq_time_agent.modules.agent.contracts.models import AgentToolCall
+from qq_time_agent.modules.ai_gateway.contracts import estimate_tokens
 
 LOGGER = logging.getLogger(__name__)
 
@@ -28,12 +37,25 @@ class AgentLoopConfig:
     max_steps: int = 8
     tool_timeout_seconds: float = 8.0
     max_observation_chars: int = 12_000
+    model_output_token_budget: int = 9_600
+    max_output_tokens_per_request: int = 1_200
+    observation_token_budget: int = 4_000
 
     def __post_init__(self) -> None:
         if not 1 <= self.max_steps <= 20:
             raise ValueError("Agent max steps must be between 1 and 20")
-        if self.tool_timeout_seconds <= 0 or self.max_observation_chars < 500:
+        if (
+            self.tool_timeout_seconds <= 0
+            or self.max_observation_chars < 500
+            or self.model_output_token_budget < 1
+            or self.max_output_tokens_per_request < 1
+            or self.observation_token_budget < 500
+        ):
             raise ValueError("Agent loop limits are invalid")
+        if self.max_output_tokens_per_request > self.model_output_token_budget:
+            raise ValueError("Per-request output limit exceeds Agent output budget")
+        if self.model_output_token_budget < 2 * self.max_output_tokens_per_request:
+            raise ValueError("Agent output budget must reserve a final response request")
 
 
 class AgentLoop:
@@ -55,13 +77,14 @@ class AgentLoop:
         self._owner_timezone = owner_timezone
         self._clock = clock or SystemClock()
 
-    async def run(
+    async def run(  # noqa: C901
         self,
         owner_id: str,
         message: str,
         context: str = "",
         prior_observations: tuple[ToolObservation, ...] = (),
         on_tool_call: Callable[[ToolObservation], Awaitable[None]] | None = None,
+        on_boundary: Callable[[], Awaitable[None]] | None = None,
     ) -> AgentFinal:
         if not owner_id.strip() or not message.strip():
             raise ValueError("Agent owner and message are required")
@@ -82,72 +105,144 @@ class AgentLoop:
                 "context_chars": len(context),
             },
         )
-        for step in range(len(observations), self._config.max_steps):
-            try:
-                response = await self._model.respond(
-                    AgentRequest(
-                        _SYSTEM_INSTRUCTION,
-                        message,
-                        context[: self._config.max_observation_chars],
-                        self._tools.definitions(),
-                        tuple(observations),
-                        step,
-                        self._owner_timezone,
-                        owner_time,
-                    )
-                )
-            except Exception as exc:
-                LOGGER.exception(
-                    "Agent 模型回合失败: 未能获得下一步决策",
-                    extra={
-                        "role": "agent",
-                        "run_id": run_id,
-                        "step": step,
-                        "status": "model_failed",
-                        "failure_class": type(exc).__name__,
-                        "observation_count": len(observations),
-                    },
-                )
-                raise
+        tool_steps = sum(not item.is_error for item in observations)
+        reserved_output = self._config.max_output_tokens_per_request
+        remaining_output = self._config.model_output_token_budget
+        request_step = 0
+        while tool_steps < self._config.max_steps and remaining_output > reserved_output:
+            if on_boundary is not None:
+                await on_boundary()
+            output_tokens = min(
+                self._config.max_output_tokens_per_request,
+                remaining_output - reserved_output,
+            )
+            if output_tokens < 1:
+                break
+            response = await self._respond(
+                message,
+                context,
+                observations,
+                owner_time,
+                request_step,
+                output_tokens,
+                AgentResponseMode.TOOL_OR_FINAL,
+                run_id,
+            )
+            remaining_output -= output_tokens
             if response.final is not None:
-                LOGGER.info(
-                    "Agent 回合完成: 模型返回最终答复",
-                    extra={
-                        "role": "agent",
-                        "run_id": run_id,
-                        "step": step,
-                        "status": "completed",
-                        "result_type": "final",
-                        "result_chars": len(response.final.content),
-                        "observation_count": len(observations),
-                    },
-                )
+                self._log_final(run_id, request_step, response.final, observations)
                 return response.final
             call = response.tool_call
             if call is None:
-                raise RuntimeError("Agent response omitted final and tool call")
+                raise AgentResponseProtocolError("Agent response omitted final and tool call")
             existing_hash = calls.get(call.call_id)
             observation = await self._observe_call(
-                owner_id, call, calls, observations, run_id, step
+                owner_id, call, calls, observations, run_id, request_step
             )
             if existing_hash is not None:
                 if existing_hash != _arguments_hash(call.arguments):
                     observations.append(observation)
+                request_step += 1
                 continue
             observations.append(observation)
+            tool_steps += 1
             if on_tool_call is not None:
                 await on_tool_call(observation)
-        LOGGER.warning(
-            "Agent 回合停止: 达到最大工具步骤, 未生成最终答复",
+            request_step += 1
+
+        final_tokens = min(self._config.max_output_tokens_per_request, remaining_output)
+        if final_tokens < 1:
+            raise RuntimeError("Agent output token budget exhausted before finalization")
+        if on_boundary is not None:
+            await on_boundary()
+        response = await self._respond(
+            message,
+            context,
+            observations,
+            owner_time,
+            request_step,
+            final_tokens,
+            AgentResponseMode.FINAL_ONLY,
+            run_id,
+        )
+        if response.final is None:
+            LOGGER.warning(
+                "Agent 最终汇总回合拒绝: 模型仍请求工具",
+                extra={
+                    "role": "agent",
+                    "run_id": run_id,
+                    "step": request_step,
+                    "status": "finalization_tool_call",
+                    "observation_count": len(observations),
+                },
+            )
+            raise AgentResponseProtocolError("Agent finalization response must be final")
+        self._log_final(run_id, request_step, response.final, observations)
+        return response.final
+
+    async def _respond(
+        self,
+        message: str,
+        context: str,
+        observations: list[ToolObservation],
+        owner_time: datetime,
+        step: int,
+        output_tokens: int,
+        response_mode: AgentResponseMode,
+        run_id: str,
+    ) -> AgentResponse:
+        model_observations = _bound_observations(
+            observations, self._config.observation_token_budget
+        )
+        tools = () if response_mode is AgentResponseMode.FINAL_ONLY else self._tools.definitions()
+        try:
+            return await self._model.respond(
+                AgentRequest(
+                    _SYSTEM_INSTRUCTION,
+                    message,
+                    context,
+                    tools,
+                    tuple(model_observations),
+                    step,
+                    self._owner_timezone,
+                    owner_time,
+                    output_tokens,
+                    response_mode,
+                )
+            )
+        except Exception as exc:
+            LOGGER.exception(
+                "Agent 模型回合失败: 未能获得下一步决策",
+                extra={
+                    "role": "agent",
+                    "run_id": run_id,
+                    "step": step,
+                    "status": "model_failed",
+                    "failure_class": type(exc).__name__,
+                    "observation_count": len(observations),
+                },
+            )
+            raise
+
+    @staticmethod
+    def _log_final(
+        run_id: str,
+        step: int,
+        result: AgentFinal,
+        observations: list[ToolObservation],
+    ) -> None:
+        LOGGER.info(
+            "Agent 回合完成: 模型返回最终答复",
             extra={
                 "role": "agent",
                 "run_id": run_id,
-                "step": self._config.max_steps,
-                "status": "step_limit",
+                "step": step,
+                "status": "completed",
+                "result_type": "final",
+                "result_chars": len(result.content),
                 "observation_count": len(observations),
             },
         )
-        raise RuntimeError("Agent reached the maximum tool steps")
 
     async def _observe_call(
         self,
@@ -162,21 +257,17 @@ class AgentLoop:
         schema = next((item.input_schema for item in definitions if item.name == call.name), None)
         argument_hash = _arguments_hash(call.arguments)
         if schema is None:
-            if definitions:
-                return ToolObservation(call.call_id, call.name, "未注册的工具", True, argument_hash)
-            schema = {"type": "object", "properties": {}}
+            return _error_observation(call, "未注册的工具", argument_hash)
         previous = calls.get(call.call_id)
         if previous is not None:
             if previous != argument_hash:
-                return ToolObservation(
-                    call.call_id, call.name, "call_id 已用于不同参数", True, argument_hash
-                )
+                return _error_observation(call, "call_id 已用于不同参数", argument_hash)
             return next(item for item in observations if item.call_id == call.call_id)
         calls[call.call_id] = argument_hash
         try:
             _validate_schema(schema, call.arguments)
         except ValueError as exc:
-            return ToolObservation(call.call_id, call.name, str(exc), True, argument_hash)
+            return _error_observation(call, str(exc), argument_hash)
         return await self._call(
             owner_id, call.name, call.arguments, call.call_id, argument_hash, run_id, step
         )
@@ -203,7 +294,11 @@ class AgentLoop:
                     "status": "invalid_arguments",
                 },
             )
-            return ToolObservation(call_id, name, "工具参数必须是 JSON 对象", True, arguments_hash)
+            return _error_observation(
+                AgentToolCall(call_id, name, {}),
+                "工具参数必须是 JSON 对象",
+                arguments_hash,
+            )
         started = perf_counter()
         try:
             output = await asyncio.wait_for(
@@ -225,8 +320,10 @@ class AgentLoop:
                     "argument_names": ",".join(sorted(arguments)),
                 },
             )
-            return ToolObservation(
-                call_id, name, f"工具拒绝请求: {type(exc).__name__}", True, arguments_hash
+            return _error_observation(
+                AgentToolCall(call_id, name, {}),
+                f"工具拒绝请求: {type(exc).__name__}",
+                arguments_hash,
             )
         except Exception:
             LOGGER.exception(
@@ -270,13 +367,33 @@ _SYSTEM_INSTRUCTION = """你是所有者的时间管理 Agent。你可以调用�
 向用户提出最小必要追问。工具调用必须返回一个 JSON 对象, 不得调用未列出的工具。"""
 
 
-def _bounded(value: object, maximum: int) -> object:
-    if isinstance(value, str):
-        return value[:maximum]
-    if isinstance(value, (dict, list, tuple)):
-        text = repr(value)
-        return text[:maximum]
-    return value
+def _error_observation(call: AgentToolCall, message: str, arguments_hash: str) -> ToolObservation:
+    return ToolObservation(
+        call.call_id,
+        call.name,
+        canonicalize_observation_output({"error": message}, 12_000),
+        True,
+        arguments_hash,
+    )
+
+
+def _bound_observations(
+    observations: list[ToolObservation], maximum_tokens: int
+) -> list[ToolObservation]:
+    selected: list[ToolObservation] = []
+    used = 0
+    for item in reversed(observations):
+        cost = estimate_tokens(observation_token_text(item.output))
+        if selected and used + cost > maximum_tokens:
+            break
+        selected.append(item)
+        used += cost
+    selected.reverse()
+    return selected
+
+
+def _bounded(value: object, maximum: int) -> str:
+    return canonicalize_observation_output(value, maximum)
 
 
 def _arguments_hash(arguments: Mapping[str, object]) -> str:

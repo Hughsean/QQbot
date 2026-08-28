@@ -6,6 +6,8 @@ from qq_time_agent.modules.ai_gateway.contracts.models import (
     StructuredModelPort,
     StructuredRequest,
     StructuredResponse,
+    TokenBudget,
+    estimate_tokens,
 )
 
 __all__ = [
@@ -14,4 +16,6 @@ __all__ = [
     "StructuredModelPort",
     "StructuredRequest",
     "StructuredResponse",
+    "TokenBudget",
+    "estimate_tokens",
 ]
