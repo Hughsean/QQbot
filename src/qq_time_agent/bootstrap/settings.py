@@ -10,6 +10,7 @@ from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from qq_time_agent.bootstrap.config_models import (
+    AgentContextConfig,
     AppConfig,
     AssetConfig,
     DatabaseConfig,
@@ -57,6 +58,7 @@ class EnvironmentSettings(BaseSettings):
     qq_bot_secret: SecretStr
     qq_bot_sandbox: bool = True
     qq_bot_display_name: str = Field(default="小智", min_length=1, max_length=32)
+    qq_diagnostic_raw_event_once: bool = False
     microsoft_tenant: str = "common"
     microsoft_client_id: SecretStr
     qq_mail_imap_host: str = "imap.qq.com"
@@ -72,6 +74,13 @@ class EnvironmentSettings(BaseSettings):
     deepseek_reasoning_timeout_seconds: float = Field(default=60, gt=0)
     deepseek_max_retries: int = Field(default=2, ge=0, le=5)
     deepseek_max_concurrency: int = Field(default=2, ge=1, le=10)
+    agent_context_max_tokens: int = Field(default=12_000, ge=1_000, le=200_000)
+    agent_context_safety_margin_tokens: int = Field(default=512, ge=0, le=8_000)
+    agent_context_retrieval_limit: int = Field(default=6, ge=1, le=30)
+    agent_context_history_limit: int = Field(default=8, ge=1, le=50)
+    agent_context_observation_tokens: int = Field(default=4_000, ge=500, le=32_000)
+    agent_model_output_token_budget: int = Field(default=9_600, ge=1, le=32_000)
+    agent_max_output_tokens_per_request: int = Field(default=1_200, ge=1, le=32_000)
     database_host: str = "127.0.0.1"
     database_port: int = Field(default=5432, ge=1, le=65535)
     database_name: str = "qq_time_agent"
@@ -127,6 +136,18 @@ class EnvironmentSettings(BaseSettings):
             raise ValueError("QQ Mail IMAP must use imap.qq.com:993")
         if not self.qq_bot_display_name.strip():
             raise ValueError("QQ_BOT_DISPLAY_NAME must not be blank")
+        if self.agent_max_output_tokens_per_request > self.agent_model_output_token_budget:
+            raise ValueError(
+                "AGENT_MAX_OUTPUT_TOKENS_PER_REQUEST must not exceed "
+                "AGENT_MODEL_OUTPUT_TOKEN_BUDGET"
+            )
+        if (
+            self.agent_max_output_tokens_per_request + self.agent_context_safety_margin_tokens
+            >= self.agent_context_max_tokens
+        ):
+            raise ValueError(
+                "Agent output reservation and safety margin must leave usable input context"
+            )
         return self
 
     def _validate_container_boundaries(self) -> None:
@@ -193,6 +214,7 @@ def _to_runtime_config(value: EnvironmentSettings) -> RuntimeConfig:
             value.qq_bot_secret,
             value.qq_bot_sandbox,
             value.qq_bot_display_name.strip(),
+            value.qq_diagnostic_raw_event_once,
         ),
         database=DatabaseConfig(
             value.database_host,
@@ -256,6 +278,15 @@ def _to_runtime_config(value: EnvironmentSettings) -> RuntimeConfig:
             value.asset_max_image_pixels,
             value.asset_max_output_chars,
             value.asset_processing_timeout_seconds,
+        ),
+        agent_context=AgentContextConfig(
+            value.agent_context_max_tokens,
+            value.agent_context_safety_margin_tokens,
+            value.agent_context_retrieval_limit,
+            value.agent_context_history_limit,
+            value.agent_context_observation_tokens,
+            value.agent_model_output_token_budget,
+            value.agent_max_output_tokens_per_request,
         ),
         credential_encryption_key=value.credential_encryption_key,
         mail_initial_lookback_days=value.mail_initial_lookback_days,

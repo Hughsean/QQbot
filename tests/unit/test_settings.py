@@ -11,10 +11,65 @@ from qq_time_agent.bootstrap.settings import (
 def test_settings_accept_safe_loopback_configuration() -> None:
     settings = EnvironmentSettings.model_validate(_values())
     assert settings.rag_embedding_dimensions == 1024
+    assert settings.qq_diagnostic_raw_event_once is False
     assert settings.database_password.get_secret_value() == "synthetic-password"
     assert _to_runtime_config(settings).microsoft.redirect_uri == (
         "http://localhost:8000/oauth/microsoft/callback"
     )
+    assert _to_runtime_config(settings).qq.diagnostic_raw_event_once is False
+
+
+def test_settings_diagnostic_flag_can_be_enabled() -> None:
+    values = _values()
+    values["qq_diagnostic_raw_event_once"] = True
+    settings = EnvironmentSettings.model_validate(values)
+    assert settings.qq_diagnostic_raw_event_once is True
+    assert _to_runtime_config(settings).qq.diagnostic_raw_event_once is True
+
+
+def test_settings_accept_200k_agent_context_profile() -> None:
+    values = _values()
+    values.update(
+        {
+            "agent_context_max_tokens": 200_000,
+            "agent_context_safety_margin_tokens": 4_096,
+            "agent_context_retrieval_limit": 20,
+            "agent_context_history_limit": 40,
+            "agent_context_observation_tokens": 20_000,
+            "agent_model_output_token_budget": 32_000,
+            "agent_max_output_tokens_per_request": 4_000,
+        }
+    )
+    settings = EnvironmentSettings.model_validate(values)
+    config = _to_runtime_config(settings).agent_context
+    assert config.max_context_tokens == 200_000
+    assert config.observation_tokens == 20_000
+    assert config.model_output_token_budget == 32_000
+    assert config.max_output_tokens_per_request == 4_000
+
+
+def test_settings_reject_agent_context_above_200k() -> None:
+    values = _values()
+    values["agent_context_max_tokens"] = 200_001
+    with raises(ValidationError):
+        EnvironmentSettings.model_validate(values)
+
+
+def test_settings_reject_per_request_output_above_total_budget() -> None:
+    values = _values()
+    values["agent_model_output_token_budget"] = 1_000
+    values["agent_max_output_tokens_per_request"] = 1_001
+    with raises(ValidationError, match="must not exceed"):
+        EnvironmentSettings.model_validate(values)
+
+
+def test_settings_require_output_and_margin_to_leave_input_context() -> None:
+    values = _values()
+    values["agent_context_max_tokens"] = 2_000
+    values["agent_context_safety_margin_tokens"] = 1_000
+    values["agent_max_output_tokens_per_request"] = 1_000
+    with raises(ValidationError, match="must leave usable input context"):
+        EnvironmentSettings.model_validate(values)
 
 
 def test_settings_reject_non_loopback_database() -> None:

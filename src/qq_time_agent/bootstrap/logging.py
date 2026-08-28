@@ -45,6 +45,7 @@ SAFE_CONTEXT_FIELDS: Final = (
     "result_chars",
     "argument_names",
     "elapsed_ms",
+    "event_structure",
 )
 
 

@@ -27,6 +27,7 @@ class QqConfig:
     secret: SecretStr
     sandbox: bool
     display_name: str = "小智"
+    diagnostic_raw_event_once: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,6 +59,17 @@ class QqMailConfig:
 class QqMailSandboxConfig:
     address: SecretStr
     authorization_code: SecretStr
+
+
+@dataclass(frozen=True, slots=True)
+class AgentContextConfig:
+    max_context_tokens: int
+    safety_margin_tokens: int
+    retrieval_limit: int
+    history_limit: int
+    observation_tokens: int
+    model_output_token_budget: int = 9_600
+    max_output_tokens_per_request: int = 1_200
 
 
 @dataclass(frozen=True, slots=True)
@@ -127,6 +139,7 @@ class RuntimeConfig:
     schedule: ScheduleConfig
     retention: RetentionConfig
     assets: AssetConfig
+    agent_context: AgentContextConfig
     credential_encryption_key: SecretStr
     mail_initial_lookback_days: int
     mail_sync_interval_seconds: int
