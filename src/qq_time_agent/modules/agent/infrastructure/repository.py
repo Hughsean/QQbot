@@ -8,9 +8,13 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.sql.elements import ColumnElement
 
+from qq_time_agent.modules.agent.application.observation_codec import serialize_observation
 from qq_time_agent.modules.agent.contracts import (
     AgentDelivery,
+    AgentFinal,
     AgentRun,
+    AgentRunClaim,
+    AgentRunClaimError,
     AgentRunStatus,
     ContextScope,
     ScopedAgentReply,
@@ -167,6 +171,107 @@ class SqlAgentRunRepository:
             row.updated_at = run.updated_at
             row.version = expected_version + 1
 
+    async def claim(
+        self,
+        run_id: UUID,
+        execution_owner: str,
+        now: datetime,
+        lease_until: datetime,
+    ) -> AgentRunClaim | None:
+        if not execution_owner.strip() or lease_until <= now:
+            raise ValueError("AgentRun claim owner and future lease are required")
+        async with self._sessions.begin() as session:
+            row = await session.get(AgentRunRow, run_id, with_for_update=True)
+            if row is None:
+                raise LookupError("AgentRun does not exist")
+            if row.status == AgentRunStatus.COMPLETED.value:
+                return None
+            if (
+                row.status == AgentRunStatus.RUNNING.value
+                and row.execution_lease_until is not None
+                and row.execution_lease_until >= now
+            ):
+                return None
+            row.status = AgentRunStatus.RUNNING.value
+            row.execution_owner = execution_owner
+            row.execution_lease_until = lease_until
+            row.execution_epoch += 1
+            row.failure_class = None
+            row.updated_at = now
+            row.version += 1
+            await session.flush()
+            return _to_claim(row)
+
+    async def renew_claim(
+        self,
+        claim: AgentRunClaim,
+        now: datetime,
+        lease_until: datetime,
+    ) -> AgentRunClaim:
+        if lease_until <= now:
+            raise ValueError("AgentRun renewal must extend into the future")
+        async with self._sessions.begin() as session:
+            row = await _owned_row(session, claim, now)
+            row.execution_lease_until = lease_until
+            row.updated_at = now
+            row.version += 1
+            await session.flush()
+            return _to_claim(row)
+
+    async def checkpoint_claimed_tool_call(
+        self,
+        claim: AgentRunClaim,
+        observation: ToolObservation,
+        now: datetime,
+    ) -> AgentRunClaim:
+        async with self._sessions.begin() as session:
+            run = await _owned_row(session, claim, now)
+            serialized = serialize_observation(observation)
+            if not any(value.get("call_id") == observation.call_id for value in run.observations):
+                run.observations = [*run.observations, serialized]
+                run.step = len(run.observations)
+                run.updated_at = now
+                run.version += 1
+                await _insert_tool_call(session, run.run_id, observation, serialized, now)
+            await session.flush()
+            return _to_claim(run)
+
+    async def complete_claim(
+        self,
+        claim: AgentRunClaim,
+        result: AgentFinal,
+        now: datetime,
+    ) -> AgentRun:
+        async with self._sessions.begin() as session:
+            row = await _owned_row(session, claim, now)
+            row.status = AgentRunStatus.COMPLETED.value
+            row.final_content = result.content[:12000]
+            row.final_delivery = result.delivery.value
+            row.failure_class = None
+            row.execution_owner = None
+            row.execution_lease_until = None
+            row.updated_at = now
+            row.version += 1
+            await session.flush()
+            return _to_run(row)
+
+    async def fail_claim(
+        self,
+        claim: AgentRunClaim,
+        failure_class: str,
+        now: datetime,
+    ) -> AgentRun:
+        async with self._sessions.begin() as session:
+            row = await _owned_row(session, claim, now)
+            row.status = AgentRunStatus.FAILED.value
+            row.failure_class = failure_class[:120]
+            row.execution_owner = None
+            row.execution_lease_until = None
+            row.updated_at = now
+            row.version += 1
+            await session.flush()
+            return _to_run(row)
+
     async def checkpoint_tool_call(
         self,
         run_id: UUID,
@@ -177,25 +282,14 @@ class SqlAgentRunRepository:
             run = await session.get(AgentRunRow, run_id, with_for_update=True)
             if run is None:
                 raise LookupError("AgentRun does not exist")
-            serialized = _serialize_observation(observation)
+            serialized = serialize_observation(observation)
             if any(value.get("call_id") == observation.call_id for value in run.observations):
                 return
             run.observations = [*run.observations, serialized]
             run.step = len(run.observations)
             run.updated_at = now
             run.version += 1
-            await session.execute(
-                insert(AgentToolCallRow)
-                .values(
-                    run_id=run_id,
-                    call_id=observation.call_id,
-                    tool_name=observation.name,
-                    arguments_hash=observation.arguments_hash,
-                    observation=serialized,
-                    created_at=now,
-                )
-                .on_conflict_do_nothing()
-            )
+            await _insert_tool_call(session, run_id, observation, serialized, now)
 
 
 def _to_run(row: AgentRunRow) -> AgentRun:
@@ -215,18 +309,60 @@ def _to_run(row: AgentRunRow) -> AgentRun:
         row.version,
         row.conversation_id,
         row.event_case_id,
+        row.execution_owner,
+        row.execution_lease_until,
+        row.execution_epoch,
     )
 
 
-def _serialize_observation(value: ToolObservation) -> dict[str, object]:
-    output = value.output if isinstance(value.output, str) else repr(value.output)
-    return {
-        "call_id": value.call_id,
-        "name": value.name,
-        "output": output[:12000],
-        "is_error": value.is_error,
-        "arguments_hash": value.arguments_hash,
-    }
+def _to_claim(row: AgentRunRow) -> AgentRunClaim:
+    if row.execution_owner is None or row.execution_lease_until is None:
+        raise RuntimeError("AgentRun claim row is incomplete")
+    return AgentRunClaim(
+        _to_run(row),
+        row.execution_owner,
+        row.execution_epoch,
+        row.execution_lease_until,
+    )
+
+
+async def _owned_row(
+    session: AsyncSession,
+    claim: AgentRunClaim,
+    now: datetime,
+) -> AgentRunRow:
+    row = await session.get(AgentRunRow, claim.run.run_id, with_for_update=True)
+    if (
+        row is None
+        or row.status != AgentRunStatus.RUNNING.value
+        or row.execution_owner != claim.execution_owner
+        or row.execution_epoch != claim.execution_epoch
+        or row.execution_lease_until is None
+        or row.execution_lease_until < now
+    ):
+        raise AgentRunClaimError("AgentRun execution claim is stale or lost")
+    return row
+
+
+async def _insert_tool_call(
+    session: AsyncSession,
+    run_id: UUID,
+    observation: ToolObservation,
+    serialized: dict[str, object],
+    now: datetime,
+) -> None:
+    await session.execute(
+        insert(AgentToolCallRow)
+        .values(
+            run_id=run_id,
+            call_id=observation.call_id,
+            tool_name=observation.name,
+            arguments_hash=observation.arguments_hash,
+            observation=serialized,
+            created_at=now,
+        )
+        .on_conflict_do_nothing()
+    )
 
 
 def _scope_run_condition(scope_id: UUID, scope_type: str) -> ColumnElement[bool]:

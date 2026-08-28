@@ -15,6 +15,15 @@ from qq_time_agent.adapters.outbound.persistence.outbox import SqlOutbox
 from qq_time_agent.bootstrap.settings import load_runtime_config
 from qq_time_agent.contracts.events import EventEnvelope
 from qq_time_agent.contracts.jobs import JobRequest
+from qq_time_agent.modules.agent.contracts import (
+    AgentDelivery,
+    AgentFinal,
+    AgentRunClaimError,
+    AgentRunStatus,
+    ToolObservation,
+)
+from qq_time_agent.modules.agent.infrastructure.repository import SqlAgentRunRepository
+from qq_time_agent.modules.agent.infrastructure.tables import AgentRunRow, AgentToolCallRow
 from qq_time_agent.modules.data_lifecycle.domain.models import Tombstone, TombstoneStatus
 from qq_time_agent.modules.data_lifecycle.infrastructure.repository import SqlTombstoneRepository
 from qq_time_agent.modules.data_lifecycle.infrastructure.tables import PurgeResultRow, TombstoneRow
@@ -46,7 +55,7 @@ async def test_pgvector_extension_and_migration_are_active(engine: AsyncEngine) 
             )
         )
     assert extension is not None
-    assert revision == "0018_agent_run_delivery"
+    assert revision == "0021_agent_run_execution_fencing"
     assert job_constraint == "uq_platform_jobs_idempotency"
 
     health = await DatabaseReadinessProbe(engine).check()
@@ -179,6 +188,90 @@ async def test_transient_dead_letters_can_be_requeued_explicitly(engine: AsyncEn
             await session.execute(
                 delete(JobRow).where(JobRow.job_id.in_((target_id, permanent_id, other_id)))
             )
+
+
+@pytest.mark.asyncio
+async def test_agent_run_claim_reclaims_expiry_and_fences_stale_owner(
+    engine: AsyncEngine,
+) -> None:
+    sessions = async_sessionmaker(engine, expire_on_commit=False)
+    repository = SqlAgentRunRepository(sessions)
+    now = datetime(2026, 8, 28, tzinfo=UTC)
+    run_id = uuid4()
+    inbox_item_id = uuid4()
+    row = AgentRunRow(
+        run_id=run_id,
+        inbox_item_id=inbox_item_id,
+        user_id="owner",
+        source_type="QQ_DIRECT",
+        status=AgentRunStatus.PENDING.value,
+        step=0,
+        observations=[],
+        created_at=now,
+        updated_at=now,
+        version=1,
+        execution_epoch=0,
+    )
+    async with sessions.begin() as session:
+        session.add(row)
+    try:
+        first = await repository.claim(run_id, "worker-a", now, now + timedelta(minutes=1))
+        assert first is not None and first.execution_epoch == 1
+        assert (
+            await repository.claim(
+                run_id, "worker-b", now + timedelta(seconds=30), now + timedelta(minutes=2)
+            )
+            is None
+        )
+        second = await repository.claim(
+            run_id, "worker-b", now + timedelta(minutes=2), now + timedelta(minutes=3)
+        )
+        assert second is not None and second.execution_epoch == 2
+
+        observation = ToolObservation("call-1", "lookup", '{"ok":true}', False, "hash")
+        with pytest.raises(AgentRunClaimError):
+            await repository.checkpoint_claimed_tool_call(
+                first, observation, now + timedelta(minutes=2)
+            )
+        with pytest.raises(AgentRunClaimError):
+            await repository.complete_claim(
+                first, AgentFinal("stale", AgentDelivery.HOLD), now + timedelta(minutes=2)
+            )
+        with pytest.raises(AgentRunClaimError):
+            await repository.fail_claim(first, "StaleFailure", now + timedelta(minutes=2))
+
+        second = await repository.checkpoint_claimed_tool_call(
+            second, observation, now + timedelta(minutes=2)
+        )
+        completed = await repository.complete_claim(
+            second, AgentFinal("current", AgentDelivery.HOLD), now + timedelta(minutes=2)
+        )
+        assert completed.status is AgentRunStatus.COMPLETED
+        assert completed.final_content == "current"
+        assert completed.execution_owner is None and completed.execution_lease_until is None
+    finally:
+        async with sessions.begin() as session:
+            await session.execute(delete(AgentToolCallRow).where(AgentToolCallRow.run_id == run_id))
+            await session.execute(delete(AgentRunRow).where(AgentRunRow.run_id == run_id))
+
+
+@pytest.mark.asyncio
+async def test_stale_job_attempt_cannot_settle_newer_lease(engine: AsyncEngine) -> None:
+    sessions = async_sessionmaker(engine, expire_on_commit=False)
+    queue = SqlJobQueue(sessions)
+    now = datetime(2026, 8, 28, tzinfo=UTC)
+    job_id = await queue.enqueue(JobRequest("integration", {}, f"integration-fence:{uuid4()}", now))
+    first = (await queue.lease_due(now, "worker", 1, timedelta(minutes=1)))[0]
+    second = (await queue.lease_due(now + timedelta(minutes=2), "worker", 1, timedelta(minutes=1)))[
+        0
+    ]
+    try:
+        with pytest.raises(RuntimeError, match="job lease is stale"):
+            await queue.complete(first, now + timedelta(minutes=2))
+        await queue.complete(second, now + timedelta(minutes=2))
+    finally:
+        async with sessions.begin() as session:
+            await session.execute(delete(JobRow).where(JobRow.job_id == job_id))
 
 
 @pytest.mark.asyncio

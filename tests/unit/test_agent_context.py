@@ -8,7 +8,7 @@ from qq_time_agent.modules.agenda.contracts import AgendaConflictView, AgendaNot
 from qq_time_agent.modules.agent.application.context import AgentContextAssembler
 from qq_time_agent.modules.agent.contracts import ContextScope, ScopedAgentReply
 from qq_time_agent.modules.identity.contracts import OwnerGroupAlias
-from qq_time_agent.modules.inbox.contracts import InboxContentView
+from qq_time_agent.modules.inbox.contracts import ConversationContextItem, InboxContentView
 from qq_time_agent.modules.retrieval.contracts import RetrievedChunk
 from qq_time_agent.modules.scheduling.contracts import ProposalSlot, SchedulingProposalView
 
@@ -80,6 +80,54 @@ class Inbox:
             "sha256:old",
             None,
         )
+
+
+class Conversation:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def list_recent_conversation(
+        self, user_id: str, before: datetime, exclude_id: UUID, limit: int = 8
+    ) -> tuple[ConversationContextItem, ...]:
+        assert user_id == "owner"
+        assert before == NOW
+        assert exclude_id == CURRENT
+        assert limit == 8
+        self.calls += 1
+        return (
+            ConversationContextItem(
+                "QQ_DIRECT",
+                NOW - timedelta(minutes=3),
+                "旧消息",
+                "全局会话回退",
+                "qq:global",
+            ),
+        )
+
+
+@dataclass
+class EmptyScopes(Scopes):
+    async def list_item_ids(
+        self, scope_id: UUID, scope_type: str, exclude_id: UUID, before: datetime, limit: int
+    ) -> tuple[UUID, ...]:
+        del scope_id, scope_type, exclude_id, limit
+        self.before = before
+        return ()
+
+    async def list_final_replies(
+        self, scope_id: UUID, scope_type: str, before: datetime, limit: int
+    ) -> tuple[ScopedAgentReply, ...]:
+        del scope_id, scope_type, limit
+        self.before = before
+        return ()
+
+
+class FailingScopes(EmptyScopes):
+    async def list_item_ids(
+        self, scope_id: UUID, scope_type: str, exclude_id: UUID, before: datetime, limit: int
+    ) -> tuple[UUID, ...]:
+        del scope_id, scope_type, exclude_id, before, limit
+        raise RuntimeError("scope unavailable")
 
 
 class Agenda:
@@ -160,4 +208,62 @@ async def test_context_uses_prior_scope_only_and_includes_agent_calendar_facts()
     assert "[knowledge T2] knowledge:1" in context
     assert "[owner-identity]" in context and "风拾一" in context
     assert "2026-08-28T18:00:00+08:00" in context
-    assert "+00:00" not in context
+
+
+@pytest.mark.asyncio
+async def test_context_without_scope_ids_uses_conversation_fallback() -> None:
+    conversation = Conversation()
+    context = await AgentContextAssembler(Retrieval(), conversation, Scopes(), Inbox()).build(
+        "owner", "继续", before=NOW, exclude_id=CURRENT
+    )
+
+    assert conversation.calls == 1
+    assert "[conversation] qq:global" in context
+    assert "全局会话回退" in context
+
+
+@pytest.mark.asyncio
+async def test_context_empty_scope_uses_conversation_fallback() -> None:
+    conversation = Conversation()
+    scopes = EmptyScopes()
+    context = await AgentContextAssembler(Retrieval(), conversation, scopes, Inbox()).build(
+        "owner",
+        "继续",
+        before=NOW,
+        exclude_id=CURRENT,
+        conversation_id=uuid4(),
+    )
+
+    assert scopes.before == NOW
+    assert conversation.calls == 1
+    assert "[conversation] qq:global" in context
+
+
+@pytest.mark.asyncio
+async def test_context_nonempty_scope_does_not_mix_conversation_fallback() -> None:
+    conversation = Conversation()
+    context = await AgentContextAssembler(Retrieval(), conversation, Scopes(), Inbox()).build(
+        "owner",
+        "继续",
+        before=NOW,
+        exclude_id=CURRENT,
+        conversation_id=uuid4(),
+    )
+
+    assert conversation.calls == 0
+    assert "[scoped-context] qq:older" in context
+    assert "qq:global" not in context
+
+
+@pytest.mark.asyncio
+async def test_context_propagates_scope_repository_failure() -> None:
+    conversation = Conversation()
+    with pytest.raises(RuntimeError, match="scope unavailable"):
+        await AgentContextAssembler(Retrieval(), conversation, FailingScopes(), Inbox()).build(
+            "owner",
+            "继续",
+            before=NOW,
+            exclude_id=CURRENT,
+            conversation_id=uuid4(),
+        )
+    assert conversation.calls == 0

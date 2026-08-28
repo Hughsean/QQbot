@@ -1,15 +1,20 @@
 """Durable execution boundary for owner and mail Agent runs."""
 
-from datetime import datetime
+from contextlib import suppress
+from datetime import datetime, timedelta
 from typing import cast
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from qq_time_agent.contracts.clock import Clock
 from qq_time_agent.modules.agent.application.loop import AgentLoop
+from qq_time_agent.modules.agent.application.observation_codec import deserialize_observation
 from qq_time_agent.modules.agent.contracts import (
     AgentContextRepository,
     AgentFinal,
     AgentRun,
+    AgentRunClaimError,
+    AgentRunExecution,
+    AgentRunExecutionStatus,
     AgentRunRepository,
     AgentRunStatus,
     ToolObservation,
@@ -17,10 +22,19 @@ from qq_time_agent.modules.agent.contracts import (
 
 
 class AgentRunService:
-    def __init__(self, repository: AgentRunRepository, loop: AgentLoop, clock: Clock) -> None:
+    def __init__(
+        self,
+        repository: AgentRunRepository,
+        loop: AgentLoop,
+        clock: Clock,
+        execution_lease: timedelta = timedelta(minutes=5),
+    ) -> None:
+        if execution_lease <= timedelta(0):
+            raise ValueError("AgentRun execution lease must be positive")
         self._repository = repository
         self._loop = loop
         self._clock = clock
+        self._execution_lease = execution_lease
         self._context_repository: AgentContextRepository | None = (
             cast(AgentContextRepository, repository)
             if hasattr(repository, "ensure_scope")
@@ -50,31 +64,80 @@ class AgentRunService:
     async def get(self, run_id: UUID) -> AgentRun | None:
         return await self._repository.get(run_id)
 
-    async def execute(self, run_id: UUID, message: str, context: str = "") -> AgentFinal:
+    async def execute(  # noqa: C901
+        self, run_id: UUID, message: str, context: str = ""
+    ) -> AgentRunExecution:
         run = await self._repository.get(run_id)
         if run is None:
             raise LookupError("AgentRun does not exist")
-        if (
-            run.status is AgentRunStatus.COMPLETED
-            and run.final_content is not None
-            and run.final_delivery is not None
-        ):
-            return AgentFinal(run.final_content, run.final_delivery)
+        completed = _completed_final(run)
+        if completed is not None:
+            return AgentRunExecution(AgentRunExecutionStatus.COMPLETED, completed)
+        if not hasattr(self._repository, "claim"):
+            return await self._execute_legacy(run, run_id, message, context)
+
+        now = self._clock.now()
+        execution_owner = f"agent-run:{uuid4().hex}"
+        claim = await self._repository.claim(
+            run_id, execution_owner, now, now + self._execution_lease
+        )
+        if claim is None:
+            current = await self._repository.get(run_id)
+            if current is None:
+                raise RuntimeError("AgentRun disappeared while claiming execution")
+            completed = _completed_final(current)
+            if completed is not None:
+                return AgentRunExecution(AgentRunExecutionStatus.COMPLETED, completed)
+            return AgentRunExecution(AgentRunExecutionStatus.IN_PROGRESS)
+
+        async def renew() -> None:
+            nonlocal claim
+            assert claim is not None
+            renewed_at = self._clock.now()
+            claim = await self._repository.renew_claim(
+                claim, renewed_at, renewed_at + self._execution_lease
+            )
+
+        async def record(observation: ToolObservation) -> None:
+            nonlocal claim
+            assert claim is not None
+            claim = await self._repository.checkpoint_claimed_tool_call(
+                claim, observation, self._clock.now()
+            )
+
+        try:
+            result = await self._loop.run(
+                claim.run.user_id,
+                message,
+                context,
+                _observations(claim.run.observations),
+                record,
+                renew,
+            )
+            await renew()
+            await self._repository.complete_claim(claim, result, self._clock.now())
+        except AgentRunClaimError:
+            return AgentRunExecution(AgentRunExecutionStatus.IN_PROGRESS)
+        except Exception as exc:
+            with suppress(AgentRunClaimError):
+                await self._repository.fail_claim(claim, type(exc).__name__, self._clock.now())
+            raise
+        return AgentRunExecution(AgentRunExecutionStatus.EXECUTED, result)
+
+    async def _execute_legacy(
+        self, run: AgentRun, run_id: UUID, message: str, context: str
+    ) -> AgentRunExecution:
         expected_version = run.version
         run.status = AgentRunStatus.RUNNING
         run.updated_at = self._clock.now()
         await self._repository.save(run, expected_version)
+
+        async def record(observation: ToolObservation) -> None:
+            await self._repository.checkpoint_tool_call(run_id, observation, self._clock.now())
+
         try:
-
-            async def record(observation: ToolObservation) -> None:
-                await self._repository.checkpoint_tool_call(run_id, observation, self._clock.now())
-
             result = await self._loop.run(
-                run.user_id,
-                message,
-                context,
-                _observations(run.observations),
-                record,
+                run.user_id, message, context, _observations(run.observations), record
             )
         except Exception as exc:
             current = await self._repository.get(run_id)
@@ -92,23 +155,20 @@ class AgentRunService:
         current.final_delivery = result.delivery
         current.updated_at = self._clock.now()
         await self._repository.save(current, current.version)
-        return result
+        return AgentRunExecution(AgentRunExecutionStatus.EXECUTED, result)
+
+
+def _completed_final(run: AgentRun) -> AgentFinal | None:
+    if run.status is not AgentRunStatus.COMPLETED:
+        return None
+    if run.final_content is None or run.final_delivery is None:
+        raise ValueError("Completed AgentRun is missing its persisted final response")
+    return AgentFinal(run.final_content, run.final_delivery)
 
 
 def _observations(values: list[dict[str, object]]) -> tuple[ToolObservation, ...]:
-    result: list[ToolObservation] = []
-    for value in values:
-        call_id = value.get("call_id")
-        name = value.get("name")
-        output = value.get("output")
-        is_error = value.get("is_error")
-        arguments_hash = value.get("arguments_hash")
-        if (
-            isinstance(call_id, str)
-            and isinstance(name, str)
-            and isinstance(output, str)
-            and isinstance(is_error, bool)
-            and isinstance(arguments_hash, str)
-        ):
-            result.append(ToolObservation(call_id, name, output, is_error, arguments_hash))
-    return tuple(result)
+    return tuple(
+        observation
+        for value in values
+        if (observation := deserialize_observation(value)) is not None
+    )

@@ -6,7 +6,11 @@ from enum import StrEnum
 from typing import Protocol
 from uuid import UUID
 
-from qq_time_agent.modules.agent.contracts.models import AgentDelivery, ToolObservation
+from qq_time_agent.modules.agent.contracts.models import (
+    AgentDelivery,
+    AgentFinal,
+    ToolObservation,
+)
 
 
 class AgentRunStatus(StrEnum):
@@ -34,6 +38,49 @@ class AgentRun:
     version: int = 1
     conversation_id: UUID | None = None
     event_case_id: UUID | None = None
+    execution_owner: str | None = None
+    execution_lease_until: datetime | None = None
+    execution_epoch: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class AgentRunClaim:
+    run: AgentRun
+    execution_owner: str
+    execution_epoch: int
+    lease_until: datetime
+
+
+class AgentRunClaimError(RuntimeError):
+    """The caller no longer owns the AgentRun execution fence."""
+
+
+class AgentRunExecutionStatus(StrEnum):
+    COMPLETED = "COMPLETED"
+    EXECUTED = "EXECUTED"
+    IN_PROGRESS = "IN_PROGRESS"
+
+
+@dataclass(frozen=True, slots=True)
+class AgentRunExecution:
+    status: AgentRunExecutionStatus
+    final: AgentFinal | None = None
+
+    def __post_init__(self) -> None:
+        if (self.status is AgentRunExecutionStatus.IN_PROGRESS) != (self.final is None):
+            raise ValueError("AgentRun execution outcome is inconsistent")
+
+    @property
+    def content(self) -> str:
+        if self.final is None:
+            raise RuntimeError("AgentRun execution is still in progress")
+        return self.final.content
+
+    @property
+    def delivery(self) -> AgentDelivery:
+        if self.final is None:
+            raise RuntimeError("AgentRun execution is still in progress")
+        return self.final.delivery
 
 
 @dataclass(frozen=True, slots=True)
@@ -96,6 +143,42 @@ class AgentRunRepository(Protocol):
     async def get(self, run_id: UUID) -> AgentRun | None: ...
 
     async def save(self, run: AgentRun, expected_version: int) -> None: ...
+
+    async def claim(
+        self,
+        run_id: UUID,
+        execution_owner: str,
+        now: datetime,
+        lease_until: datetime,
+    ) -> AgentRunClaim | None: ...
+
+    async def renew_claim(
+        self,
+        claim: AgentRunClaim,
+        now: datetime,
+        lease_until: datetime,
+    ) -> AgentRunClaim: ...
+
+    async def checkpoint_claimed_tool_call(
+        self,
+        claim: AgentRunClaim,
+        observation: ToolObservation,
+        now: datetime,
+    ) -> AgentRunClaim: ...
+
+    async def complete_claim(
+        self,
+        claim: AgentRunClaim,
+        result: AgentFinal,
+        now: datetime,
+    ) -> AgentRun: ...
+
+    async def fail_claim(
+        self,
+        claim: AgentRunClaim,
+        failure_class: str,
+        now: datetime,
+    ) -> AgentRun: ...
 
     async def checkpoint_tool_call(
         self,

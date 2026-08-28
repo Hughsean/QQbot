@@ -29,6 +29,9 @@ class AgentRunRow(AgentBase):
     version: Mapped[int] = mapped_column(Integer, nullable=False)
     conversation_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     event_case_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    execution_owner: Mapped[str | None] = mapped_column(String(160))
+    execution_lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    execution_epoch: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     __table_args__ = (UniqueConstraint("inbox_item_id", name="uq_agent_runs_inbox_item"),)
 
 
