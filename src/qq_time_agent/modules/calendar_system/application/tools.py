@@ -192,12 +192,8 @@ class CalendarToolRegistry:
         if entry.version != expected:
             raise ValueError("agenda entry version is stale")
         title = arguments.get("title", entry.title)
-        starts = _calendar_moment(
-            arguments.get("starts_at"), entry.timezone, entry.starts_at
-        )
-        ends = _calendar_moment(
-            arguments.get("ends_at"), entry.timezone, entry.ends_at
-        )
+        starts = _calendar_moment(arguments.get("starts_at"), entry.timezone, entry.starts_at)
+        ends = _calendar_moment(arguments.get("ends_at"), entry.timezone, entry.ends_at)
         if not isinstance(title, str) or not title.strip() or ends <= starts:
             raise ValueError("agenda update is invalid")
         payload = dict(arguments)
