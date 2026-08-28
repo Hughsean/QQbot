@@ -19,7 +19,14 @@ from qq_time_agent.contracts.source import (
     SourceEnvelope,
     SourceType,
 )
-from qq_time_agent.modules.agent.contracts import AgentContextPort, AgentRunCommandPort
+from qq_time_agent.modules.agent.contracts import (
+    AgentContextPort,
+    AgentFinal,
+    AgentRunCommandPort,
+    AgentRunExecution,
+    AgentRunExecutionStatus,
+    AgentRunStatus,
+)
 from qq_time_agent.modules.inbox.contracts import InboxProcessingPort, IngestResult, QqInboxPort
 from qq_time_agent.modules.normalization.contracts import NormalizationPort
 
@@ -86,15 +93,27 @@ class QqCommandRouter:
             conversation_key=envelope.thread_id or envelope.sender.provider_id,
             occurred_at=envelope.occurred_at,
         )
+        if run.status is AgentRunStatus.COMPLETED:
+            if run.final_content is None or run.final_delivery is None:
+                raise ValueError("Completed AgentRun is missing its persisted final response")
+            return self._format_direct_reply(run.final_content)
         # The immediate QQ path owns this attempt; the delayed job is crash recovery.
-        await self._jobs.enqueue(
-            JobRequest(
-                "agent-run",
-                {"run_id": str(run.run_id), "inbox_item_id": str(ingested.inbox_item_id)},
-                f"agent-run:{run.run_id}",
-                self._clock.now() + timedelta(seconds=30),
+        recovery_available = True
+        try:
+            await self._jobs.enqueue(
+                JobRequest(
+                    "agent-run",
+                    {"run_id": str(run.run_id), "inbox_item_id": str(ingested.inbox_item_id)},
+                    f"agent-run:{run.run_id}",
+                    self._clock.now() + timedelta(seconds=30),
+                )
             )
-        )
+        except Exception:
+            recovery_available = False
+            LOGGER.exception(
+                "QQ Agent 恢复任务入队失败: 继续当前安全执行",
+                extra={"role": "qq", "path": "agent", "run_id": str(run.run_id)},
+            )
         context = await self._agent_context.build(
             "owner",
             content,
@@ -103,7 +122,16 @@ class QqCommandRouter:
             conversation_id=run.conversation_id,
             event_case_id=run.event_case_id,
         )
-        result = await self._agent_runs.execute(run.run_id, content, context)
+        raw_outcome = await self._agent_runs.execute(run.run_id, content, context)
+        outcome = _execution_outcome(raw_outcome)
+        if outcome.status is AgentRunExecutionStatus.IN_PROGRESS:
+            message = "正在处理中, 请稍后查看结果。"
+            if not recovery_available:
+                message = "正在处理中, 但自动恢复暂不可用, 请稍后重试。"
+            return self._format_direct_reply(message)
+        if outcome.final is None:
+            raise RuntimeError("AgentRun completed without a final response")
+        result = outcome.final
         LOGGER.info(
             "QQ Agent 处理完成: 返回用户答复",
             extra={
@@ -122,7 +150,7 @@ class QqCommandRouter:
         text: str,
         assets: tuple[SourceAssetDescriptor, ...] = (),
     ) -> str:
-        result = await self._inbox.ingest_qq(envelope, text)
+        result = await self._inbox.ingest_qq(envelope, text, has_assets=bool(assets))
         await self._normalize_ingested_text(envelope, text, result, assets)
         if envelope.source_type is SourceType.OWNER_NOTE:
             return self._format_direct_reply("已保存主人笔记, 将用于后续检索。")
@@ -141,17 +169,24 @@ class QqCommandRouter:
         result: IngestResult,
         assets: tuple[SourceAssetDescriptor, ...] = (),
     ) -> None:
+        if not result.created:
+            return
         if assets and self._asset_discovery is not None:
             await self._asset_discovery.discover(result.inbox_item_id, assets, self._clock.now())
-        if result.created:
-            await self._normalization.normalize(
-                result.inbox_item_id,
-                subject(envelope.source_type),
-                text,
-                None,
-                envelope.content_hash.removeprefix("sha256:"),
-                result.source_ref,
-            )
-            await self._processing.mark_normalized(result.inbox_item_id)
-            if envelope.source_type is SourceType.OWNER_NOTE:
-                await self._processing.mark_completed(result.inbox_item_id)
+        await self._normalization.normalize(
+            result.inbox_item_id,
+            subject(envelope.source_type),
+            text,
+            None,
+            envelope.content_hash.removeprefix("sha256:"),
+            result.source_ref,
+        )
+        await self._processing.mark_normalized(result.inbox_item_id)
+        if envelope.source_type is SourceType.OWNER_NOTE:
+            await self._processing.mark_completed(result.inbox_item_id)
+
+
+def _execution_outcome(value: AgentRunExecution | AgentFinal) -> AgentRunExecution:
+    if isinstance(value, AgentRunExecution):
+        return value
+    return AgentRunExecution(AgentRunExecutionStatus.EXECUTED, value)

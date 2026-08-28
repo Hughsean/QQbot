@@ -178,7 +178,9 @@ class InboxProcessingPort(Protocol):
 
 
 class QqInboxPort(Protocol):
-    async def ingest_qq(self, envelope: SourceEnvelope, content: str) -> IngestResult: ...
+    async def ingest_qq(
+        self, envelope: SourceEnvelope, content: str, *, has_assets: bool = False
+    ) -> IngestResult: ...
 
 
 class InboxProcessingQueryPort(Protocol):

@@ -4,6 +4,13 @@ from uuid import UUID, uuid4
 
 import pytest
 
+from qq_time_agent.contracts.source import (
+    IngressType,
+    SourceEnvelope,
+    SourceSender,
+    SourceType,
+    TrustLevel,
+)
 from qq_time_agent.modules.connections.contracts import MailAccessGrant
 from qq_time_agent.modules.credentials.contracts import CredentialHandle, CredentialKind
 from qq_time_agent.modules.inbox.application.service import InboxService
@@ -28,6 +35,37 @@ class FixedClock:
 
     def now(self) -> datetime:
         return self.value
+
+
+@pytest.mark.asyncio
+async def test_qq_image_only_ingest_requires_asset_flag_and_is_idempotent() -> None:
+    repository = MemoryInboxRepository()
+    service = InboxService(repository)
+    now = datetime(2026, 8, 13, tzinfo=UTC)
+    envelope = SourceEnvelope(
+        SourceType.QQ_DIRECT,
+        IngressType.DIRECT,
+        "qq-image-only-1",
+        None,
+        now,
+        now,
+        SourceSender("owner"),
+        "qq:qq-image-only-1",
+        "sha256:empty-content",
+        TrustLevel.T1,
+        {"message_kind": "c2c"},
+    )
+
+    with pytest.raises(ValueError, match="QQ text content is required"):
+        await service.ingest_qq(envelope, "")
+
+    first = await service.ingest_qq(envelope, "", has_assets=True)
+    duplicate = await service.ingest_qq(envelope, "", has_assets=True)
+
+    assert first.created
+    assert not duplicate.created
+    assert duplicate.inbox_item_id == first.inbox_item_id
+    assert repository.contents[first.inbox_item_id].body_text == ""
 
 
 @dataclass

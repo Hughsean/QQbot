@@ -3,6 +3,7 @@ import hashlib
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 from pydantic import SecretStr
@@ -10,9 +11,11 @@ from pydantic import SecretStr
 from qq_time_agent.adapters.inbound.qq.gateway import (
     OfficialQqGateway,
     QqMessageProcessor,
+    _BotpyClient,
     _delivery_id,
     _parse_timestamp,
     _qq_assets,
+    _summarize_raw_event,
 )
 from qq_time_agent.bootstrap.config_models import OwnerConfig, QqConfig
 from qq_time_agent.contracts.source import SourceAssetDescriptor, SourceEnvelope, TrustLevel
@@ -60,6 +63,23 @@ class FailingIngress:
         raise self.error
 
 
+@dataclass
+class CallbackMessage:
+    author_openid: str
+    content: str | None
+    attachments: object = None
+    id: str = "message-1"
+    timestamp: str = "2026-08-13T00:00:00Z"
+    replies: list[str] = field(default_factory=list)
+
+    @property
+    def author(self) -> SimpleNamespace:
+        return SimpleNamespace(user_openid=self.author_openid)
+
+    async def reply(self, *, content: str) -> None:
+        self.replies.append(content)
+
+
 @pytest.mark.asyncio
 async def test_official_image_descriptor_reaches_owner_ingress() -> None:
     ingress = RecordingAssetIngress()
@@ -77,6 +97,114 @@ async def test_official_image_descriptor_reaches_owner_ingress() -> None:
     )
     assert ingress.received[0][2] == (descriptor,)
     assert ingress.received[0][0].trust_level is TrustLevel.T1
+
+
+def test_raw_event_summary_excludes_sensitive_scalar_values() -> None:
+    payload = {
+        "id": "event-secret-id",
+        "d": {
+            "id": "message-secret-id",
+            "content": "绝密聊天正文",
+            "author": {"user_openid": "owner-secret-openid"},
+            "attachments": [
+                {
+                    "id": "asset-secret-id",
+                    "url": "https://secret.example/asset?token=hidden",
+                    "filename": "private-name.png",
+                    "content_type": "image/png",
+                    "size": 128,
+                    "width": 640,
+                    "height": 480,
+                }
+            ],
+        },
+    }
+    summary = _summarize_raw_event(payload)
+    rendered = repr(summary)
+    assert "content:str" in rendered
+    assert "author.user_openid:str" in rendered
+    assert "attachments:list" in rendered
+    assert "image/png" in rendered and "128" in rendered and "640" in rendered
+    for secret in (
+        "event-secret-id",
+        "message-secret-id",
+        "绝密聊天正文",
+        "owner-secret-openid",
+        "asset-secret-id",
+        "https://secret.example",
+        "private-name.png",
+    ):
+        assert secret not in rendered
+
+
+@pytest.mark.asyncio
+async def test_raw_event_diagnostic_wraps_parser_once_and_preserves_dispatch(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    parsed: list[object] = []
+
+    def original(payload: object) -> object:
+        parsed.append(payload)
+        return payload
+
+    async def fake_login(client: Any, token: object) -> None:
+        del token
+        client._connection = SimpleNamespace(parser={"c2c_message_create": original})
+
+    monkeypatch.setattr("botpy.Client._bot_login", fake_login)
+    processor = QqMessageProcessor(
+        OwnerConfig(SecretStr("owner")),
+        RecordingIngress(),
+        FixedClock(datetime(2026, 8, 13, tzinfo=UTC)),
+    )
+    client = _BotpyClient(processor, True, diagnostic_raw_event_once=True)
+
+    with caplog.at_level("INFO"):
+        await client._bot_login(object())
+        parser = client._connection.parser["c2c_message_create"]
+        first = {"d": {"content": "first-secret"}}
+        second = {"d": {"content": "second-secret"}}
+        assert parser(first) is first
+        assert parser(second) is second
+
+    diagnostic_records = [record for record in caplog.records if hasattr(record, "event_structure")]
+    assert len(diagnostic_records) == 1
+    assert parsed == [first, second]
+    assert client._diagnostic_raw_event_once is False
+    rendered = caplog.text
+    assert "first-secret" not in rendered
+    assert "second-secret" not in rendered
+
+
+@pytest.mark.asyncio
+async def test_raw_event_diagnostic_disabled_does_not_wrap_parser(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def original(payload: object) -> object:
+        return payload
+
+    async def fake_login(client: Any, token: object) -> None:
+        del token
+        client._connection = SimpleNamespace(parser={"c2c_message_create": original})
+
+    monkeypatch.setattr("botpy.Client._bot_login", fake_login)
+    processor = QqMessageProcessor(
+        OwnerConfig(SecretStr("owner")),
+        RecordingIngress(),
+        FixedClock(datetime(2026, 8, 13, tzinfo=UTC)),
+    )
+    client = _BotpyClient(processor, True)
+    await client._bot_login(object())
+    assert client._connection.parser["c2c_message_create"] is original
+
+
+def test_raw_event_summary_handles_missing_or_malformed_data() -> None:
+    assert _summarize_raw_event(None)["event_type"] == "dict"
+    assert _summarize_raw_event({"d": "not-a-mapping"}) == {
+        "event_type": "str",
+        "fields": (),
+        "attachments": (),
+    }
 
 
 def test_official_attachment_mapping_accepts_url_only_c2c_image() -> None:
@@ -112,6 +240,140 @@ def test_official_attachment_mapping_rejects_non_image_and_incomplete_values() -
         size=128,
     )
     assert _qq_assets([non_image]) == ((), True)
+
+
+@pytest.mark.asyncio
+async def test_callback_rejects_non_owner_before_attachment_capability_reply() -> None:
+    ingress = RecordingAssetIngress()
+    processor = QqMessageProcessor(
+        OwnerConfig(SecretStr("owner")),
+        ingress,
+        FixedClock(datetime(2026, 8, 13, tzinfo=UTC)),
+    )
+    client = _BotpyClient(processor, True)
+    message = CallbackMessage(
+        "intruder",
+        "",
+        [SimpleNamespace(content_type="application/qq-forward")],
+    )
+
+    await client.on_c2c_message_create(message)  # type: ignore[arg-type]
+
+    assert message.replies == []
+    assert ingress.received == []
+
+
+@pytest.mark.asyncio
+async def test_callback_treats_none_attachments_as_ordinary_text() -> None:
+    ingress = RecordingAssetIngress()
+    processor = QqMessageProcessor(
+        OwnerConfig(SecretStr("owner")),
+        ingress,
+        FixedClock(datetime(2026, 8, 13, tzinfo=UTC)),
+    )
+    client = _BotpyClient(processor, True)
+    message = CallbackMessage("owner", "你好", None)
+
+    await client.on_c2c_message_create(message)  # type: ignore[arg-type]
+
+    assert ingress.received[0][1:] == ("你好", ())
+    assert message.replies == ["accepted"]
+
+
+@pytest.mark.asyncio
+async def test_callback_keeps_valid_image_when_other_attachment_is_unsupported() -> None:
+    ingress = RecordingAssetIngress()
+    processor = QqMessageProcessor(
+        OwnerConfig(SecretStr("owner")),
+        ingress,
+        FixedClock(datetime(2026, 8, 13, tzinfo=UTC)),
+    )
+    client = _BotpyClient(processor, True)
+    image = SimpleNamespace(
+        id="media-1",
+        url="https://gchat.qpic.cn/image/opaque",
+        filename="image.png",
+        content_type="image/png",
+        size=128,
+    )
+    unsupported = SimpleNamespace(
+        id="forward-1",
+        url="https://gchat.qpic.cn/forward/opaque",
+        content_type="application/qq-forward",
+    )
+    message = CallbackMessage("owner", "图片说明", [unsupported, image])
+
+    await client.on_c2c_message_create(message)  # type: ignore[arg-type]
+
+    assert ingress.received[0][1] == "图片说明"
+    assert [asset.provider_asset_id for asset in ingress.received[0][2]] == ["media-1"]
+    assert message.replies == ["accepted\n部分附件因官方 QQ 接口未提供读取能力而未处理。"]
+
+
+@pytest.mark.asyncio
+async def test_callback_rejects_unsupported_only_input_without_ingress() -> None:
+    ingress = RecordingAssetIngress()
+    processor = QqMessageProcessor(
+        OwnerConfig(SecretStr("owner")),
+        ingress,
+        FixedClock(datetime(2026, 8, 13, tzinfo=UTC)),
+    )
+    client = _BotpyClient(processor, True)
+    message = CallbackMessage(
+        "owner",
+        "",
+        [SimpleNamespace(url="opaque", content_type="application/qq-forward")],
+    )
+
+    await client.on_c2c_message_create(message)  # type: ignore[arg-type]
+
+    assert ingress.received == []
+    assert message.replies == [
+        "小智\N{FULLWIDTH COLON}当前官方 QQ 接口未提供此附件类型或合并转发的读取权限。"
+    ]
+
+
+@pytest.mark.asyncio
+async def test_callback_accepts_image_without_caption() -> None:
+    ingress = RecordingAssetIngress()
+    processor = QqMessageProcessor(
+        OwnerConfig(SecretStr("owner")),
+        ingress,
+        FixedClock(datetime(2026, 8, 13, tzinfo=UTC)),
+    )
+    client = _BotpyClient(processor, True)
+    message = CallbackMessage(
+        "owner",
+        None,
+        [SimpleNamespace(id="media-1", url="opaque", content_type="image/png")],
+    )
+
+    await client.on_c2c_message_create(message)  # type: ignore[arg-type]
+
+    assert ingress.received[0][1] == ""
+    assert ingress.received[0][2][0].provider_asset_id == "media-1"
+    assert message.replies == ["accepted"]
+
+
+@pytest.mark.asyncio
+async def test_callback_processes_text_when_only_attachment_is_unsupported() -> None:
+    ingress = RecordingAssetIngress()
+    processor = QqMessageProcessor(
+        OwnerConfig(SecretStr("owner")),
+        ingress,
+        FixedClock(datetime(2026, 8, 13, tzinfo=UTC)),
+    )
+    client = _BotpyClient(processor, True)
+    message = CallbackMessage(
+        "owner",
+        "仍然处理这段文字",
+        [SimpleNamespace(url="opaque", content_type="application/qq-forward")],
+    )
+
+    await client.on_c2c_message_create(message)  # type: ignore[arg-type]
+
+    assert ingress.received[0][1:] == ("仍然处理这段文字", ())
+    assert message.replies == ["accepted\n部分附件因官方 QQ 接口未提供读取能力而未处理。"]
 
 
 @pytest.mark.asyncio

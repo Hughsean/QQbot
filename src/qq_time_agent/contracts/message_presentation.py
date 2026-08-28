@@ -3,8 +3,10 @@
 
 def escape_origin_markers(value: str) -> str:
     """Prevent untrusted content from impersonating a system source label."""
-    return value.strip().replace("[", "\N{FULLWIDTH LEFT SQUARE BRACKET}").replace(
-        "]", "\N{FULLWIDTH RIGHT SQUARE BRACKET}"
+    return (
+        value.strip()
+        .replace("[", "\N{FULLWIDTH LEFT SQUARE BRACKET}")
+        .replace("]", "\N{FULLWIDTH RIGHT SQUARE BRACKET}")
     )
 
 

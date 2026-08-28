@@ -1,6 +1,7 @@
 """Stateless QQ message parsing and provider-neutral envelope transformations."""
 
 import hashlib
+import re
 
 from qq_time_agent.contracts.source import (
     IngressType,
@@ -18,6 +19,16 @@ def forwarded(content: str) -> tuple[bool, str]:
             if not text:
                 raise ValueError("转发文本不能为空")
             return True, text
+    match = re.match(
+        r"^(?:\[(?:聊天记录|合并转发)\]|【(?:聊天记录|合并转发)】|"
+        r"聊天记录(?:\N{FULLWIDTH COLON}|:))\s*",
+        value,
+    )
+    if match is not None:
+        text = value[match.end() :].strip()
+        if not text:
+            raise ValueError("转发文本不能为空")
+        return True, text
     return False, value
 
 

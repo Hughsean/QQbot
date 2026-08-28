@@ -24,9 +24,10 @@ from qq_time_agent.modules.agenda.application.notification_query import (
 )
 from qq_time_agent.modules.agenda.application.service import AgendaService
 from qq_time_agent.modules.agenda.infrastructure.repository import SqlAgendaRepository
+from qq_time_agent.modules.agent.application.budget import ContextBudgetPolicy
 from qq_time_agent.modules.agent.application.context import AgentContextAssembler
 from qq_time_agent.modules.agent.application.json_model import JsonAgentModel
-from qq_time_agent.modules.agent.application.loop import AgentLoop
+from qq_time_agent.modules.agent.application.loop import AgentLoop, AgentLoopConfig
 from qq_time_agent.modules.agent.application.run_service import AgentRunService
 from qq_time_agent.modules.agent.infrastructure.repository import SqlAgentRunRepository
 from qq_time_agent.modules.ai_gateway.application.service import AIGatewayService
@@ -67,6 +68,10 @@ async def run_qq() -> None:
     engine = create_database_engine(config.database)
     sessions = async_sessionmaker(engine, expire_on_commit=False)
     queue = SqlJobQueue(sessions)
+    context_policy = ContextBudgetPolicy(
+        config.agent_context.max_context_tokens,
+        safety_margin_tokens=config.agent_context.safety_margin_tokens,
+    )
     deepseek = DeepSeekStructuredAdapter(config.deepseek)
     ollama = OllamaEmbeddingAdapter(config.ollama)
     inbox = InboxService(SqlInboxRepository(sessions))
@@ -121,8 +126,17 @@ async def run_qq() -> None:
         OwnerGroupAliasToolRegistry(owner_aliases),
     )
     agent = AgentLoop(
-        JsonAgentModel(model),
+        JsonAgentModel(
+            model,
+            max_context_tokens=config.agent_context.max_context_tokens,
+            safety_margin_tokens=config.agent_context.safety_margin_tokens,
+        ),
         tools,
+        config=AgentLoopConfig(
+            model_output_token_budget=config.agent_context.model_output_token_budget,
+            max_output_tokens_per_request=config.agent_context.max_output_tokens_per_request,
+            observation_token_budget=config.agent_context.observation_tokens,
+        ),
         owner_timezone=str(config.schedule.timezone),
         clock=clock,
     )
@@ -135,6 +149,9 @@ async def run_qq() -> None:
         PendingProposalQueryService(SqlProposalRepository(sessions), clock),
         str(config.schedule.timezone),
         owner_aliases,
+        budget=context_policy,
+        retrieval_limit=config.agent_context.retrieval_limit,
+        history_limit=config.agent_context.history_limit,
     )
     agent_runs = AgentRunService(SqlAgentRunRepository(sessions), agent, clock)
     router = QqCommandRouter(

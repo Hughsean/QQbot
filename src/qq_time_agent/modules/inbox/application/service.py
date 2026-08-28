@@ -72,10 +72,12 @@ class InboxService:
             ),
         )
 
-    async def ingest_qq(self, envelope: SourceEnvelope, content: str) -> IngestResult:
+    async def ingest_qq(
+        self, envelope: SourceEnvelope, content: str, *, has_assets: bool = False
+    ) -> IngestResult:
         if envelope.source_type.value not in {"QQ_DIRECT", "QQ_FORWARD", "OWNER_NOTE"}:
             raise ValueError("QQ ingest requires a QQ source envelope")
-        if not content.strip():
+        if not content.strip() and not has_assets:
             raise ValueError("QQ text content is required")
         item_envelope = MailEnvelope(
             uuid5(NAMESPACE_URL, f"qq:{envelope.sender.provider_id}"),
