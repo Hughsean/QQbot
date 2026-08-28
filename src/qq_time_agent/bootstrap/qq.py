@@ -38,6 +38,9 @@ from qq_time_agent.modules.calendar_system.application.authorization import (
     OwnerCalendarAuthorization,
 )
 from qq_time_agent.modules.calendar_system.application.tools import CalendarToolRegistry
+from qq_time_agent.modules.connections.application.status import ConnectionStatusQueryService
+from qq_time_agent.modules.connections.application.tools import ConnectionStatusToolRegistry
+from qq_time_agent.modules.connections.infrastructure.repository import SqlConnectionRepository
 from qq_time_agent.modules.identity.application.aliases import OwnerGroupAliasService
 from qq_time_agent.modules.identity.application.service import UserPreferencesService
 from qq_time_agent.modules.identity.application.tools import OwnerGroupAliasToolRegistry
@@ -102,6 +105,7 @@ async def run_qq() -> None:
         ),
     )
     owner_aliases = OwnerGroupAliasService(SqlOwnerGroupAliasRepository(sessions), clock)
+    connection_status = ConnectionStatusQueryService(SqlConnectionRepository(sessions))
     retrieval = HybridRetrievalService(
         knowledge_repository,
         ollama,
@@ -124,6 +128,7 @@ async def run_qq() -> None:
             agenda, actions, OwnerCalendarAuthorization("owner"), str(config.schedule.timezone)
         ),
         OwnerGroupAliasToolRegistry(owner_aliases),
+        ConnectionStatusToolRegistry(connection_status),
     )
     agent = AgentLoop(
         JsonAgentModel(

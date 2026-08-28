@@ -38,6 +38,7 @@ from qq_time_agent.bootstrap.worker_runtime import build_scheduled_runner
 from qq_time_agent.contracts.clock import SystemClock
 from qq_time_agent.contracts.jobs import JobLease
 from qq_time_agent.contracts.source import SourceType
+from qq_time_agent.contracts.tools import ToolDispatcher
 from qq_time_agent.modules.actions.application.service import ActionService
 from qq_time_agent.modules.actions.infrastructure.repository import SqlActionRepository
 from qq_time_agent.modules.agenda.application.notification_query import (
@@ -62,6 +63,9 @@ from qq_time_agent.modules.calendar_system.application.authorization import (
     OwnerCalendarAuthorization,
 )
 from qq_time_agent.modules.calendar_system.application.tools import CalendarToolRegistry
+from qq_time_agent.modules.connections.application.status import ConnectionStatusQueryService
+from qq_time_agent.modules.connections.application.tools import ConnectionStatusToolRegistry
+from qq_time_agent.modules.connections.infrastructure.repository import SqlConnectionRepository
 from qq_time_agent.modules.data_lifecycle.application.coordinator import (
     DeletionCoordinator,
     ExpiryTarget,
@@ -70,6 +74,7 @@ from qq_time_agent.modules.data_lifecycle.application.coordinator import (
 from qq_time_agent.modules.data_lifecycle.infrastructure.repository import SqlTombstoneRepository
 from qq_time_agent.modules.identity.application.aliases import OwnerGroupAliasService
 from qq_time_agent.modules.identity.application.service import UserPreferencesService
+from qq_time_agent.modules.identity.application.tools import OwnerGroupAliasToolRegistry
 from qq_time_agent.modules.identity.contracts import UserPreferencesView
 from qq_time_agent.modules.identity.infrastructure.repository import (
     SqlOwnerGroupAliasRepository,
@@ -260,8 +265,14 @@ def build_worker() -> tuple[JobRunner, AsyncEngine, tuple[AsyncClosable, ...]]:
     )
     agent = AgentLoop(
         agent_model,
-        CalendarToolRegistry(
-            agenda, actions, OwnerCalendarAuthorization("owner"), str(config.schedule.timezone)
+        ToolDispatcher(
+            CalendarToolRegistry(
+                agenda, actions, OwnerCalendarAuthorization("owner"), str(config.schedule.timezone)
+            ),
+            OwnerGroupAliasToolRegistry(owner_aliases),
+            ConnectionStatusToolRegistry(
+                ConnectionStatusQueryService(SqlConnectionRepository(sessions))
+            ),
         ),
         config=AgentLoopConfig(
             model_output_token_budget=config.agent_context.model_output_token_budget,
