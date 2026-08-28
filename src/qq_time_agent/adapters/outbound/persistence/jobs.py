@@ -174,6 +174,7 @@ class SqlJobQueue:
                     JobRow.job_id == lease.job_id,
                     JobRow.status == "LEASED",
                     JobRow.lease_owner == lease.lease_owner,
+                    JobRow.attempt_count == lease.attempt_count,
                 )
                 .values(**values)
             )

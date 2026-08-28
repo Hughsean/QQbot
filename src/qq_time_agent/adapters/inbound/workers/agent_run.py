@@ -2,17 +2,30 @@
 
 from uuid import UUID
 
-from qq_time_agent.adapters.inbound.workers.runner import PermanentJobError
+from qq_time_agent.adapters.inbound.workers.runner import (
+    PermanentJobError,
+    RetryableJobError,
+)
 from qq_time_agent.contracts.clock import Clock
 from qq_time_agent.contracts.jobs import JobLease, JobQueue, JobRequest
 from qq_time_agent.modules.agent.application.run_service import AgentRunService
 from qq_time_agent.modules.agent.contracts import (
     AgentContextPort,
     AgentDelivery,
+    AgentFinal,
     AgentResponseProtocolError,
+    AgentRun,
+    AgentRunExecution,
     AgentRunExecutionPort,
+    AgentRunExecutionStatus,
+    AgentRunStatus,
 )
-from qq_time_agent.modules.inbox.contracts import InboxContentPort, InboxSourcePort
+from qq_time_agent.modules.ai_gateway.contracts import ModelFailure
+from qq_time_agent.modules.inbox.contracts import (
+    InboxContentPort,
+    InboxContentView,
+    InboxSourcePort,
+)
 from qq_time_agent.modules.notifications.contracts import (
     AgentMailResultRequest,
     MailNotificationSource,
@@ -38,16 +51,19 @@ class AgentRunJobHandler:
         self._clock = clock
 
     async def __call__(self, job: JobLease) -> None:
-        raw_run = job.payload.get("run_id")
-        raw_item = job.payload.get("inbox_item_id")
-        if not isinstance(raw_run, str) or not isinstance(raw_item, str):
-            raise ValueError("agent-run requires run_id and inbox_item_id")
-        item = await self._content.get_content(UUID(raw_item))
-        if item is None:
-            raise LookupError("AgentRun source content does not exist")
-        run = await self._runs.get(UUID(raw_run))
+        run_id, item_id = _payload_ids(job)
+        run = await self._runs.get(run_id)
         if run is None:
-            raise LookupError("AgentRun does not exist")
+            raise PermanentJobError("MissingAgentRun")
+        persisted = _persisted_final(run)
+        if persisted is not None:
+            if persisted.delivery is AgentDelivery.HOLD:
+                return
+            item = await self._require_content(item_id)
+            await self._schedule_notification(run, item, persisted)
+            return
+
+        item = await self._require_content(item_id)
         context = await self._context.build(
             "owner",
             item.body_text,
@@ -57,25 +73,59 @@ class AgentRunJobHandler:
             event_case_id=run.event_case_id,
         )
         try:
-            result = await self._runs.execute(UUID(raw_run), item.body_text, context)
+            raw_outcome = await self._runs.execute(run_id, item.body_text, context)
+            outcome = _execution_outcome(raw_outcome)
         except AgentResponseProtocolError as exc:
             raise PermanentJobError("InvalidAgentResponse") from exc
-        if self._should_notify(result.delivery):
-            if self._notifications is None or self._source is None or self._clock is None:
-                return
-            source = await self._source.get_source(item.inbox_item_id)
-            notification_source = _mail_source(source.source_type) if source is not None else None
-            if notification_source is not None:
-                now = self._clock.now()
-                await self._notifications.schedule_agent_mail_result(
-                    AgentMailResultRequest(
-                        "owner", run.run_id, notification_source, item.subject, result.content, now
-                    )
-                )
+        except ModelFailure as exc:
+            if exc.failure_class in {
+                "TimeoutOrNetwork",
+                "RateLimit",
+                "ProviderUnavailable",
+                "UnexpectedProvider",
+            }:
+                raise RetryableJobError(exc.failure_class) from exc
+            raise PermanentJobError(exc.failure_class) from exc
+        if outcome.status is AgentRunExecutionStatus.IN_PROGRESS:
+            raise RetryableJobError("AgentRunInProgress")
+        if outcome.final is None:
+            raise PermanentJobError("MalformedAgentRunResult")
+        if outcome.final.delivery is AgentDelivery.NOTIFY:
+            await self._schedule_notification(run, item, outcome.final)
 
-    @staticmethod
-    def _should_notify(delivery: AgentDelivery) -> bool:
-        return delivery is AgentDelivery.NOTIFY
+    async def _require_content(self, item_id: UUID) -> InboxContentView:
+        item = await self._content.get_content(item_id)
+        if item is None:
+            raise PermanentJobError("MissingAgentRunSource")
+        return item
+
+    async def _schedule_notification(
+        self, run: AgentRun, item: InboxContentView, result: AgentFinal
+    ) -> None:
+        if self._notifications is None or self._source is None or self._clock is None:
+            raise PermanentJobError("AgentNotificationUnavailable")
+        try:
+            source = await self._source.get_source(item.inbox_item_id)
+        except Exception as exc:
+            raise RetryableJobError("AgentNotificationSourceUnavailable") from exc
+        if source is None:
+            raise PermanentJobError("MissingAgentNotificationSource")
+        notification_source = _mail_source(source.source_type)
+        if notification_source is None:
+            raise PermanentJobError("UnsupportedAgentNotificationSource")
+        try:
+            await self._notifications.schedule_agent_mail_result(
+                AgentMailResultRequest(
+                    "owner",
+                    run.run_id,
+                    notification_source,
+                    item.subject,
+                    result.content,
+                    self._clock.now(),
+                )
+            )
+        except Exception as exc:
+            raise RetryableJobError("AgentNotificationPersistenceFailed") from exc
 
 
 class MailAgentRunScheduler:
@@ -118,6 +168,31 @@ class MailAgentRunScheduler:
                 self._clock.now(),
             )
         )
+
+
+def _payload_ids(job: JobLease) -> tuple[UUID, UUID]:
+    raw_run = job.payload.get("run_id")
+    raw_item = job.payload.get("inbox_item_id")
+    if not isinstance(raw_run, str) or not isinstance(raw_item, str):
+        raise PermanentJobError("MalformedAgentRunPayload")
+    try:
+        return UUID(raw_run), UUID(raw_item)
+    except ValueError as exc:
+        raise PermanentJobError("MalformedAgentRunPayload") from exc
+
+
+def _persisted_final(run: AgentRun) -> AgentFinal | None:
+    if run.status is not AgentRunStatus.COMPLETED:
+        return None
+    if run.final_content is None or run.final_delivery is None:
+        raise PermanentJobError("MalformedCompletedAgentRun")
+    return AgentFinal(run.final_content, run.final_delivery)
+
+
+def _execution_outcome(value: AgentRunExecution | AgentFinal) -> AgentRunExecution:
+    if isinstance(value, AgentRunExecution):
+        return value
+    return AgentRunExecution(AgentRunExecutionStatus.EXECUTED, value)
 
 
 def _mail_source(source_type: str) -> MailNotificationSource | None:

@@ -119,6 +119,21 @@ async def test_runner_dead_letters_unknown_job_kind() -> None:
 
 
 @pytest.mark.asyncio
+async def test_runner_classifies_unexpected_handler_failure_as_retryable() -> None:
+    job = JobLease(uuid4(), "unexpected", {}, "worker", 1, 3)
+    queue = MemoryQueue([job])
+
+    async def handle(_: JobLease) -> None:
+        raise RuntimeError("temporary database outage")
+
+    now = datetime(2026, 8, 13, tzinfo=UTC)
+    runner = JobRunner(queue, {"unexpected": handle}, FixedClock(now), "worker")
+    await runner.run_once()
+
+    assert queue.failures == [(job.job_id, "TransientProvider", now + timedelta(seconds=2))]
+
+
+@pytest.mark.asyncio
 async def test_runner_preserves_explicit_permanent_error_classification() -> None:
     job = JobLease(uuid4(), "invalid-agent", {}, "worker", 1, 3)
     queue = MemoryQueue([job])

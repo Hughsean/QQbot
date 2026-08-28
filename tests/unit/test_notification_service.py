@@ -46,8 +46,16 @@ async def test_reminder_delivery_is_idempotent_and_source_labelled() -> None:
     sender = Sender()
     service = NotificationService(sender, Repository(), Clock())
     entry = AgendaEntryView(
-        uuid4(), "EVENT", "评审", start, start + timedelta(hours=1), "Asia/Shanghai",
-        "ACTIVE", ("inbox:test",), uuid4(), 2,
+        uuid4(),
+        "EVENT",
+        "评审",
+        start,
+        start + timedelta(hours=1),
+        "Asia/Shanghai",
+        "ACTIVE",
+        ("inbox:test",),
+        uuid4(),
+        2,
     )
     lease = ReminderLease(
         uuid4(), entry.agenda_entry_id, 2, start - timedelta(minutes=30), "key", "worker", 1, 5
@@ -102,9 +110,11 @@ async def test_reminder_version_gate_and_outbound_source_labels() -> None:
     )
     assert render_outbound(NotificationKind.AGENDA_CONFLICT, "冲突") == "[日程冲突]\n冲突"
     assert render_outbound(NotificationKind.CONNECTION_REAUTH, "授权失效") == "[系统通知]\n授权失效"
-    assert render_outbound(
-        NotificationKind.OUTLOOK_MAIL_RESULT, "主题\N{FULLWIDTH COLON}会议"
-    ) == "[邮件处理\N{FULLWIDTH VERTICAL LINE}Outlook]\n主题\N{FULLWIDTH COLON}会议"
-    assert render_outbound(
-        NotificationKind.QQ_MAIL_RESULT, "主题\N{FULLWIDTH COLON}账单"
-    ) == "[邮件处理\N{FULLWIDTH VERTICAL LINE}QQ邮箱]\n主题\N{FULLWIDTH COLON}账单"
+    assert (
+        render_outbound(NotificationKind.OUTLOOK_MAIL_RESULT, "主题\N{FULLWIDTH COLON}会议")
+        == "[邮件处理\N{FULLWIDTH VERTICAL LINE}Outlook]\n主题\N{FULLWIDTH COLON}会议"
+    )
+    assert (
+        render_outbound(NotificationKind.QQ_MAIL_RESULT, "主题\N{FULLWIDTH COLON}账单")
+        == "[邮件处理\N{FULLWIDTH VERTICAL LINE}QQ邮箱]\n主题\N{FULLWIDTH COLON}账单"
+    )

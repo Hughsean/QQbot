@@ -99,14 +99,15 @@ class JobRunner:
                 },
             )
         except Exception:
-            await self._queue.fail(job, self._clock.now(), "PermanentProvider", None)
+            retry_at = _next_retry(self._clock.now(), job.attempt_count)
+            await self._queue.fail(job, self._clock.now(), "TransientProvider", retry_at)
             LOGGER.exception(
-                "job failed permanently",
+                "job failed transiently",
                 extra={
                     "job_id": job.job_id,
                     "kind": job.kind,
                     "attempt": job.attempt_count,
-                    "failure_class": "PermanentProvider",
+                    "failure_class": "TransientProvider",
                 },
             )
         else:

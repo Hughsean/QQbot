@@ -37,15 +37,11 @@ class Reminders:
         del entry_id, expected_version
         return 0
 
-    async def snooze(
-        self, reminder_id: UUID, delay: timedelta, now: datetime
-    ) -> ReminderView:
+    async def snooze(self, reminder_id: UUID, delay: timedelta, now: datetime) -> ReminderView:
         del reminder_id, delay, now
         raise NotImplementedError
 
-    async def reschedule(
-        self, reminder_id: UUID, due_at: datetime, now: datetime
-    ) -> ReminderView:
+    async def reschedule(self, reminder_id: UUID, due_at: datetime, now: datetime) -> ReminderView:
         del reminder_id, due_at, now
         raise NotImplementedError
 
@@ -89,6 +85,7 @@ class Notifications:
         if self.fail_reminder:
             raise ConnectionError("QQ unavailable")
         return DeliveryRef("delivery")
+
 
 def _entry(version: int = 1) -> AgendaEntryView:
     start = datetime(2026, 8, 20, 1, tzinfo=UTC)
