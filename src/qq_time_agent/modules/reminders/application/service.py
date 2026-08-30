@@ -113,4 +113,5 @@ def _view(value: Reminder) -> ReminderView:
         value.due_at,
         value.status.value,
         value.attempt_count,
+        value.occurrence,
     )

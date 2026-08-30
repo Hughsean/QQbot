@@ -19,6 +19,7 @@ class ReminderView:
     due_at: datetime
     status: str
     attempt_count: int
+    occurrence: int = 1
 
 
 @dataclass(frozen=True, slots=True)

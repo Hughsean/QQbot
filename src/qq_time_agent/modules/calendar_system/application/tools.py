@@ -105,15 +105,24 @@ class CalendarToolRegistry:
             ),
             ToolDefinition(
                 "update_reminder",
-                "Update the earliest active reminder for an agenda entry.",
+                "Update one current reminder identified by agenda, version, reminder "
+                "id and occurrence.",
                 {
                     "type": "object",
                     "properties": {
                         "agenda_entry_id": {"type": "string"},
                         "expected_version": {"type": "integer", "minimum": 1},
+                        "reminder_id": {"type": "string"},
+                        "expected_occurrence": {"type": "integer", "minimum": 1},
                         "due_at": {"type": "string", "format": "date-time"},
                     },
-                    "required": ["agenda_entry_id", "expected_version", "due_at"],
+                    "required": [
+                        "agenda_entry_id",
+                        "expected_version",
+                        "reminder_id",
+                        "expected_occurrence",
+                        "due_at",
+                    ],
                 },
             ),
         )
@@ -153,7 +162,16 @@ class CalendarToolRegistry:
             _only(arguments, {"agenda_entry_id", "expected_version"})
             return await self._mutate(owner_id, "CANCEL_AGENDA", arguments)
         if name == "update_reminder":
-            _only(arguments, {"agenda_entry_id", "expected_version", "due_at"})
+            _only(
+                arguments,
+                {
+                    "agenda_entry_id",
+                    "expected_version",
+                    "reminder_id",
+                    "expected_occurrence",
+                    "due_at",
+                },
+            )
             return await self._update_reminder(owner_id, arguments)
         raise ValueError("unknown calendar tool")
 
@@ -208,21 +226,26 @@ class CalendarToolRegistry:
     async def _update_reminder(self, owner_id: str, arguments: Mapping[str, object]) -> object:
         entry_id = _uuid(arguments, "agenda_entry_id")
         expected = _positive_int(arguments, "expected_version")
+        reminder_id = _uuid(arguments, "reminder_id")
+        expected_occurrence = _positive_int(arguments, "expected_occurrence")
         entry = await self._agenda_query.get_entry(entry_id)
         if entry is None or entry.status != "ACTIVE":
             raise LookupError("active agenda entry does not exist")
         if entry.version != expected:
             raise ValueError("agenda entry version is stale")
+        due_at = _calendar_moment(arguments.get("due_at"), self._owner_timezone)
+        if due_at > entry.starts_at:
+            raise ValueError("reminder due_at must not be after agenda start")
         payload = dict(arguments)
-        payload["due_at"] = _calendar_moment(
-            arguments.get("due_at"), self._owner_timezone
-        ).isoformat()
+        payload["due_at"] = due_at.isoformat()
+        payload["reminder_id"] = str(reminder_id)
+        payload["expected_occurrence"] = expected_occurrence
         return _render_result(
             await self._actions.execute_calendar_operation(
                 owner_id,
                 "UPDATE_REMINDER",
                 payload,
-                f"agent:reminder:{entry_id}:v{expected}:{payload['due_at']}",
+                f"agent:reminder:{reminder_id}:o{expected_occurrence}:v{expected}:{payload['due_at']}",
             )
         )
 

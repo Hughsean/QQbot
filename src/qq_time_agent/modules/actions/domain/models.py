@@ -101,6 +101,7 @@ class ActionRequest:
             now,
             agenda_entry_id=_payload_uuid(payload, "agenda_entry_id"),
             agenda_entry_version=_payload_int(payload, "expected_version"),
+            reminder_id=_payload_uuid(payload, "reminder_id"),
             operation_payload=dict(payload),
         )
 

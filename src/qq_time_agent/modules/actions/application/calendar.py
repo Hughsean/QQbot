@@ -114,19 +114,28 @@ class CalendarActionExecutor:
         return _view(action, entry_id, revised.version)
 
     async def _update_reminder(self, action: ActionRequest) -> ActionResultView:
-        entry_id, expected, _ = await self._target(action)
+        entry_id, expected, entry = await self._target(action)
+        payload = action.operation_payload or {}
+        reminder_id = _required(action.reminder_id)
+        expected_occurrence = _integer(payload, "expected_occurrence", 1)
+        due_at = _time(payload, "due_at")
+        if due_at > entry.starts_at:
+            raise ValueError("reminder due_at must not be after agenda start")
         values = await self._reminders.list_for_entry(entry_id)
-        active = tuple(
-            item
-            for item in values
-            if item.agenda_entry_version == expected
-            and item.status not in {"CANCELLED", "DEAD_LETTER", "SENT"}
+        current = next(
+            (
+                item
+                for item in values
+                if item.reminder_id == reminder_id
+                and item.agenda_entry_version == expected
+                and item.occurrence == expected_occurrence
+                and item.status not in {"CANCELLED", "DEAD_LETTER", "SENT"}
+            ),
+            None,
         )
-        if not active:
-            raise LookupError("active reminder does not exist")
-        current = min(active, key=lambda item: item.due_at)
-        due_at = _time(action.operation_payload or {}, "due_at")
-        updated = await self._reminders.reschedule(current.reminder_id, due_at, self._clock.now())
+        if current is None:
+            raise LookupError("reminder target is stale or does not exist")
+        updated = await self._reminders.reschedule(reminder_id, due_at, self._clock.now())
         return _view(action, entry_id, expected, updated.reminder_id)
 
     async def _target(self, action: ActionRequest) -> tuple[UUID, int, AgendaEntryView]:

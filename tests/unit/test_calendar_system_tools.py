@@ -160,9 +160,11 @@ async def test_reminder_update_uses_owner_timezone_normalization() -> None:
         {
             "agenda_entry_id": str(ENTRY_ID),
             "expected_version": 2,
-            "due_at": "2026-08-27T01:00:00Z",
+            "reminder_id": str(uuid4()),
+            "expected_occurrence": 1,
+            "due_at": "2026-08-26T00:00:00Z",
         },
     )
     assert actions.operation == "UPDATE_REMINDER"
     assert actions.payload is not None
-    assert actions.payload["due_at"] == "2026-08-27T09:00:00+08:00"
+    assert actions.payload["due_at"] == "2026-08-26T08:00:00+08:00"
