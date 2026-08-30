@@ -32,6 +32,9 @@ class ReminderActionToken:
     action_value: str | None
     expires_at: datetime
     used_at: datetime | None = None
+    claimed_at: datetime | None = None
+    resolved_at: datetime | None = None
+    outcome: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -54,9 +57,17 @@ class ReminderActionTokenPort(Protocol):
         expires_at: datetime,
     ) -> str: ...
 
-    async def consume(
-        self, token: str, owner_id: str, now: datetime
+    async def claim(
+        self,
+        token: str,
+        owner_id: str,
+        expected_action_type: str,
+        now: datetime,
     ) -> ReminderActionToken | None: ...
+
+    async def resolve(
+        self, token_hash: str, now: datetime, outcome: str
+    ) -> None: ...
 
 
 class ReminderActionHandler(Protocol):

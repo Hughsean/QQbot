@@ -6,6 +6,7 @@ from uuid import UUID
 from sqlalchemy import DateTime, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.sql import expression
 
 
 class NotificationsBase(DeclarativeBase):
@@ -62,6 +63,14 @@ class ReminderActionTokenRow(NotificationsBase):
     __tablename__ = "notifications_reminder_action_tokens"
     __table_args__ = (
         Index("ix_notifications_reminder_action_tokens_expiry", "expires_at"),
+        Index(
+            "uq_notifications_reminder_action_tokens_claim",
+            "owner_id",
+            "reminder_id",
+            "occurrence",
+            unique=True,
+            postgresql_where=expression.column("claimed_at").is_not(None),
+        ),
     )
 
     token_hash: Mapped[str] = mapped_column(String(128), primary_key=True)
@@ -74,3 +83,6 @@ class ReminderActionTokenRow(NotificationsBase):
     action_value: Mapped[str | None] = mapped_column(String(80), nullable=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    outcome: Mapped[str | None] = mapped_column(String(40), nullable=True)

@@ -32,13 +32,21 @@ class ReminderInteractionDispatcher(InteractionDispatcher):
         handler = self._handlers.get(button_id)
         if handler is None:
             return ReminderActionResult("此按钮操作不受支持。", idempotent=True)
-        action = await self._tokens.consume(button_data, owner_id, self._clock.now())
-        if action is None or action.action_type != button_id:
+        action = await self._tokens.claim(
+            button_data, owner_id, button_id, self._clock.now()
+        )
+        if action is None:
             return ReminderActionResult("此按钮已过期或已处理。", idempotent=True)
         try:
-            return await handler.handle(action)
+            result = await handler.handle(action)
         except (LookupError, PermissionError, ValueError):
+            await self._tokens.resolve(action.token_hash, self._clock.now(), "REJECTED")
             return ReminderActionResult("当前提醒状态已变化, 请使用最新提醒。", idempotent=True)
+        except Exception:
+            await self._tokens.resolve(action.token_hash, self._clock.now(), "FAILED")
+            raise
+        await self._tokens.resolve(action.token_hash, self._clock.now(), "SUCCEEDED")
+        return result
 
 
 class CompleteReminderHandler(ReminderActionHandler):
@@ -75,11 +83,24 @@ class DeferReminderHandler(ReminderActionHandler):
         "1h": timedelta(hours=1),
     }
 
-    def __init__(self, reminders: ReminderCommandPort, clock: Clock) -> None:
+    def __init__(
+        self,
+        reminders: ReminderCommandPort,
+        agenda_query: AgendaQueryPort,
+        clock: Clock,
+    ) -> None:
         self._reminders = reminders
+        self._agenda_query = agenda_query
         self._clock = clock
 
     async def handle(self, action: ReminderActionToken) -> ReminderActionResult:
+        entry = await self._agenda_query.get_entry(action.agenda_entry_id)
+        if (
+            entry is None
+            or entry.version != action.agenda_entry_version
+            or entry.status != "ACTIVE"
+        ):
+            raise ValueError("日程状态已变化, 请使用最新提醒")
         delay = self._DELAYS.get(action.action_value or "")
         if delay is None:
             raise ValueError("推迟时长不受支持")

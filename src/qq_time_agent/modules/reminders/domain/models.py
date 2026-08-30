@@ -77,8 +77,8 @@ class Reminder:
         self._clear_lease()
 
     def cancel(self) -> None:
-        if self.status in {ReminderStatus.SENT, ReminderStatus.DEAD_LETTER}:
-            raise ValueError("terminal Reminder cannot be cancelled")
+        if self.status is ReminderStatus.DEAD_LETTER:
+            raise ValueError("terminal dead-letter Reminder cannot be cancelled")
         self.status = ReminderStatus.CANCELLED
         self._clear_lease()
 

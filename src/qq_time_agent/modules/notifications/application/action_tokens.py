@@ -6,6 +6,7 @@ from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import and_, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from qq_time_agent.modules.notifications.contracts import (
@@ -53,40 +54,80 @@ class ReminderActionTokenService(ReminderActionTokenPort):
             )
         return token
 
-    async def consume(self, token: str, owner_id: str, now: datetime) -> ReminderActionToken | None:
-        if not token or not owner_id.strip() or now.tzinfo is None:
+    async def claim(
+        self,
+        token: str,
+        owner_id: str,
+        expected_action_type: str,
+        now: datetime,
+    ) -> ReminderActionToken | None:
+        if (
+            not token
+            or not owner_id.strip()
+            or not expected_action_type.strip()
+            or now.tzinfo is None
+        ):
             return None
         token_hash = _hash(token)
+        try:
+            async with self._sessions.begin() as session:
+                result = await session.execute(
+                    update(ReminderActionTokenRow)
+                    .where(
+                        and_(
+                            ReminderActionTokenRow.token_hash == token_hash,
+                            ReminderActionTokenRow.owner_id == owner_id,
+                            ReminderActionTokenRow.action_type == expected_action_type,
+                            ReminderActionTokenRow.used_at.is_(None),
+                            ReminderActionTokenRow.claimed_at.is_(None),
+                            ReminderActionTokenRow.expires_at > now,
+                        )
+                    )
+                    .values(used_at=now, claimed_at=now)
+                    .returning(ReminderActionTokenRow)
+                )
+                row = result.fetchone()
+                if row is None:
+                    return None
+                return _to_token(row[0])
+        except IntegrityError as exc:
+            if "uq_notifications_reminder_action_tokens_claim" not in str(exc.orig):
+                raise
+            return None
+
+    async def resolve(self, token_hash: str, now: datetime, outcome: str) -> None:
+        if not token_hash or now.tzinfo is None or not outcome.strip():
+            return
         async with self._sessions.begin() as session:
-            result = await session.execute(
+            await session.execute(
                 update(ReminderActionTokenRow)
                 .where(
                     and_(
                         ReminderActionTokenRow.token_hash == token_hash,
-                        ReminderActionTokenRow.owner_id == owner_id,
-                        ReminderActionTokenRow.used_at.is_(None),
-                        ReminderActionTokenRow.expires_at > now,
+                        ReminderActionTokenRow.claimed_at.is_not(None),
+                        ReminderActionTokenRow.resolved_at.is_(None),
                     )
                 )
-                .values(used_at=now)
-                .returning(ReminderActionTokenRow)
+                .values(resolved_at=now, outcome=outcome)
             )
-            row = result.fetchone()
-            if row is None:
-                return None
-            value = row[0]
-            return ReminderActionToken(
-                value.token_hash,
-                value.owner_id,
-                value.reminder_id,
-                value.agenda_entry_id,
-                value.agenda_entry_version,
-                value.occurrence,
-                value.action_type,
-                value.action_value,
-                value.expires_at,
-                value.used_at,
-            )
+
+
+def _to_token(value: ReminderActionTokenRow) -> ReminderActionToken:
+    return ReminderActionToken(
+        value.token_hash,
+        value.owner_id,
+        value.reminder_id,
+        value.agenda_entry_id,
+        value.agenda_entry_version,
+        value.occurrence,
+        value.action_type,
+        value.action_value,
+        value.expires_at,
+        value.used_at,
+        value.claimed_at,
+        value.resolved_at,
+        value.outcome,
+    )
 
 
 def _hash(token: str) -> str:

@@ -75,7 +75,8 @@ async def test_reminder_service_schedule_lease_fail_send_snooze_and_cancel() -> 
         )
     current = repository.values[first.reminder_id]
     assert current.occurrence == 2 and current.status.value == "SENT"
-    assert await service.cancel_for_entry(entry_id, 1) == 0
+    assert await service.cancel_for_entry(entry_id, 1) == 1
+    assert repository.values[first.reminder_id].status.value == "CANCELLED"
 
 
 @pytest.mark.asyncio

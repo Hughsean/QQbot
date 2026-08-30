@@ -102,7 +102,7 @@ async def run_qq() -> None:
         token_service,
         {
             "reminder.complete": CompleteReminderHandler(agenda, agenda, reminders),
-            "reminder.defer": DeferReminderHandler(reminders, clock),
+            "reminder.defer": DeferReminderHandler(reminders, agenda, clock),
         },
         clock,
     )

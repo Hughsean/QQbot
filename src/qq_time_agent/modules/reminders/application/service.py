@@ -29,7 +29,6 @@ class ReminderService:
         count = 0
         for value in values:
             if value.agenda_entry_version <= expected_version and value.status not in {
-                ReminderStatus.SENT,
                 ReminderStatus.DEAD_LETTER,
                 ReminderStatus.CANCELLED,
             }:

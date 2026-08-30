@@ -47,17 +47,32 @@ class Reminders:
 class Tokens:
     def __init__(self, action: ReminderActionToken | None) -> None:
         self.action = action
-        self.calls: list[tuple[str, str, datetime]] = []
+        self.calls: list[tuple[str, str, str, datetime]] = []
+        self.resolutions: list[tuple[str, str]] = []
 
-    async def consume(self, token: str, owner_id: str, now: datetime) -> ReminderActionToken | None:
-        self.calls.append((token, owner_id, now))
+    async def claim(
+        self, token: str, owner_id: str, expected_action_type: str, now: datetime
+    ) -> ReminderActionToken | None:
+        self.calls.append((token, owner_id, expected_action_type, now))
+        if self.action is not None and self.action.action_type != expected_action_type:
+            return None
         return self.action
+
+    async def resolve(self, token_hash: str, now: datetime, outcome: str) -> None:
+        del now
+        self.resolutions.append((token_hash, outcome))
+
+
+class Agenda:
+    async def get_entry(self, entry_id: UUID) -> object:
+        del entry_id
+        return type("Entry", (), {"version": 1, "status": "ACTIVE"})()
 
 
 @pytest.mark.asyncio
 async def test_defer_handler_passes_controlled_delay_and_occurrence() -> None:
     reminders = Reminders()
-    handler = DeferReminderHandler(reminders, Clock())
+    handler = DeferReminderHandler(reminders, Agenda(), Clock())
 
     result = await handler.handle(token())
 
@@ -68,7 +83,7 @@ async def test_defer_handler_passes_controlled_delay_and_occurrence() -> None:
 @pytest.mark.asyncio
 async def test_defer_handler_rejects_unknown_delay() -> None:
     reminders = Reminders()
-    handler = DeferReminderHandler(reminders, Clock())
+    handler = DeferReminderHandler(reminders, Agenda(), Clock())
 
     with pytest.raises(ValueError, match="不受支持"):
         await handler.handle(token(value="2h"))
@@ -92,7 +107,7 @@ async def test_dispatcher_rejects_action_type_mismatch() -> None:
     reminders = Reminders()
     dispatcher = ReminderInteractionDispatcher(
         tokens,
-        {"reminder.defer": DeferReminderHandler(reminders, Clock())},
+        {"reminder.defer": DeferReminderHandler(reminders, Agenda(), Clock())},
         Clock(),
     )
 
@@ -105,12 +120,14 @@ async def test_dispatcher_rejects_action_type_mismatch() -> None:
 @pytest.mark.asyncio
 async def test_dispatcher_maps_handler_state_error_to_idempotent_result() -> None:
     reminders = Reminders(ValueError("stale"))
+    tokens = Tokens(token())
     dispatcher = ReminderInteractionDispatcher(
-        Tokens(token()),
-        {"reminder.defer": DeferReminderHandler(reminders, Clock())},
+        tokens,
+        {"reminder.defer": DeferReminderHandler(reminders, Agenda(), Clock())},
         Clock(),
     )
 
     result = await dispatcher.dispatch("interaction", "owner", "reminder.defer", "raw")
 
     assert result == ReminderActionResult("当前提醒状态已变化, 请使用最新提醒。", idempotent=True)
+    assert tokens.resolutions == [("hash", "REJECTED")]
