@@ -29,6 +29,7 @@ from qq_time_agent.modules.agent.application.context import AgentContextAssemble
 from qq_time_agent.modules.agent.application.json_model import JsonAgentModel
 from qq_time_agent.modules.agent.application.loop import AgentLoop, AgentLoopConfig
 from qq_time_agent.modules.agent.application.run_service import AgentRunService
+from qq_time_agent.modules.agent.infrastructure.events import SqlAgentRunEventRepository
 from qq_time_agent.modules.agent.infrastructure.repository import SqlAgentRunRepository
 from qq_time_agent.modules.ai_gateway.application.service import AIGatewayService
 from qq_time_agent.modules.ai_gateway.infrastructure.repository import SqlInvocationRepository
@@ -160,10 +161,12 @@ async def run_qq() -> None:
         owner_timezone=str(config.schedule.timezone),
         clock=clock,
     )
+    run_repository = SqlAgentRunRepository(sessions)
+    run_event_repository = SqlAgentRunEventRepository(sessions)
     agent_context = AgentContextAssembler(
         retrieval,
         inbox,
-        SqlAgentRunRepository(sessions),
+        run_repository,
         SqlInboxRepository(sessions),
         AgendaNotificationQueryService(agenda_repository),
         PendingProposalQueryService(SqlProposalRepository(sessions), clock),
@@ -173,7 +176,7 @@ async def run_qq() -> None:
         retrieval_limit=config.agent_context.retrieval_limit,
         history_limit=config.agent_context.history_limit,
     )
-    agent_runs = AgentRunService(SqlAgentRunRepository(sessions), agent, clock)
+    agent_runs = AgentRunService(run_repository, agent, clock, events=run_event_repository)
     router = QqCommandRouter(
         inbox,
         inbox,

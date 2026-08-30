@@ -54,6 +54,9 @@ class AgentContextAssembler:
         exclude_id: UUID | None = None,
         conversation_id: UUID | None = None,
         event_case_id: UUID | None = None,
+        run_id: UUID | None = None,
+        run_status: str = "RUNNING",
+        step: int = 0,
     ) -> str:
         blocks = await self._initial_blocks(user_id, message)
         blocks.extend(
@@ -96,6 +99,16 @@ class AgentContextAssembler:
                 for index, item in enumerate(proposals)
                 if item.user_id == user_id
             )
+        blocks.append(
+            ContextBlock(
+                "stage",
+                "current execution state",
+                f"[stage-state] run_id={run_id or 'unknown'} status={run_status} step={step} "
+                f"user_message={message[:800]}",
+                1000,
+                stable_id="stage-state",
+            )
+        )
         return self._budget.render(_deduplicate(blocks))
 
     async def _initial_blocks(self, user_id: str, message: str) -> list[ContextBlock]:

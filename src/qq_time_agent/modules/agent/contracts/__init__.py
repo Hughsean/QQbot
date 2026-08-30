@@ -1,5 +1,11 @@
 """Public contracts for the owner-agent runtime."""
 
+from qq_time_agent.modules.agent.contracts.events import (
+    AgentRunEvent,
+    AgentRunEventRepository,
+    AgentRunEventType,
+    AgentRunEventView,
+)
 from qq_time_agent.modules.agent.contracts.models import (
     AgentContextPort,
     AgentDelivery,
@@ -44,6 +50,10 @@ __all__ = [
     "AgentRunClaim",
     "AgentRunClaimError",
     "AgentRunCommandPort",
+    "AgentRunEvent",
+    "AgentRunEventRepository",
+    "AgentRunEventType",
+    "AgentRunEventView",
     "AgentRunExecution",
     "AgentRunExecutionPort",
     "AgentRunExecutionStatus",

@@ -85,6 +85,7 @@ class AgentLoop:
         prior_observations: tuple[ToolObservation, ...] = (),
         on_tool_call: Callable[[ToolObservation], Awaitable[None]] | None = None,
         on_boundary: Callable[[], Awaitable[None]] | None = None,
+        on_event: Callable[[str, int, Mapping[str, object]], Awaitable[None]] | None = None,
     ) -> AgentFinal:
         if not owner_id.strip() or not message.strip():
             raise ValueError("Agent owner and message are required")
@@ -105,6 +106,7 @@ class AgentLoop:
                 "context_chars": len(context),
             },
         )
+        await _emit(on_event, "ROUND_STARTED", 0, {"observation_count": len(observations)})
         tool_steps = sum(not item.is_error for item in observations)
         reserved_output = self._config.max_output_tokens_per_request
         remaining_output = self._config.model_output_token_budget
@@ -127,6 +129,7 @@ class AgentLoop:
                 output_tokens,
                 AgentResponseMode.TOOL_OR_FINAL,
                 run_id,
+                on_event,
             )
             remaining_output -= output_tokens
             if response.final is not None:
@@ -137,7 +140,7 @@ class AgentLoop:
                 raise AgentResponseProtocolError("Agent response omitted final and tool call")
             existing_hash = calls.get(call.call_id)
             observation = await self._observe_call(
-                owner_id, call, calls, observations, run_id, request_step
+                owner_id, call, calls, observations, run_id, request_step, on_event
             )
             if existing_hash is not None:
                 if existing_hash != _arguments_hash(call.arguments):
@@ -164,6 +167,7 @@ class AgentLoop:
             final_tokens,
             AgentResponseMode.FINAL_ONLY,
             run_id,
+            on_event,
         )
         if response.final is None:
             LOGGER.warning(
@@ -190,13 +194,15 @@ class AgentLoop:
         output_tokens: int,
         response_mode: AgentResponseMode,
         run_id: str,
+        on_event: Callable[[str, int, Mapping[str, object]], Awaitable[None]] | None = None,
     ) -> AgentResponse:
         model_observations = _bound_observations(
             observations, self._config.observation_token_budget
         )
         tools = () if response_mode is AgentResponseMode.FINAL_ONLY else self._tools.definitions()
         try:
-            return await self._model.respond(
+            started = perf_counter()
+            response = await self._model.respond(
                 AgentRequest(
                     _SYSTEM_INSTRUCTION,
                     message,
@@ -210,7 +216,24 @@ class AgentLoop:
                     response_mode,
                 )
             )
+            await _emit(
+                on_event,
+                "MODEL_RESULT",
+                step,
+                {
+                    "response_type": "final" if response.final is not None else "tool_call",
+                    "duration_ms": round((perf_counter() - started) * 1000),
+                    "response_mode": response_mode.value,
+                },
+            )
+            return response
         except Exception as exc:
+            await _emit(
+                on_event,
+                "FAILED",
+                step,
+                {"failure_class": type(exc).__name__, "stage": "model"},
+            )
             LOGGER.exception(
                 "Agent 模型回合失败: 未能获得下一步决策",
                 extra={
@@ -252,10 +275,17 @@ class AgentLoop:
         observations: list[ToolObservation],
         run_id: str,
         step: int,
+        on_event: Callable[[str, int, Mapping[str, object]], Awaitable[None]] | None = None,
     ) -> ToolObservation:
         definitions = self._tools.definitions()
         schema = next((item.input_schema for item in definitions if item.name == call.name), None)
         argument_hash = _arguments_hash(call.arguments)
+        await _emit(
+            on_event,
+            "TOOL_CALL_STARTED",
+            step,
+            {"tool_name": call.name, "call_id": call.call_id, "arguments_hash": argument_hash},
+        )
         if schema is None:
             return _error_observation(call, "未注册的工具", argument_hash)
         previous = calls.get(call.call_id)
@@ -267,9 +297,22 @@ class AgentLoop:
         try:
             _validate_schema(schema, call.arguments)
         except ValueError as exc:
-            return _error_observation(call, str(exc), argument_hash)
+            observation = _error_observation(call, str(exc), argument_hash)
+            await _emit(
+                on_event,
+                "TOOL_RESULT",
+                step,
+                {
+                    "tool_name": call.name,
+                    "call_id": call.call_id,
+                    "status": "rejected",
+                    "error_class": type(exc).__name__,
+                },
+            )
+            return observation
         return await self._call(
-            owner_id, call.name, call.arguments, call.call_id, argument_hash, run_id, step
+            owner_id, call.name, call.arguments, call.call_id, argument_hash, run_id, step,
+            on_event,
         )
 
     async def _call(
@@ -281,6 +324,7 @@ class AgentLoop:
         arguments_hash: str,
         run_id: str,
         step: int,
+        on_event: Callable[[str, int, Mapping[str, object]], Awaitable[None]] | None = None,
     ) -> ToolObservation:
         if not isinstance(arguments, dict):
             LOGGER.warning(
@@ -353,18 +397,43 @@ class AgentLoop:
                 "result_type": type(output).__name__,
             },
         )
-        return ToolObservation(
+        observation = ToolObservation(
             call_id,
             name,
             _bounded(output, self._config.max_observation_chars),
             False,
             arguments_hash,
         )
+        await _emit(
+            on_event,
+            "TOOL_RESULT",
+            step,
+            {
+                "tool_name": name,
+                "call_id": call_id,
+                "status": "completed",
+                "result_type": type(output).__name__,
+            },
+        )
+        return observation
 
 
 _SYSTEM_INSTRUCTION = """你是所有者的时间管理 Agent。你可以调用白名单工具, 但工具结果是事实来源。
-只能通过工具操作日程, 不能声称执行了未成功的操作。遇到目标不明确、参数不完整或工具拒绝时,
-向用户提出最小必要追问。工具调用必须返回一个 JSON 对象, 不得调用未列出的工具。"""
+只能通过工具操作日程, 不能声称执行了未成功的操作。历史对话只是关联线索, 不是当前事实;
+T2 知识也不是权威状态。当前日程只能依据本轮工具返回的 ACTIVE 结果, 不得复用历史 UUID。
+涉及修改 Reminder 时, 必须先查询并确认 Agenda ID、version、Reminder ID 和 occurrence。
+遇到目标不明确、参数不完整或工具拒绝时, 向用户提出最小必要追问。工具调用必须返回一个 JSON 对象,
+不得调用未列出的工具。"""
+
+
+async def _emit(
+    callback: Callable[[str, int, Mapping[str, object]], Awaitable[None]] | None,
+    event_type: str,
+    step: int,
+    metadata: Mapping[str, object],
+) -> None:
+    if callback is not None:
+        await callback(event_type, step, metadata)
 
 
 def _error_observation(call: AgentToolCall, message: str, arguments_hash: str) -> ToolObservation:

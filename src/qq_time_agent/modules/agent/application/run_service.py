@@ -1,5 +1,6 @@
 """Durable execution boundary for owner and mail Agent runs."""
 
+from collections.abc import Mapping
 from contextlib import suppress
 from datetime import datetime, timedelta
 from typing import cast
@@ -13,6 +14,9 @@ from qq_time_agent.modules.agent.contracts import (
     AgentFinal,
     AgentRun,
     AgentRunClaimError,
+    AgentRunEvent,
+    AgentRunEventRepository,
+    AgentRunEventType,
     AgentRunExecution,
     AgentRunExecutionStatus,
     AgentRunRepository,
@@ -27,6 +31,7 @@ class AgentRunService:
         repository: AgentRunRepository,
         loop: AgentLoop,
         clock: Clock,
+        events: AgentRunEventRepository | None = None,
         execution_lease: timedelta = timedelta(minutes=5),
     ) -> None:
         if execution_lease <= timedelta(0):
@@ -40,6 +45,7 @@ class AgentRunService:
             if hasattr(repository, "ensure_scope")
             else None
         )
+        self._events = events
 
     async def ensure_run(
         self,
@@ -90,6 +96,35 @@ class AgentRunService:
                 return AgentRunExecution(AgentRunExecutionStatus.COMPLETED, completed)
             return AgentRunExecution(AgentRunExecutionStatus.IN_PROGRESS)
 
+        assert claim is not None
+        if self._events is not None:
+            with suppress(Exception):
+                await self._events.append(
+                    AgentRunEvent(
+                        run_id,
+                        AgentRunEventType.RUN_CLAIMED,
+                        now,
+                        metadata={"execution_epoch": claim.execution_epoch},
+                        idempotency_key=f"{run_id}:claimed:{claim.execution_epoch}",
+                    )
+                )
+
+        async def record_event(
+            event_type: str, step: int, metadata: Mapping[str, object]
+        ) -> None:
+            if self._events is not None:
+                with suppress(Exception):
+                    await self._events.append(
+                        AgentRunEvent(
+                            run_id,
+                            AgentRunEventType(event_type),
+                            self._clock.now(),
+                            step=step,
+                            metadata=metadata,
+                            idempotency_key=f"{run_id}:{event_type}:{step}:{hash(tuple(sorted(metadata.items())))}",
+                        )
+                    )
+
         async def renew() -> None:
             nonlocal claim
             assert claim is not None
@@ -113,6 +148,7 @@ class AgentRunService:
                 _observations(claim.run.observations),
                 record,
                 renew,
+                record_event,
             )
             await renew()
             await self._repository.complete_claim(claim, result, self._clock.now())
