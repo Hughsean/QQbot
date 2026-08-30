@@ -58,6 +58,12 @@ from qq_time_agent.modules.normalization.application.service import Normalizatio
 from qq_time_agent.modules.normalization.infrastructure.repository import (
     SqlNormalizedContentRepository,
 )
+from qq_time_agent.modules.notifications.application.action_tokens import ReminderActionTokenService
+from qq_time_agent.modules.notifications.application.reminder_actions import (
+    CompleteReminderHandler,
+    DeferReminderHandler,
+    ReminderInteractionDispatcher,
+)
 from qq_time_agent.modules.reminders.application.service import ReminderService
 from qq_time_agent.modules.reminders.infrastructure.repository import SqlReminderRepository
 from qq_time_agent.modules.retrieval.application.service import HybridRetrievalService
@@ -89,6 +95,15 @@ async def run_qq() -> None:
         clock,
         AuditService(SqlAuditRepository(sessions)),
         agenda,
+    )
+    token_service = ReminderActionTokenService(sessions)
+    interaction_dispatcher = ReminderInteractionDispatcher(
+        token_service,
+        {
+            "reminder.complete": CompleteReminderHandler(agenda, agenda, reminders),
+            "reminder.defer": DeferReminderHandler(reminders, clock),
+        },
+        clock,
     )
     preferences = UserPreferencesService(
         SqlUserPreferencesRepository(sessions),
@@ -172,9 +187,22 @@ async def run_qq() -> None:
         agent_runs,
         config.qq.display_name,
     )
-    gateway = OfficialQqGateway(config.qq, config.owner, router, clock)
+    gateway = OfficialQqGateway(
+        config.qq,
+        config.owner,
+        router,
+        clock,
+        interaction_dispatcher=interaction_dispatcher,
+    )
     notifications, intent_delivery = build_qq_notification_services(
-        sessions, preferences, agenda_repository, gateway, clock, str(config.schedule.timezone)
+        sessions,
+        preferences,
+        agenda_repository,
+        gateway,
+        clock,
+        str(config.schedule.timezone),
+        action_tokens=token_service,
+        action_owner_id=config.owner.qq_openid.get_secret_value(),
     )
     reminder_worker = ReminderWorker(
         reminders,

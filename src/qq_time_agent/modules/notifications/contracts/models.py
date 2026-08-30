@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from qq_time_agent.modules.agenda.contracts import AgendaEntryView
+from qq_time_agent.modules.notifications.contracts.actions import NotificationMessage
 from qq_time_agent.modules.reminders.contracts import ReminderLease
 
 
@@ -22,6 +23,8 @@ class NotificationPreSendPermanentError(RuntimeError):
 
 class NotificationSender(Protocol):
     async def send_active(self, content: str) -> str: ...
+
+    async def send_message(self, message: NotificationMessage) -> str: ...
 
 
 @dataclass(frozen=True, slots=True)

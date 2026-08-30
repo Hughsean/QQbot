@@ -28,7 +28,6 @@ class QqConfig:
     sandbox: bool
     display_name: str = "小智"
     diagnostic_raw_event_once: bool = False
-    interaction_probe_enabled: bool = False
 
 
 @dataclass(frozen=True, slots=True)

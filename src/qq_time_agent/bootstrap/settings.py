@@ -59,7 +59,6 @@ class EnvironmentSettings(BaseSettings):
     qq_bot_sandbox: bool = True
     qq_bot_display_name: str = Field(default="小智", min_length=1, max_length=32)
     qq_diagnostic_raw_event_once: bool = False
-    qq_interaction_probe_enabled: bool = False
     microsoft_tenant: str = "common"
     microsoft_client_id: SecretStr
     qq_mail_imap_host: str = "imap.qq.com"
@@ -135,8 +134,6 @@ class EnvironmentSettings(BaseSettings):
             raise ValueError("PERSIST_LLM_PAYLOADS must remain false")
         if self.qq_mail_imap_host != "imap.qq.com" or self.qq_mail_imap_port != 993:
             raise ValueError("QQ Mail IMAP must use imap.qq.com:993")
-        if self.qq_interaction_probe_enabled and not self.qq_bot_sandbox:
-            raise ValueError("QQ_INTERACTION_PROBE_ENABLED requires QQ_BOT_SANDBOX=true")
         if not self.qq_bot_display_name.strip():
             raise ValueError("QQ_BOT_DISPLAY_NAME must not be blank")
         if self.agent_max_output_tokens_per_request > self.agent_model_output_token_budget:
@@ -218,7 +215,6 @@ def _to_runtime_config(value: EnvironmentSettings) -> RuntimeConfig:
             value.qq_bot_sandbox,
             value.qq_bot_display_name.strip(),
             value.qq_diagnostic_raw_event_once,
-            value.qq_interaction_probe_enabled,
         ),
         database=DatabaseConfig(
             value.database_host,

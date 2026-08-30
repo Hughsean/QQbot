@@ -90,8 +90,15 @@ class Reminders:
         self.cancelled += 1
         return 1
 
-    async def snooze(self, reminder_id: UUID, delay: timedelta, now: datetime) -> ReminderView:
-        raise NotImplementedError
+    async def snooze(
+        self,
+        reminder_id: UUID,
+        delay: timedelta,
+        now: datetime,
+        *,
+        expected_occurrence: int,
+    ) -> ReminderView:
+        del reminder_id, delay, now, expected_occurrence
 
     async def reschedule(self, reminder_id: UUID, due_at: datetime, now: datetime) -> ReminderView:
         raise NotImplementedError

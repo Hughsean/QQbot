@@ -58,9 +58,24 @@ async def test_reminder_service_schedule_lease_fail_send_snooze_and_cancel() -> 
         await service.lease_due(now + timedelta(minutes=1), "worker", 10, timedelta(minutes=1))
     )[0]
     await service.mark_sent(retry, "delivery")
-    snoozed = await service.snooze(first.reminder_id, timedelta(minutes=10), now)
+    snoozed = await service.snooze(
+        first.reminder_id, timedelta(minutes=10), now, expected_occurrence=1
+    )
     assert snoozed.status == "SCHEDULED" and snoozed.due_at == now + timedelta(minutes=10)
-    assert await service.cancel_for_entry(entry_id, 1) == 1
+    retry = (
+        await service.lease_due(now + timedelta(minutes=10), "worker", 10, timedelta(minutes=1))
+    )[0]
+    await service.mark_sent(retry, "delivery-2")
+    with pytest.raises(ValueError, match="occurrence is stale"):
+        await service.snooze(
+            first.reminder_id,
+            timedelta(minutes=5),
+            now + timedelta(minutes=10),
+            expected_occurrence=1,
+        )
+    current = repository.values[first.reminder_id]
+    assert current.occurrence == 2 and current.status.value == "SENT"
+    assert await service.cancel_for_entry(entry_id, 1) == 0
 
 
 @pytest.mark.asyncio
@@ -70,4 +85,4 @@ async def test_reminder_service_validates_limit_missing_and_terminal_cancel() ->
     with pytest.raises(ValueError, match="between"):
         await service.lease_due(now, "worker", 0, timedelta(minutes=1))
     with pytest.raises(LookupError, match="does not exist"):
-        await service.snooze(UUID(int=2), timedelta(minutes=1), now)
+        await service.snooze(UUID(int=2), timedelta(minutes=1), now, expected_occurrence=1)
