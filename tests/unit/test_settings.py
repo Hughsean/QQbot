@@ -17,6 +17,24 @@ def test_settings_accept_safe_loopback_configuration() -> None:
         "http://localhost:8000/oauth/microsoft/callback"
     )
     assert _to_runtime_config(settings).qq.diagnostic_raw_event_once is False
+    assert _to_runtime_config(settings).qq_mail_bootstrap is None
+
+
+def test_settings_maps_optional_qq_mail_bootstrap_credentials() -> None:
+    values = _values()
+    values["qq_mail_bootstrap_address"] = "owner@qq.com"
+    values["qq_mail_bootstrap_auth_code"] = "synthetic-auth-code"
+    config = _to_runtime_config(EnvironmentSettings.model_validate(values))
+    assert config.qq_mail_bootstrap is not None
+    assert config.qq_mail_bootstrap.address.get_secret_value() == "owner@qq.com"
+    assert "synthetic-auth-code" not in repr(config.qq_mail_bootstrap)
+
+
+def test_settings_requires_complete_qq_mail_bootstrap_pair() -> None:
+    values = _values()
+    values["qq_mail_bootstrap_address"] = "owner@qq.com"
+    with raises(ValidationError, match="configured together"):
+        EnvironmentSettings.model_validate(values)
 
 
 def test_settings_diagnostic_flag_can_be_enabled() -> None:

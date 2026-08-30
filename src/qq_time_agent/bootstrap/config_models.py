@@ -62,6 +62,12 @@ class QqMailSandboxConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class QqMailBootstrapConfig:
+    address: SecretStr
+    authorization_code: SecretStr
+
+
+@dataclass(frozen=True, slots=True)
 class AgentContextConfig:
     max_context_tokens: int
     safety_margin_tokens: int
@@ -134,6 +140,7 @@ class RuntimeConfig:
     database: DatabaseConfig
     microsoft: MicrosoftConfig
     qq_mail: QqMailConfig
+    qq_mail_bootstrap: QqMailBootstrapConfig | None
     deepseek: DeepSeekConfig
     ollama: OllamaConfig
     schedule: ScheduleConfig

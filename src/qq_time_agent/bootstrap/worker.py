@@ -32,7 +32,10 @@ from qq_time_agent.bootstrap.runtime import configure_event_loop_policy
 from qq_time_agent.bootstrap.settings import load_runtime_config
 from qq_time_agent.bootstrap.worker_assets import build_worker_asset_services
 from qq_time_agent.bootstrap.worker_calendar import build_calendar_change_handler
-from qq_time_agent.bootstrap.worker_connections import build_worker_mail_connections
+from qq_time_agent.bootstrap.worker_connections import (
+    bootstrap_qq_mail,
+    build_worker_mail_connections,
+)
 from qq_time_agent.bootstrap.worker_notifications import build_notification_planner
 from qq_time_agent.bootstrap.worker_runtime import build_scheduled_runner
 from qq_time_agent.contracts.clock import SystemClock
@@ -352,6 +355,7 @@ def build_worker() -> tuple[JobRunner, AsyncEngine, tuple[AsyncClosable, ...]]:
         inbox_repository,
         ollama,
         build_notification_planner(sessions, preferences, agenda_repository),
+        before_start=lambda: bootstrap_qq_mail(config.qq_mail_bootstrap, qq_connections),
     )
 
     return (

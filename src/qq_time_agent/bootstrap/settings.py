@@ -19,6 +19,7 @@ from qq_time_agent.bootstrap.config_models import (
     OllamaConfig,
     OwnerConfig,
     QqConfig,
+    QqMailBootstrapConfig,
     QqMailConfig,
     QqMailSandboxConfig,
     RetentionConfig,
@@ -66,6 +67,8 @@ class EnvironmentSettings(BaseSettings):
     qq_mail_timeout_seconds: float = Field(default=20, gt=0, le=120)
     qq_mail_max_retries: int = Field(default=2, ge=0, le=5)
     qq_mail_page_size: int = Field(default=50, ge=1, le=100)
+    qq_mail_bootstrap_address: SecretStr | None = None
+    qq_mail_bootstrap_auth_code: SecretStr | None = None
     deepseek_api_key: SecretStr
     deepseek_base_url: str = "https://api.deepseek.com"
     deepseek_fast_model: str = "deepseek-v4-flash"
@@ -134,6 +137,13 @@ class EnvironmentSettings(BaseSettings):
             raise ValueError("PERSIST_LLM_PAYLOADS must remain false")
         if self.qq_mail_imap_host != "imap.qq.com" or self.qq_mail_imap_port != 993:
             raise ValueError("QQ Mail IMAP must use imap.qq.com:993")
+        if (self.qq_mail_bootstrap_address is None) != (
+            self.qq_mail_bootstrap_auth_code is None
+        ):
+            raise ValueError(
+                "QQ_MAIL_BOOTSTRAP_ADDRESS and QQ_MAIL_BOOTSTRAP_AUTH_CODE must be "
+                "configured together"
+            )
         if not self.qq_bot_display_name.strip():
             raise ValueError("QQ_BOT_DISPLAY_NAME must not be blank")
         if self.agent_max_output_tokens_per_request > self.agent_model_output_token_budget:
@@ -234,6 +244,15 @@ def _to_runtime_config(value: EnvironmentSettings) -> RuntimeConfig:
             value.qq_mail_timeout_seconds,
             value.qq_mail_max_retries,
             value.qq_mail_page_size,
+        ),
+        qq_mail_bootstrap=(
+            QqMailBootstrapConfig(
+                value.qq_mail_bootstrap_address,
+                value.qq_mail_bootstrap_auth_code,
+            )
+            if value.qq_mail_bootstrap_address is not None
+            and value.qq_mail_bootstrap_auth_code is not None
+            else None
         ),
         deepseek=DeepSeekConfig(
             value.deepseek_api_key,

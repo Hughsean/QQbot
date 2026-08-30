@@ -39,6 +39,7 @@ def build_scheduled_runner(
     sources: InboxSourcePort,
     embeddings: EmbeddingPort,
     notification_planner: NotificationPlanner,
+    before_start: Callable[[], Awaitable[None]] | None = None,
 ) -> JobRunner:
     schedulers = (
         PeriodicMailSyncScheduler(microsoft_connections, queue, clock, mail_interval_seconds),
@@ -54,11 +55,16 @@ def build_scheduled_runner(
         for scheduler in schedulers:
             await scheduler.enqueue_due()
 
+    async def run_before_start() -> None:
+        if before_start is not None:
+            await before_start()
+        await EmbeddingStartupGate(embeddings).wait()
+
     return JobRunner(
         queue,
         handlers,
         clock,
         f"worker-{uuid4()}",
         before_poll=schedule_due,
-        before_start=EmbeddingStartupGate(embeddings).wait,
+        before_start=run_before_start,
     )
