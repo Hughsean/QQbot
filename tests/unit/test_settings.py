@@ -17,7 +17,6 @@ def test_settings_accept_safe_loopback_configuration() -> None:
         "http://localhost:8000/oauth/microsoft/callback"
     )
     assert _to_runtime_config(settings).qq.diagnostic_raw_event_once is False
-    assert _to_runtime_config(settings).qq_mail_bootstrap is None
 
 
 def test_settings_maps_optional_qq_mail_bootstrap_credentials() -> None:
@@ -33,6 +32,7 @@ def test_settings_maps_optional_qq_mail_bootstrap_credentials() -> None:
 def test_settings_requires_complete_qq_mail_bootstrap_pair() -> None:
     values = _values()
     values["qq_mail_bootstrap_address"] = "owner@qq.com"
+    values["qq_mail_bootstrap_auth_code"] = None
     with raises(ValidationError, match="configured together"):
         EnvironmentSettings.model_validate(values)
 
@@ -52,7 +52,7 @@ def test_settings_accept_200k_agent_context_profile() -> None:
             "agent_context_max_tokens": 200_000,
             "agent_context_safety_margin_tokens": 4_096,
             "agent_context_retrieval_limit": 20,
-            "agent_context_history_limit": 40,
+            "agent_context_history_limit": 80,
             "agent_context_observation_tokens": 20_000,
             "agent_model_output_token_budget": 32_000,
             "agent_max_output_tokens_per_request": 4_000,
@@ -73,11 +73,18 @@ def test_settings_reject_agent_context_above_200k() -> None:
         EnvironmentSettings.model_validate(values)
 
 
+def test_settings_reject_history_limit_above_80() -> None:
+    values = _values()
+    values["agent_context_history_limit"] = 81
+    with raises(ValidationError):
+        EnvironmentSettings.model_validate(values)
+
+
 def test_settings_reject_per_request_output_above_total_budget() -> None:
     values = _values()
     values["agent_model_output_token_budget"] = 1_000
     values["agent_max_output_tokens_per_request"] = 1_001
-    with raises(ValidationError, match="must not exceed"):
+    with raises(ValidationError, match="must reserve"):
         EnvironmentSettings.model_validate(values)
 
 

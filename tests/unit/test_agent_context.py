@@ -18,7 +18,11 @@ OLDER = uuid4()
 
 
 class Retrieval:
+    def __init__(self) -> None:
+        self.calls = 0
+
     async def retrieve(self, query: str, filters: object, limit: int) -> tuple[RetrievedChunk, ...]:
+        self.calls += 1
         del query, filters, limit
         return (
             RetrievedChunk(
@@ -185,6 +189,22 @@ class OwnerAliases:
     async def list_owner_group_aliases(self, user_id: str) -> tuple[OwnerGroupAlias, ...]:
         assert user_id == "owner"
         return (OwnerGroupAlias("风拾一"),)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("message", ["", "  \t\n"])
+async def test_context_skips_retrieval_for_blank_message(message: str) -> None:
+    retrieval = Retrieval()
+    context = await AgentContextAssembler(retrieval).build("owner", message)
+
+    assert retrieval.calls == 0
+    assert "[knowledge T2]" not in context
+    assert "[stage-state]" in context
+
+
+def test_context_rejects_history_limit_above_80() -> None:
+    with pytest.raises(ValueError, match="source limits"):
+        AgentContextAssembler(Retrieval(), history_limit=81)
 
 
 @pytest.mark.asyncio

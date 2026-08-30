@@ -4,7 +4,7 @@ from datetime import time
 from ipaddress import ip_address
 from pathlib import Path
 from urllib.parse import urlparse
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -80,7 +80,7 @@ class EnvironmentSettings(BaseSettings):
     agent_context_max_tokens: int = Field(default=12_000, ge=1_000, le=200_000)
     agent_context_safety_margin_tokens: int = Field(default=512, ge=0, le=8_000)
     agent_context_retrieval_limit: int = Field(default=6, ge=1, le=30)
-    agent_context_history_limit: int = Field(default=8, ge=1, le=50)
+    agent_context_history_limit: int = Field(default=8, ge=1, le=80)
     agent_context_observation_tokens: int = Field(default=4_000, ge=500, le=32_000)
     agent_model_output_token_budget: int = Field(default=9_600, ge=1, le=32_000)
     agent_max_output_tokens_per_request: int = Field(default=1_200, ge=1, le=32_000)
@@ -95,7 +95,7 @@ class EnvironmentSettings(BaseSettings):
     ollama_keep_alive: str = "30m"
     ollama_embedding_concurrency: int = Field(default=1, ge=1, le=4)
     rag_embedding_dimensions: int = 1024
-    rag_index_version: str = "qwen3-embedding-4b-1024-v1"
+    rag_index_version: str = Field(default="qwen3-embedding-4b-1024-v1", min_length=1)
     rag_retrieval_limit: int = Field(default=12, ge=1, le=30)
     rag_vector_weight: float = Field(default=0.65, ge=0, le=1)
     rag_lexical_weight: float = Field(default=0.35, ge=0, le=1)
@@ -113,7 +113,7 @@ class EnvironmentSettings(BaseSettings):
     asset_raw_retention_hours: int = Field(default=24, ge=1, le=24)
     asset_max_pdf_pages: int = Field(default=50, ge=1, le=200)
     asset_max_image_pixels: int = Field(default=40_000_000, ge=1_000_000, le=100_000_000)
-    asset_max_output_chars: int = Field(default=200_000, ge=1_000, le=1_000_000)
+    asset_max_output_chars: int = Field(default=200_000, ge=1_000, le=200_000)
     asset_processing_timeout_seconds: int = Field(default=60, ge=5, le=300)
     retention_source_content_days: int = Field(default=365, gt=0)
     retention_ai_metadata_days: int = Field(default=180, gt=0)
@@ -144,12 +144,14 @@ class EnvironmentSettings(BaseSettings):
                 "QQ_MAIL_BOOTSTRAP_ADDRESS and QQ_MAIL_BOOTSTRAP_AUTH_CODE must be "
                 "configured together"
             )
+        self._validate_schedule_boundaries()
         if not self.qq_bot_display_name.strip():
             raise ValueError("QQ_BOT_DISPLAY_NAME must not be blank")
-        if self.agent_max_output_tokens_per_request > self.agent_model_output_token_budget:
+        if self.agent_model_output_token_budget < (
+            2 * self.agent_max_output_tokens_per_request
+        ):
             raise ValueError(
-                "AGENT_MAX_OUTPUT_TOKENS_PER_REQUEST must not exceed "
-                "AGENT_MODEL_OUTPUT_TOKEN_BUDGET"
+                "AGENT_MODEL_OUTPUT_TOKEN_BUDGET must reserve a final response request"
             )
         if (
             self.agent_max_output_tokens_per_request + self.agent_context_safety_margin_tokens
@@ -159,6 +161,21 @@ class EnvironmentSettings(BaseSettings):
                 "Agent output reservation and safety margin must leave usable input context"
             )
         return self
+
+    def _validate_schedule_boundaries(self) -> None:
+        try:
+            ZoneInfo(self.default_timezone)
+        except ZoneInfoNotFoundError as exc:
+            raise ValueError("DEFAULT_TIMEZONE must be a valid IANA timezone") from exc
+        if not self.default_work_start < self.default_work_end:
+            raise ValueError("DEFAULT_WORK_START must be before DEFAULT_WORK_END")
+        if not (
+            self.default_work_start
+            <= self.default_lunch_start
+            < self.default_lunch_end
+            <= self.default_work_end
+        ):
+            raise ValueError("default lunch must be inside working hours")
 
     def _validate_container_boundaries(self) -> None:
         if self.app_listen_host != CONTAINER_BIND_HOST:

@@ -39,8 +39,8 @@ class AgentContextAssembler:
         self._proposals = proposals
         self._owner_aliases = owner_aliases
         self._budget = budget or ContextBudgetPolicy()
-        if retrieval_limit < 1 or history_limit < 1:
-            raise ValueError("Agent context source limits must be positive")
+        if retrieval_limit < 1 or not 1 <= history_limit <= 80:
+            raise ValueError("Agent context source limits are invalid")
         self._retrieval_limit = retrieval_limit
         self._history_limit = history_limit
         resolve_timezone(owner_timezone)
@@ -112,7 +112,11 @@ class AgentContextAssembler:
         return self._budget.render(_deduplicate(blocks))
 
     async def _initial_blocks(self, user_id: str, message: str) -> list[ContextBlock]:
-        chunks = await self._retrieval.retrieve(message, RetrievalFilters(), self._retrieval_limit)
+        chunks = (
+            await self._retrieval.retrieve(message, RetrievalFilters(), self._retrieval_limit)
+            if message.strip()
+            else ()
+        )
         blocks = [
             ContextBlock(
                 "retrieval",

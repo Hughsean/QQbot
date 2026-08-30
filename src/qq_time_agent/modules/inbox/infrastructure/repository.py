@@ -192,8 +192,8 @@ class SqlInboxRepository:
     async def list_recent_conversation(
         self, user_id: str, before: datetime, exclude_id: UUID, limit: int = 8
     ) -> tuple[ConversationContextItem, ...]:
-        if limit < 1 or limit > 20:
-            raise ValueError("conversation context limit must be between 1 and 20")
+        if limit < 1 or limit > 80:
+            raise ValueError("conversation context limit must be between 1 and 80")
         async with self._sessions() as session:
             rows = await session.execute(
                 select(InboxItemRow, InboxRawContentRow)
