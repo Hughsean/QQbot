@@ -37,8 +37,15 @@ class Reminders:
         del entry_id, expected_version
         return 0
 
-    async def snooze(self, reminder_id: UUID, delay: timedelta, now: datetime) -> ReminderView:
-        del reminder_id, delay, now
+    async def snooze(
+        self,
+        reminder_id: UUID,
+        delay: timedelta,
+        now: datetime,
+        *,
+        expected_occurrence: int,
+    ) -> ReminderView:
+        del reminder_id, delay, now, expected_occurrence
         raise NotImplementedError
 
     async def reschedule(self, reminder_id: UUID, due_at: datetime, now: datetime) -> ReminderView:

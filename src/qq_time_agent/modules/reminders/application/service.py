@@ -38,8 +38,17 @@ class ReminderService:
                 count += 1
         return count
 
-    async def snooze(self, reminder_id: UUID, delay: timedelta, now: datetime) -> ReminderView:
+    async def snooze(
+        self,
+        reminder_id: UUID,
+        delay: timedelta,
+        now: datetime,
+        *,
+        expected_occurrence: int,
+    ) -> ReminderView:
         value = await self._require(reminder_id)
+        if value.occurrence != expected_occurrence:
+            raise ValueError("Reminder occurrence is stale")
         value.snooze(delay, now)
         await self._repository.save(value)
         return _view(value)
@@ -84,14 +93,15 @@ def _lease(value: Reminder) -> ReminderLease:
     if value.lease_owner is None:
         raise RuntimeError("leased Reminder omitted owner")
     return ReminderLease(
-        value.reminder_id,
-        value.agenda_entry_id,
-        value.agenda_entry_version,
-        value.due_at,
-        f"{value.idempotency_key}:occurrence:{value.occurrence}",
-        value.lease_owner,
-        value.attempt_count,
-        value.max_attempts,
+        reminder_id=value.reminder_id,
+        agenda_entry_id=value.agenda_entry_id,
+        agenda_entry_version=value.agenda_entry_version,
+        due_at=value.due_at,
+        idempotency_key=f"{value.idempotency_key}:occurrence:{value.occurrence}",
+        lease_owner=value.lease_owner,
+        attempt_count=value.attempt_count,
+        max_attempts=value.max_attempts,
+        occurrence=value.occurrence,
     )
 
 

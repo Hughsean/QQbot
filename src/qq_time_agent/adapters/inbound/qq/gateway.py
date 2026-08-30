@@ -27,7 +27,12 @@ from qq_time_agent.contracts.source import (
     TrustLevel,
 )
 from qq_time_agent.modules.agent.contracts import AgentResponseProtocolError
-from qq_time_agent.modules.notifications.contracts import NotificationPreSendTransientError
+from qq_time_agent.modules.notifications.contracts import (
+    InteractionDispatcher,
+    NotificationAction,
+    NotificationMessage,
+    NotificationPreSendTransientError,
+)
 
 LOGGER = logging.getLogger(__name__)
 
@@ -109,6 +114,8 @@ class GatewayClient(Protocol):
 
     async def send_active(self, openid: str, content: str) -> str: ...
 
+    async def send_message(self, openid: str, message: NotificationMessage) -> str: ...
+
     async def wait_ready(self, timeout_seconds: float) -> None: ...
 
 
@@ -121,11 +128,17 @@ class OfficialQqGateway:
         clock: Clock,
         client_factory: Callable[["QqMessageProcessor"], GatewayClient] | None = None,
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
+        interaction_dispatcher: InteractionDispatcher | None = None,
     ) -> None:
         self._qq = qq
         self._processor = QqMessageProcessor(owner, ingress, clock, qq.display_name)
         self._client_factory = client_factory or (
-            lambda processor: _BotpyClient(processor, qq.sandbox, qq.diagnostic_raw_event_once)
+            lambda processor: _BotpyClient(
+                processor,
+                qq.sandbox,
+                qq.diagnostic_raw_event_once,
+                interaction_dispatcher,
+            )
         )
         self._sleep = sleep
         self._client: GatewayClient | None = None
@@ -153,6 +166,13 @@ class OfficialQqGateway:
             raise NotificationPreSendTransientError("QQ gateway is not connected")
         return await self._client.send_active(
             self._processor.owner_openid.get_secret_value(), content
+        )
+
+    async def send_message(self, message: NotificationMessage) -> str:
+        if self._client is None:
+            raise NotificationPreSendTransientError("QQ gateway is not connected")
+        return await self._client.send_message(
+            self._processor.owner_openid.get_secret_value(), message
         )
 
     async def wait_ready(self, timeout_seconds: float = 30.0) -> None:
@@ -234,9 +254,13 @@ class _BotpyClient(botpy.Client):  # type: ignore[misc]
         processor: QqMessageProcessor,
         sandbox: bool,
         diagnostic_raw_event_once: bool = False,
+        interaction_dispatcher: InteractionDispatcher | None = None,
     ) -> None:
         super().__init__(
-            intents=Intents(public_messages=True),
+            intents=Intents(
+                public_messages=True,
+                interaction=interaction_dispatcher is not None,
+            ),
             timeout=10,
             is_sandbox=sandbox,
             bot_log=False,
@@ -244,6 +268,7 @@ class _BotpyClient(botpy.Client):  # type: ignore[misc]
         self._processor = processor
         self._ready = asyncio.Event()
         self._diagnostic_raw_event_once = diagnostic_raw_event_once
+        self._interaction_dispatcher = interaction_dispatcher
 
     async def _bot_login(self, token: Any) -> None:
         await super()._bot_login(token)
@@ -303,15 +328,62 @@ class _BotpyClient(botpy.Client):  # type: ignore[misc]
                 reply = f"{reply}\n部分附件因官方 QQ 接口未提供读取能力而未处理。"
             await message.reply(content=reply)
 
-    async def start(self, app_id: str, secret: str) -> None:
-        await super().start(app_id, secret)
-
     async def send_active(self, openid: str, content: str) -> str:
         result = await self.api.post_c2c_message(openid=openid, content=content)
         return _delivery_id(result)
 
+    async def send_message(self, openid: str, message: NotificationMessage) -> str:
+        keyboard = {
+            "content": {"rows": [{"buttons": [_button(a) for a in message.actions]}]}
+        }
+        result = await self.api.post_c2c_message(
+            openid=openid,
+            msg_type=2,
+            markdown={"content": message.content},
+            keyboard=keyboard,
+        )
+        return _delivery_id(result)
+
+    async def on_interaction_create(self, interaction: Any) -> None:
+        if self._interaction_dispatcher is None:
+            return
+        user_openid = str(getattr(interaction, "user_openid", ""))
+        data = getattr(getattr(interaction, "data", None), "resolved", None)
+        button_id = str(getattr(data, "button_id", ""))
+        button_data = getattr(data, "button_data", None)
+        interaction_id = str(getattr(interaction, "id", ""))
+        if not self._processor.is_owner(user_openid):
+            return
+        if not isinstance(button_data, str) or not button_id or not interaction_id:
+            return
+        try:
+            await self.api.on_interaction_result(interaction_id, code=0)
+            result = await self._interaction_dispatcher.dispatch(
+                interaction_id, user_openid, button_id, button_data
+            )
+            await self.api.post_c2c_message(openid=user_openid, content=result.message)
+        except Exception:
+            LOGGER.exception(
+                "QQ interaction callback failed",
+                extra={"failure_class": "InteractionCallbackError"},
+            )
+
     async def wait_ready(self, timeout_seconds: float) -> None:
         await asyncio.wait_for(self._ready.wait(), timeout_seconds)
+
+
+def _button(action: NotificationAction) -> dict[str, object]:
+    return {
+        "id": action.action_type,
+        "render_data": {"label": action.label, "visited_label": action.label, "style": 1},
+        "action": {
+            "type": 1,
+            "permission": {"type": 2, "specify_role_ids": [], "specify_user_ids": []},
+            "click_limit": 1,
+            "data": action.token or action.value or "",
+            "at_bot_show_channel_list": False,
+        },
+    }
 
 
 def _qq_assets(  # noqa: C901
@@ -325,8 +397,7 @@ def _qq_assets(  # noqa: C901
     unsupported = False
     for value in values:
         locator = getattr(value, "url", None)
-        content_type = getattr(value, "content_type", None)
-        provider_id = getattr(value, "id", None)
+        content_type, provider_id = getattr(value, "content_type", None), getattr(value, "id", None)
         filename = getattr(value, "filename", None)
         size = getattr(value, "size", None)
         if not isinstance(locator, str) or not locator:

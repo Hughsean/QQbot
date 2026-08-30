@@ -20,6 +20,7 @@ from qq_time_agent.modules.notifications.application.intent_delivery import (
     NotificationIntentDeliveryService,
 )
 from qq_time_agent.modules.notifications.application.service import NotificationService
+from qq_time_agent.modules.notifications.contracts import ReminderActionTokenPort
 from qq_time_agent.modules.notifications.infrastructure.repository import (
     SqlDeliveryRepository,
     SqlNotificationIntentRepository,
@@ -33,11 +34,20 @@ def build_qq_notification_services(
     gateway: OfficialQqGateway,
     clock: Clock,
     owner_timezone: str = "Asia/Shanghai",
+    action_tokens: ReminderActionTokenPort | None = None,
+    action_owner_id: str = "owner",
 ) -> tuple[NotificationService, NotificationIntentDeliveryService]:
     agenda = AgendaNotificationQueryService(agenda_repository)
     connections = ConnectionNotificationQueryService(SqlConnectionRepository(sessions))
     return (
-        NotificationService(gateway, SqlDeliveryRepository(sessions), clock, owner_timezone),
+        NotificationService(
+            gateway,
+            SqlDeliveryRepository(sessions),
+            clock,
+            owner_timezone,
+            action_tokens,
+            action_owner_id=action_owner_id,
+        ),
         NotificationIntentDeliveryService(
             SqlNotificationIntentRepository(sessions),
             NotificationSourceEligibilityService(preferences, agenda, connections),

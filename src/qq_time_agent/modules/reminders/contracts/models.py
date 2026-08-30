@@ -31,6 +31,7 @@ class ReminderLease:
     lease_owner: str
     attempt_count: int
     max_attempts: int
+    occurrence: int = 1
 
 
 class ReminderCommandPort(Protocol):
@@ -44,7 +45,14 @@ class ReminderCommandPort(Protocol):
 
     async def cancel_for_entry(self, entry_id: UUID, expected_version: int) -> int: ...
 
-    async def snooze(self, reminder_id: UUID, delay: timedelta, now: datetime) -> ReminderView: ...
+    async def snooze(
+        self,
+        reminder_id: UUID,
+        delay: timedelta,
+        now: datetime,
+        *,
+        expected_occurrence: int,
+    ) -> ReminderView: ...
 
     async def reschedule(
         self, reminder_id: UUID, due_at: datetime, now: datetime

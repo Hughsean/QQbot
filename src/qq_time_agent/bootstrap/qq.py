@@ -38,6 +38,9 @@ from qq_time_agent.modules.calendar_system.application.authorization import (
     OwnerCalendarAuthorization,
 )
 from qq_time_agent.modules.calendar_system.application.tools import CalendarToolRegistry
+from qq_time_agent.modules.connections.application.status import ConnectionStatusQueryService
+from qq_time_agent.modules.connections.application.tools import ConnectionStatusToolRegistry
+from qq_time_agent.modules.connections.infrastructure.repository import SqlConnectionRepository
 from qq_time_agent.modules.identity.application.aliases import OwnerGroupAliasService
 from qq_time_agent.modules.identity.application.service import UserPreferencesService
 from qq_time_agent.modules.identity.application.tools import OwnerGroupAliasToolRegistry
@@ -54,6 +57,12 @@ from qq_time_agent.modules.knowledge.infrastructure.repository import SqlKnowled
 from qq_time_agent.modules.normalization.application.service import NormalizationService
 from qq_time_agent.modules.normalization.infrastructure.repository import (
     SqlNormalizedContentRepository,
+)
+from qq_time_agent.modules.notifications.application.action_tokens import ReminderActionTokenService
+from qq_time_agent.modules.notifications.application.reminder_actions import (
+    CompleteReminderHandler,
+    DeferReminderHandler,
+    ReminderInteractionDispatcher,
 )
 from qq_time_agent.modules.reminders.application.service import ReminderService
 from qq_time_agent.modules.reminders.infrastructure.repository import SqlReminderRepository
@@ -87,6 +96,15 @@ async def run_qq() -> None:
         AuditService(SqlAuditRepository(sessions)),
         agenda,
     )
+    token_service = ReminderActionTokenService(sessions)
+    interaction_dispatcher = ReminderInteractionDispatcher(
+        token_service,
+        {
+            "reminder.complete": CompleteReminderHandler(agenda, agenda, reminders),
+            "reminder.defer": DeferReminderHandler(reminders, clock),
+        },
+        clock,
+    )
     preferences = UserPreferencesService(
         SqlUserPreferencesRepository(sessions),
         UserPreferencesView(
@@ -102,6 +120,7 @@ async def run_qq() -> None:
         ),
     )
     owner_aliases = OwnerGroupAliasService(SqlOwnerGroupAliasRepository(sessions), clock)
+    connection_status = ConnectionStatusQueryService(SqlConnectionRepository(sessions))
     retrieval = HybridRetrievalService(
         knowledge_repository,
         ollama,
@@ -124,6 +143,7 @@ async def run_qq() -> None:
             agenda, actions, OwnerCalendarAuthorization("owner"), str(config.schedule.timezone)
         ),
         OwnerGroupAliasToolRegistry(owner_aliases),
+        ConnectionStatusToolRegistry(connection_status),
     )
     agent = AgentLoop(
         JsonAgentModel(
@@ -167,9 +187,22 @@ async def run_qq() -> None:
         agent_runs,
         config.qq.display_name,
     )
-    gateway = OfficialQqGateway(config.qq, config.owner, router, clock)
+    gateway = OfficialQqGateway(
+        config.qq,
+        config.owner,
+        router,
+        clock,
+        interaction_dispatcher=interaction_dispatcher,
+    )
     notifications, intent_delivery = build_qq_notification_services(
-        sessions, preferences, agenda_repository, gateway, clock, str(config.schedule.timezone)
+        sessions,
+        preferences,
+        agenda_repository,
+        gateway,
+        clock,
+        str(config.schedule.timezone),
+        action_tokens=token_service,
+        action_owner_id=config.owner.qq_openid.get_secret_value(),
     )
     reminder_worker = ReminderWorker(
         reminders,
