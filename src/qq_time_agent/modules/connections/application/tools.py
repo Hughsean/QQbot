@@ -2,7 +2,7 @@
 
 from collections.abc import Mapping
 
-from qq_time_agent.contracts.tools import ToolDefinition
+from qq_time_agent.contracts.tools import ToolCallContext, ToolDefinition
 from qq_time_agent.modules.connections.application.status import ConnectionStatusQueryService
 from qq_time_agent.modules.connections.contracts import ConnectionStatusView
 
@@ -41,7 +41,14 @@ class ConnectionStatusToolRegistry:
     def definitions(self) -> tuple[ToolDefinition, ...]:
         return self._definitions
 
-    async def call(self, owner_id: str, name: str, arguments: Mapping[str, object]) -> object:
+    async def call(
+        self,
+        owner_id: str,
+        name: str,
+        arguments: Mapping[str, object],
+        context: ToolCallContext | None = None,
+    ) -> object:
+        del context
         if name != _TOOL_NAME or set(arguments) != {"provider"}:
             raise ValueError("connection status tool request is invalid")
         provider = arguments.get("provider")

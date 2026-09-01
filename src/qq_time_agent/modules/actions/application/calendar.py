@@ -151,11 +151,19 @@ class CalendarActionExecutor:
     async def _schedule(
         self, action: ActionRequest, entry_id: UUID, version: int, draft: AgendaDraft
     ) -> UUID:
-        lead = _integer(action.operation_payload or {}, "reminder_lead_minutes", 30)
+        payload = action.operation_payload or {}
+        explicit_due = payload.get("reminder_due_at")
+        due_at = (
+            _time(payload, "reminder_due_at")
+            if explicit_due is not None
+            else draft.starts_at - timedelta(minutes=_integer(payload, "reminder_lead_minutes", 30))
+        )
+        if due_at > draft.starts_at:
+            raise ValueError("reminder due_at must not be after agenda start")
         reminder = await self._reminders.schedule(
             entry_id,
             version,
-            draft.starts_at - timedelta(minutes=lead),
+            due_at,
             f"{action.idempotency_key}:reminder:v{version}",
         )
         return reminder.reminder_id

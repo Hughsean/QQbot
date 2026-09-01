@@ -37,6 +37,8 @@ class NotificationSourceEligibilityService:
             eligible = preferences.digest_enabled and await self._digest_matches(
                 intent, preferences.timezone, now
             )
+        elif intent.draft.kind is NotificationKind.MAIL_DIGEST:
+            eligible = preferences.digest_enabled
         elif intent.draft.kind is NotificationKind.AGENDA_CONFLICT:
             eligible = preferences.conflict_notifications_enabled and await self._conflict_matches(
                 intent, preferences.timezone, now

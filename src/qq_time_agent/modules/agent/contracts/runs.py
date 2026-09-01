@@ -41,6 +41,7 @@ class AgentRun:
     execution_owner: str | None = None
     execution_lease_until: datetime | None = None
     execution_epoch: int = 0
+    effective_delivery: AgentDelivery | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -84,9 +85,26 @@ class AgentRunExecution:
 
 
 @dataclass(frozen=True, slots=True)
+class MailRunSummary:
+    run_id: UUID
+    inbox_item_id: UUID
+    source_type: str
+    summary: str
+    completed_at: datetime
+
+
+class MailRunSummaryQueryPort(Protocol):
+    async def list_recent_mail_summaries(
+        self, user_id: str, since: datetime, limit: int = 20
+    ) -> tuple[MailRunSummary, ...]: ...
+
+
+@dataclass(frozen=True, slots=True)
 class ContextScope:
     conversation_id: UUID | None
     event_case_id: UUID | None
+
+
 
 
 @dataclass(frozen=True, slots=True)
@@ -143,6 +161,10 @@ class AgentRunRepository(Protocol):
     async def get(self, run_id: UUID) -> AgentRun | None: ...
 
     async def save(self, run: AgentRun, expected_version: int) -> None: ...
+
+    async def freeze_effective_delivery(
+        self, run_id: UUID, delivery: AgentDelivery
+    ) -> AgentDelivery: ...
 
     async def claim(
         self,

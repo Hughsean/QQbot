@@ -82,9 +82,10 @@ def _instruction(request: AgentRequest) -> str:
         + "不得省略 type, 不得使用 final、answer、result 等替代字段. "
         "tool_call.arguments 必须符合对应 input_schema. 不得伪造工具结果.\n"
         "final 必须包含 delivery, 取值只能是 HOLD 或 NOTIFY. 对用户直接消息, delivery 仅用于"
-        "记录, 回复始终会立即送达当前会话. 对无人请求的邮件事件, 只有存在明确、可操作、"
-        "与该邮件相关的结果时才用 NOTIFY; 需要更多信息、内容不完整、仅供记录或不确定时"
-        "必须用 HOLD, 绝不能主动发送泛化追问.\n"
+        "记录, 回复始终会立即送达当前会话. 对无人请求的邮件事件, 面试、测评、考试邀请、预约、"
+        "行程变更以及到期、欠费、截止类邮件必须用 NOTIFY; 确认、收据、营销和纯记录类邮件用 HOLD"
+        "并进入次日邮件摘要; 无法归类时倾向 NOTIFY. NOTIFY 的 content 必须自包含来源、关键时间"
+        "和需要做的事. 邮件运行只读, 不得创建或修改日程与提醒; 绝不能主动发送泛化追问.\n"
         + request.system_instruction
         + "\n时间规则: 所有者时区为 "
         + request.owner_timezone

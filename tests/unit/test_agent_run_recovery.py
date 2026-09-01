@@ -41,7 +41,14 @@ class Tools:
     def definitions(self) -> tuple[ToolDefinition, ...]:
         return (ToolDefinition("update_agenda", "test", {"type": "object", "properties": {}}),)
 
-    async def call(self, owner_id: str, name: str, arguments: dict[str, object]) -> object:
+    async def call(
+        self,
+        owner_id: str,
+        name: str,
+        arguments: dict[str, object],
+        context: object,
+    ) -> object:
+        del context
         assert owner_id == "owner" and name == "update_agenda" and arguments == {}
         self.calls += 1
         return {"status": "SUCCEEDED"}

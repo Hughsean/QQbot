@@ -17,6 +17,9 @@ from qq_time_agent.modules.inbox.contracts import (
     InboxSourceDeletedError,
     InboxSourceView,
     IngestResult,
+    MailDeliverySourceView,
+    MailDigestTitleView,
+    RecentMailItemView,
 )
 from qq_time_agent.modules.inbox.domain.models import InboxItem, InboxStatus, MailEnvelope
 from qq_time_agent.modules.inbox.infrastructure.tables import (
@@ -156,6 +159,98 @@ class SqlInboxRepository:
             )
             if cast("CursorResult[tuple[()]]", result).rowcount != 1:
                 raise RuntimeError("Inbox item version conflict")
+
+    async def list_recent_mail(
+        self, user_id: str, limit: int = 10, keyword: str | None = None
+    ) -> tuple[RecentMailItemView, ...]:
+        bounded_limit = max(1, min(limit, 20))
+        async with self._sessions() as session:
+            query = (
+                select(InboxItemRow, InboxRawContentRow)
+                .join(
+                    InboxRawContentRow,
+                    InboxRawContentRow.raw_content_id == InboxItemRow.raw_content_ref,
+                )
+                .where(
+                    InboxItemRow.user_id == user_id,
+                    InboxItemRow.source_type.in_(("MICROSOFT_MAIL", "QQ_MAIL")),
+                    InboxItemRow.deleted_at.is_(None),
+                )
+                .order_by(InboxItemRow.occurred_at.desc())
+                .limit(bounded_limit)
+            )
+            if keyword is not None and keyword.strip():
+                query = query.where(InboxRawContentRow.subject.ilike(f"%{keyword.strip()}%"))
+            rows = (await session.execute(query)).all()
+            return tuple(
+                RecentMailItemView(
+                    item.inbox_item_id,
+                    item.source_type,
+                    content.subject,
+                    _mask_sender(item.sender_id),
+                    item.occurred_at,
+                    item.status,
+                    item.deleted_at is not None,
+                    build_source_ref(
+                        SourceType(item.source_type), item.connection_id, item.external_id
+                    ),
+                )
+                for item, content in rows
+            )
+    async def get_mail_delivery_source(
+        self, user_id: str, inbox_item_id: UUID
+    ) -> MailDeliverySourceView | None:
+        async with self._sessions() as session:
+            row = await session.execute(
+                select(InboxItemRow, InboxRawContentRow)
+                .join(
+                    InboxRawContentRow,
+                    InboxRawContentRow.raw_content_id == InboxItemRow.raw_content_ref,
+                )
+                .where(
+                    InboxItemRow.user_id == user_id,
+                    InboxItemRow.inbox_item_id == inbox_item_id,
+                    InboxItemRow.source_type.in_(("MICROSOFT_MAIL", "QQ_MAIL")),
+                    InboxItemRow.deleted_at.is_(None),
+                )
+            )
+            value = row.one_or_none()
+            if value is None:
+                return None
+            item, content = value
+            return MailDeliverySourceView(
+                item.inbox_item_id,
+                item.source_type,
+                _normalize_sender(item.sender_id),
+                content.subject,
+            )
+
+    async def list_mail_digest_titles(
+        self, user_id: str, inbox_item_ids: tuple[UUID, ...], limit: int = 20
+    ) -> tuple[MailDigestTitleView, ...]:
+        if not inbox_item_ids:
+            return ()
+        bounded_ids = inbox_item_ids[: max(1, min(limit, 20))]
+        async with self._sessions() as session:
+            rows = await session.execute(
+                select(InboxItemRow.inbox_item_id, InboxRawContentRow.subject)
+                .join(
+                    InboxRawContentRow,
+                    InboxRawContentRow.raw_content_id == InboxItemRow.raw_content_ref,
+                )
+                .where(
+                    InboxItemRow.user_id == user_id,
+                    InboxItemRow.inbox_item_id.in_(bounded_ids),
+                    InboxItemRow.source_type.in_(("MICROSOFT_MAIL", "QQ_MAIL")),
+                    InboxItemRow.deleted_at.is_(None),
+                )
+            )
+            by_id = {item_id: subject for item_id, subject in rows}
+            return tuple(
+                MailDigestTitleView(item_id, by_id[item_id])
+                for item_id in bounded_ids
+                if item_id in by_id
+            )
 
     async def get_content(self, inbox_item_id: UUID) -> InboxContentView | None:
         async with self._sessions() as session:
@@ -403,6 +498,10 @@ def _to_item(row: InboxItemRow) -> InboxItem:
         row.retry_count,
         row.version,
     )
+
+
+def _normalize_sender(address: str) -> str:
+    return " ".join(address.split()).casefold()
 
 
 def _mask_sender(address: str) -> str:

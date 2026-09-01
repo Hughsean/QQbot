@@ -51,13 +51,26 @@ The allow-list also includes a narrowly scoped Identity tool for registering an 
 display alias. The tool is callable only by the authenticated owner AgentRun and writes only
 Identity-owned alias state. Context assembly reads those aliases as trusted attribution rules for
 forwarded transcript speaker labels; it does not make the transcript itself trusted or actionable.
+Two further narrowly scoped tools follow the same pattern (ADR-0014): `register_mail_rule`
+(Identity-owned owner mail notification rules) and `find_recent_mail` (Inbox-owned read-only
+recent-mail metadata query with masked senders, bounded limits and T2 labeling, so "did you
+receive my mail" is answered from persisted inbox state instead of retrieval luck).
 
 Each final result also carries a persisted delivery decision. A direct QQ result is returned only
-to the current conversation. A mail result creates an active QQ notification only when the Agent
-returns `NOTIFY` for a material, actionable result; uncertainty and requests for more information
-must be `HOLD` in the EventCase. The notification renderer prefixes every mail result with its
-source subject. Legacy polling of `NEEDS_REVIEW` items and standalone clarification templates are
-not permitted.
+to the current conversation. A mail result follows ADR-0014: the model applies a classification
+matrix — commitment mail (interview/assessment/appointments/itinerary changes) and deadline mail
+(expiry, arrears, cutoffs) must be `NOTIFY`; confirmations, receipts, marketing and non-actionable
+notices are `HOLD`; unclassifiable mail leans toward `NOTIFY` because silence is the single-user
+failure mode. A `NOTIFY` content is the push body itself and must be self-contained (source, key
+times, required action); generic follow-up questions must never be pushed. The notification renderer
+prefixes every mail result with its source subject. The final delivery is
+resolved deterministically in code: an owner-registered mail rule (sender/subject containment,
+`NOTIFY` or `HOLD`) overrides the model's choice; otherwise the model's matrix decision stands.
+Mail AgentRuns never write calendar state — mutation tools are denied for non-`QQ_DIRECT` sources
+at the Calendar authorization boundary. Every completed mail run summary additionally enters the
+next-morning `MAIL_DIGEST` notification (idempotent per day) unless that run already produced a
+mail-result notification, so a `HOLD` means "not immediate", never "invisible". Legacy polling of
+`NEEDS_REVIEW` items and standalone clarification templates are not permitted.
 
 The QQ presentation boundary, rather than the model, identifies message origin. Direct Agent
 replies use the configured nickname and a full-width colon. Durable mail, digest, conflict and
@@ -80,7 +93,12 @@ Calendar operations are exposed through a single Calendar System facade. The fac
 - audit records and result rendering.
 
 The Agent can request `find_agenda_candidates`, `get_agenda`, `create_agenda`, `update_agenda`,
-`complete_agenda`, `cancel_agenda`, and `update_reminder`. It cannot call `AgendaCommandPort`,
+`complete_agenda`, `cancel_agenda`, and `update_reminder`. Calendar mutations (`create_agenda`,
+`update_agenda`, `complete_agenda`, `cancel_agenda`, `update_reminder`) are authorized only for
+`QQ_DIRECT`-sourced runs; mail-sourced runs are read-only on the calendar and receive a permission
+observation instead. `create_agenda` accepts an optional `reminder_due_at` (offset-bearing
+ISO-8601, not later than the entry start) for owners who name an exact reminder time; the reply
+must state the effective reminder time. The Agent cannot call `AgendaCommandPort`,
 `ReminderCommandPort`, repositories or Actions directly. A request such as “刚才那个任务改到明天” is valid only when the facade can
 resolve exactly one active target and a complete timezone-aware patch. Otherwise the system
 rejects the operation and the Agent asks a focused question.

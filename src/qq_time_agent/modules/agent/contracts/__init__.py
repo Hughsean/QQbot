@@ -33,6 +33,8 @@ from qq_time_agent.modules.agent.contracts.runs import (
     AgentRunRepository,
     AgentRunStatus,
     ContextScope,
+    MailRunSummary,
+    MailRunSummaryQueryPort,
     ScopedAgentReply,
 )
 
@@ -64,6 +66,8 @@ __all__ = [
     "AgentToolDefinition",
     "AgentToolPort",
     "ContextScope",
+    "MailRunSummary",
+    "MailRunSummaryQueryPort",
     "ScopedAgentReply",
     "ToolObservation",
 ]

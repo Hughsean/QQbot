@@ -5,7 +5,7 @@ from datetime import datetime
 from uuid import UUID
 
 from qq_time_agent.contracts.time import local_iso, resolve_timezone
-from qq_time_agent.contracts.tools import ToolDefinition
+from qq_time_agent.contracts.tools import ToolCallContext, ToolDefinition
 from qq_time_agent.modules.actions.contracts import CalendarActionPort
 from qq_time_agent.modules.agenda.contracts import (
     AgendaEntryView,
@@ -60,6 +60,7 @@ class CalendarToolRegistry:
                         "ends_at": {"type": "string", "format": "date-time"},
                         "timezone": {"type": "string"},
                         "kind": {"type": "string", "enum": ["EVENT", "TASK_BLOCK"]},
+                        "reminder_due_at": {"type": "string", "format": "date-time"},
                     },
                     "required": ["title", "starts_at", "ends_at", "timezone", "kind"],
                 },
@@ -130,8 +131,15 @@ class CalendarToolRegistry:
     def definitions(self) -> tuple[ToolDefinition, ...]:
         return self._definitions
 
-    async def call(self, owner_id: str, name: str, arguments: Mapping[str, object]) -> object:
-        if not await self._authorization.authorize(owner_id, name):
+    async def call(
+        self,
+        owner_id: str,
+        name: str,
+        arguments: Mapping[str, object],
+        context: ToolCallContext | None = None,
+    ) -> object:
+        context = context or ToolCallContext("QQ_DIRECT")
+        if not await self._authorization.authorize(owner_id, name, context):
             raise PermissionError("calendar operation is not authorized")
         if name == "find_agenda_candidates":
             _only(arguments, {"title"})
@@ -147,8 +155,11 @@ class CalendarToolRegistry:
                 raise LookupError("active agenda entry does not exist")
             return _render(entry, self._owner_timezone)
         if name == "create_agenda":
-            _only(arguments, {"title", "starts_at", "ends_at", "timezone", "kind"})
-            return await self._create_agenda(owner_id, arguments)
+            _only(
+                arguments,
+                {"title", "starts_at", "ends_at", "timezone", "kind", "reminder_due_at"},
+            )
+            return await self._create_agenda(owner_id, arguments, context)
         if name == "update_agenda":
             _only(
                 arguments,
@@ -175,7 +186,12 @@ class CalendarToolRegistry:
             return await self._update_reminder(owner_id, arguments)
         raise ValueError("unknown calendar tool")
 
-    async def _create_agenda(self, owner_id: str, arguments: Mapping[str, object]) -> object:
+    async def _create_agenda(
+        self,
+        owner_id: str,
+        arguments: Mapping[str, object],
+        context: ToolCallContext,
+    ) -> object:
         title = _text(arguments, "title")
         kind = _text(arguments, "kind")
         timezone = _text(arguments, "timezone")
@@ -184,11 +200,21 @@ class CalendarToolRegistry:
         if kind not in {"EVENT", "TASK_BLOCK"} or ends <= starts:
             raise ValueError("agenda creation is invalid")
         payload = dict(arguments)
+        reminder_due_at = arguments.get("reminder_due_at")
+        if reminder_due_at is not None:
+            reminder_due = _calendar_moment(reminder_due_at, timezone)
+            if reminder_due > starts:
+                raise ValueError("reminder must not be after agenda start")
+            payload["reminder_due_at"] = reminder_due.isoformat()
         payload.update(
             {
                 "starts_at": starts.isoformat(),
                 "ends_at": ends.isoformat(),
-                "source_refs": ["agent:" + owner_id],
+                "source_refs": [
+                    "inbox:" + str(context.inbox_item_id)
+                    if context.inbox_item_id is not None
+                    else "agent:" + owner_id
+                ],
                 "reminder_lead_minutes": 30,
             }
         )

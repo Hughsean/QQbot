@@ -17,6 +17,7 @@ from qq_time_agent.modules.agent.contracts import (
     AgentRunClaimError,
     AgentRunStatus,
     ContextScope,
+    MailRunSummary,
     ScopedAgentReply,
     ToolObservation,
 )
@@ -33,6 +34,33 @@ class SqlAgentRunRepository:
     def __init__(self, sessions: async_sessionmaker[AsyncSession]) -> None:
         self._sessions = sessions
 
+    async def list_recent_mail_summaries(
+        self, user_id: str, since: datetime, limit: int = 20
+    ) -> tuple[MailRunSummary, ...]:
+        async with self._sessions() as session:
+            rows = await session.scalars(
+                select(AgentRunRow)
+                .where(
+                    AgentRunRow.user_id == user_id,
+                    AgentRunRow.source_type.in_(("MICROSOFT_MAIL", "QQ_MAIL")),
+                    AgentRunRow.status == AgentRunStatus.COMPLETED.value,
+                    AgentRunRow.final_content.is_not(None),
+                    AgentRunRow.updated_at >= since,
+                )
+                .order_by(AgentRunRow.updated_at.desc())
+                .limit(max(1, min(limit, 20)))
+            )
+            return tuple(
+                MailRunSummary(
+                    row.run_id,
+                    row.inbox_item_id,
+                    row.source_type,
+                    row.final_content or "",
+                    row.updated_at,
+                )
+                for row in rows
+            )
+
     async def get_or_create(
         self,
         inbox_item_id: UUID,
@@ -42,7 +70,7 @@ class SqlAgentRunRepository:
         scope: ContextScope | None = None,
     ) -> AgentRun:
         run_id = uuid4()
-        values = {
+        values: dict[str, object] = {
             "run_id": run_id,
             "inbox_item_id": inbox_item_id,
             "user_id": user_id,
@@ -165,11 +193,27 @@ class SqlAgentRunRepository:
             row.observations = run.observations
             row.final_content = run.final_content
             row.final_delivery = None if run.final_delivery is None else run.final_delivery.value
+            row.effective_delivery = (
+                None if run.effective_delivery is None else run.effective_delivery.value
+            )
             row.failure_class = run.failure_class
             if run.updated_at is None:
                 raise ValueError("AgentRun updated_at is required")
             row.updated_at = run.updated_at
             row.version = expected_version + 1
+
+    async def freeze_effective_delivery(
+        self, run_id: UUID, delivery: AgentDelivery
+    ) -> AgentDelivery:
+        async with self._sessions.begin() as session:
+            row = await session.get(AgentRunRow, run_id, with_for_update=True)
+            if row is None:
+                raise LookupError("AgentRun does not exist")
+            if row.status != AgentRunStatus.COMPLETED.value:
+                raise ValueError("AgentRun delivery can only be frozen after completion")
+            if row.effective_delivery is None:
+                row.effective_delivery = delivery.value
+            return AgentDelivery(row.effective_delivery)
 
     async def claim(
         self,
@@ -312,6 +356,7 @@ def _to_run(row: AgentRunRow) -> AgentRun:
         row.execution_owner,
         row.execution_lease_until,
         row.execution_epoch,
+        None if row.effective_delivery is None else AgentDelivery(row.effective_delivery),
     )
 
 

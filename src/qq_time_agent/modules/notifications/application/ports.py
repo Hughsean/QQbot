@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Protocol
+from uuid import UUID
 
 from qq_time_agent.modules.notifications.domain.models import (
     NotificationIntent,
@@ -45,5 +46,9 @@ class NotificationIntentRepository(Protocol):
     async def has_open(self, subject_key: str) -> bool: ...
 
     async def has_recent_sent(self, subject_key: str, since: datetime) -> bool: ...
+
+    async def list_immediate_mail_run_ids(
+        self, user_id: str, run_ids: tuple[UUID, ...]
+    ) -> frozenset[UUID]: ...
 
     async def recover_expired(self, now: datetime, limit: int) -> int: ...

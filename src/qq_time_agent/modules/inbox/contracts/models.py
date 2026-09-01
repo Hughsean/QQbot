@@ -141,6 +141,48 @@ class InboxSourceView:
 
 
 @dataclass(frozen=True, slots=True)
+class MailDeliverySourceView:
+    inbox_item_id: UUID
+    source_type: str
+    sender: str
+    subject: str
+
+
+class MailDeliverySourcePort(Protocol):
+    async def get_mail_delivery_source(
+        self, user_id: str, inbox_item_id: UUID
+    ) -> MailDeliverySourceView | None: ...
+
+
+@dataclass(frozen=True, slots=True)
+class MailDigestTitleView:
+    inbox_item_id: UUID
+    subject: str
+
+
+class MailDigestTitleQueryPort(Protocol):
+    async def list_mail_digest_titles(
+        self, user_id: str, inbox_item_ids: tuple[UUID, ...], limit: int = 20
+    ) -> tuple[MailDigestTitleView, ...]: ...
+
+
+@dataclass(frozen=True, slots=True)
+class RecentMailItemView:
+    inbox_item_id: UUID
+    source_type: str
+    subject: str
+    sender_mask: str
+    occurred_at: datetime
+    status: str
+    deleted: bool
+    source_ref: str | None = None
+
+
+class RecentMailQueryPort(Protocol):
+    async def list_recent_mail(
+        self, user_id: str, limit: int = 10, keyword: str | None = None
+    ) -> tuple[RecentMailItemView, ...]: ...
+@dataclass(frozen=True, slots=True)
 class ConversationContextItem:
     source_type: str
     occurred_at: datetime

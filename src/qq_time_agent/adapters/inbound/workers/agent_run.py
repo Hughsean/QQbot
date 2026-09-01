@@ -25,7 +25,9 @@ from qq_time_agent.modules.inbox.contracts import (
     InboxContentPort,
     InboxContentView,
     InboxSourcePort,
+    MailDeliverySourcePort,
 )
+from qq_time_agent.modules.notifications.application.mail_delivery import MailDeliveryPolicy
 from qq_time_agent.modules.notifications.contracts import (
     AgentMailResultRequest,
     MailNotificationSource,
@@ -39,16 +41,18 @@ class AgentRunJobHandler:
         runs: AgentRunExecutionPort,
         content: InboxContentPort,
         context: AgentContextPort,
-        source: InboxSourcePort | None = None,
+        delivery_source: MailDeliverySourcePort | None = None,
         notifications: NotificationIntentCommandPort | None = None,
         clock: Clock | None = None,
+        delivery_policy: MailDeliveryPolicy | None = None,
     ) -> None:
         self._runs = runs
         self._content = content
         self._context = context
-        self._source = source
+        self._delivery_source = delivery_source
         self._notifications = notifications
         self._clock = clock
+        self._delivery_policy = delivery_policy
 
     async def __call__(self, job: JobLease) -> None:
         run_id, item_id = _payload_ids(job)
@@ -57,7 +61,8 @@ class AgentRunJobHandler:
             raise PermanentJobError("MissingAgentRun")
         persisted = _persisted_final(run)
         if persisted is not None:
-            if persisted.delivery is AgentDelivery.HOLD:
+            effective = await self._freeze_effective_delivery(run, persisted)
+            if effective is AgentDelivery.HOLD:
                 return
             item = await self._require_content(item_id)
             await self._schedule_notification(run, item, persisted)
@@ -90,8 +95,34 @@ class AgentRunJobHandler:
             raise RetryableJobError("AgentRunInProgress")
         if outcome.final is None:
             raise PermanentJobError("MalformedAgentRunResult")
-        if outcome.final.delivery is AgentDelivery.NOTIFY:
+        effective_delivery = await self._freeze_effective_delivery(run, outcome.final)
+        if effective_delivery is AgentDelivery.NOTIFY:
             await self._schedule_notification(run, item, outcome.final)
+
+    async def _freeze_effective_delivery(
+        self, run: AgentRun, result: AgentFinal
+    ) -> AgentDelivery:
+        if run.effective_delivery is not None:
+            return run.effective_delivery
+        proposed = await self._effective_delivery(run, result)
+        try:
+            return await self._runs.freeze_effective_delivery(run.run_id, proposed)
+        except Exception as exc:
+            raise RetryableJobError("AgentDeliveryPersistenceFailed") from exc
+
+    async def _effective_delivery(
+        self, run: AgentRun, result: AgentFinal
+    ) -> AgentDelivery:
+        if self._delivery_policy is None or self._delivery_source is None:
+            return result.delivery
+        source = await self._delivery_source.get_mail_delivery_source(
+            run.user_id, run.inbox_item_id
+        )
+        if source is None:
+            raise PermanentJobError("MissingAgentNotificationSource")
+        return await self._delivery_policy.resolve(
+            run.user_id, source.sender, source.subject, result.delivery
+        )
 
     async def _require_content(self, item_id: UUID) -> InboxContentView:
         item = await self._content.get_content(item_id)
@@ -102,10 +133,12 @@ class AgentRunJobHandler:
     async def _schedule_notification(
         self, run: AgentRun, item: InboxContentView, result: AgentFinal
     ) -> None:
-        if self._notifications is None or self._source is None or self._clock is None:
+        if self._notifications is None or self._delivery_source is None or self._clock is None:
             raise PermanentJobError("AgentNotificationUnavailable")
         try:
-            source = await self._source.get_source(item.inbox_item_id)
+            source = await self._delivery_source.get_mail_delivery_source(
+                run.user_id, item.inbox_item_id
+            )
         except Exception as exc:
             raise RetryableJobError("AgentNotificationSourceUnavailable") from exc
         if source is None:

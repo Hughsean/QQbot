@@ -77,16 +77,19 @@ from qq_time_agent.modules.data_lifecycle.application.coordinator import (
 )
 from qq_time_agent.modules.data_lifecycle.infrastructure.repository import SqlTombstoneRepository
 from qq_time_agent.modules.identity.application.aliases import OwnerGroupAliasService
+from qq_time_agent.modules.identity.application.mail_rules import MailRuleService
 from qq_time_agent.modules.identity.application.service import UserPreferencesService
 from qq_time_agent.modules.identity.application.tools import OwnerGroupAliasToolRegistry
 from qq_time_agent.modules.identity.contracts import UserPreferencesView
 from qq_time_agent.modules.identity.infrastructure.repository import (
+    SqlMailRuleRepository,
     SqlOwnerGroupAliasRepository,
     SqlUserPreferencesRepository,
 )
 from qq_time_agent.modules.inbox.application.connection_deletion import (
     ConnectionSourceDeletionService,
 )
+from qq_time_agent.modules.inbox.application.mail_tools import RecentMailToolRegistry
 from qq_time_agent.modules.inbox.application.service import InboxService
 from qq_time_agent.modules.inbox.application.sync import MailSyncService
 from qq_time_agent.modules.inbox.infrastructure.connection_deletion import (
@@ -106,6 +109,7 @@ from qq_time_agent.modules.normalization.infrastructure.repository import (
 from qq_time_agent.modules.notifications.application.agent_results import (
     AgentMailResultNotificationService,
 )
+from qq_time_agent.modules.notifications.application.mail_delivery import MailDeliveryPolicy
 from qq_time_agent.modules.notifications.infrastructure.repository import (
     SqlNotificationIntentRepository,
 )
@@ -256,6 +260,7 @@ def build_worker() -> tuple[JobRunner, AsyncEngine, tuple[AsyncClosable, ...]]:
         ),
     )
     owner_aliases = OwnerGroupAliasService(SqlOwnerGroupAliasRepository(sessions), clock)
+    mail_rules = MailRuleService(SqlMailRuleRepository(sessions), clock)
     agenda_repository = SqlAgendaRepository(sessions)
     agenda = AgendaService(agenda_repository)
     reminders = ReminderService(SqlReminderRepository(sessions))
@@ -273,7 +278,8 @@ def build_worker() -> tuple[JobRunner, AsyncEngine, tuple[AsyncClosable, ...]]:
             CalendarToolRegistry(
                 agenda, actions, OwnerCalendarAuthorization("owner"), str(config.schedule.timezone)
             ),
-            OwnerGroupAliasToolRegistry(owner_aliases),
+            OwnerGroupAliasToolRegistry(owner_aliases, mail_rules),
+            RecentMailToolRegistry(inbox_repository),
             ConnectionStatusToolRegistry(
                 ConnectionStatusQueryService(SqlConnectionRepository(sessions))
             ),
@@ -297,6 +303,7 @@ def build_worker() -> tuple[JobRunner, AsyncEngine, tuple[AsyncClosable, ...]]:
         PendingProposalQueryService(SqlProposalRepository(sessions), clock),
         str(config.schedule.timezone),
         owner_aliases,
+        mail_rules=mail_rules,
         budget=context_policy,
         retrieval_limit=config.agent_context.retrieval_limit,
         history_limit=config.agent_context.history_limit,
@@ -327,6 +334,7 @@ def build_worker() -> tuple[JobRunner, AsyncEngine, tuple[AsyncClosable, ...]]:
             inbox_repository,
             AgentMailResultNotificationService(SqlNotificationIntentRepository(sessions)),
             clock,
+            MailDeliveryPolicy(mail_rules),
         ),
         "knowledge-index": KnowledgeIndexJobHandler(
             inbox_repository, inbox_repository, normalization_repository, knowledge
@@ -342,6 +350,9 @@ def build_worker() -> tuple[JobRunner, AsyncEngine, tuple[AsyncClosable, ...]]:
             clock,
         ),
     }
+    async def before_start() -> None:
+        await bootstrap_qq_mail(config.qq_mail_bootstrap, qq_connections)
+
     runner = build_scheduled_runner(
         queue,
         handlers,
@@ -355,7 +366,7 @@ def build_worker() -> tuple[JobRunner, AsyncEngine, tuple[AsyncClosable, ...]]:
         inbox_repository,
         ollama,
         build_notification_planner(sessions, preferences, agenda_repository),
-        before_start=lambda: bootstrap_qq_mail(config.qq_mail_bootstrap, qq_connections),
+        before_start=before_start,
     )
 
     return (

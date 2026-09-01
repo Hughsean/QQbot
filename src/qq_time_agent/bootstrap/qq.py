@@ -43,14 +43,17 @@ from qq_time_agent.modules.connections.application.status import ConnectionStatu
 from qq_time_agent.modules.connections.application.tools import ConnectionStatusToolRegistry
 from qq_time_agent.modules.connections.infrastructure.repository import SqlConnectionRepository
 from qq_time_agent.modules.identity.application.aliases import OwnerGroupAliasService
+from qq_time_agent.modules.identity.application.mail_rules import MailRuleService
 from qq_time_agent.modules.identity.application.service import UserPreferencesService
 from qq_time_agent.modules.identity.application.tools import OwnerGroupAliasToolRegistry
 from qq_time_agent.modules.identity.contracts import UserPreferencesView
 from qq_time_agent.modules.identity.infrastructure.repository import (
+    SqlMailRuleRepository,
     SqlOwnerGroupAliasRepository,
     SqlUserPreferencesRepository,
 )
 from qq_time_agent.modules.inbox.application.asset_discovery import MailAssetDiscoveryService
+from qq_time_agent.modules.inbox.application.mail_tools import RecentMailToolRegistry
 from qq_time_agent.modules.inbox.application.service import InboxService
 from qq_time_agent.modules.inbox.infrastructure.asset_repository import SqlSourceAssetRepository
 from qq_time_agent.modules.inbox.infrastructure.repository import SqlInboxRepository
@@ -121,6 +124,7 @@ async def run_qq() -> None:
         ),
     )
     owner_aliases = OwnerGroupAliasService(SqlOwnerGroupAliasRepository(sessions), clock)
+    mail_rules = MailRuleService(SqlMailRuleRepository(sessions), clock)
     connection_status = ConnectionStatusQueryService(SqlConnectionRepository(sessions))
     retrieval = HybridRetrievalService(
         knowledge_repository,
@@ -143,7 +147,8 @@ async def run_qq() -> None:
         CalendarToolRegistry(
             agenda, actions, OwnerCalendarAuthorization("owner"), str(config.schedule.timezone)
         ),
-        OwnerGroupAliasToolRegistry(owner_aliases),
+        OwnerGroupAliasToolRegistry(owner_aliases, mail_rules),
+        RecentMailToolRegistry(SqlInboxRepository(sessions)),
         ConnectionStatusToolRegistry(connection_status),
     )
     agent = AgentLoop(
@@ -172,6 +177,7 @@ async def run_qq() -> None:
         PendingProposalQueryService(SqlProposalRepository(sessions), clock),
         str(config.schedule.timezone),
         owner_aliases,
+        mail_rules=mail_rules,
         budget=context_policy,
         retrieval_limit=config.agent_context.retrieval_limit,
         history_limit=config.agent_context.history_limit,

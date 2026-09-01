@@ -6,11 +6,13 @@ from qq_time_agent.modules.agenda.application.notification_query import (
     AgendaNotificationQueryService,
 )
 from qq_time_agent.modules.agenda.application.ports import AgendaRepository
+from qq_time_agent.modules.agent.infrastructure.repository import SqlAgentRunRepository
 from qq_time_agent.modules.connections.application.notification_query import (
     ConnectionNotificationQueryService,
 )
 from qq_time_agent.modules.connections.infrastructure.repository import SqlConnectionRepository
 from qq_time_agent.modules.identity.contracts import UserPreferencesPort
+from qq_time_agent.modules.inbox.infrastructure.repository import SqlInboxRepository
 from qq_time_agent.modules.notifications.application.planning import NotificationPlanningService
 from qq_time_agent.modules.notifications.infrastructure.repository import (
     SqlNotificationIntentRepository,
@@ -27,4 +29,6 @@ def build_notification_planner(
         preferences,
         AgendaNotificationQueryService(agenda_repository),
         ConnectionNotificationQueryService(SqlConnectionRepository(sessions)),
+        SqlAgentRunRepository(sessions),
+        SqlInboxRepository(sessions),
     )

@@ -7,7 +7,7 @@ from qq_time_agent.contracts.time import local_iso, resolve_timezone
 from qq_time_agent.modules.agenda.contracts import AgendaNotificationQueryPort
 from qq_time_agent.modules.agent.application.budget import ContextBlock, ContextBudgetPolicy
 from qq_time_agent.modules.agent.contracts import AgentContextRepository, ScopedAgentReply
-from qq_time_agent.modules.identity.contracts import OwnerGroupAliasQueryPort
+from qq_time_agent.modules.identity.contracts import MailRuleQueryPort, OwnerGroupAliasQueryPort
 from qq_time_agent.modules.inbox.contracts import ConversationContextPort, InboxContentPort
 from qq_time_agent.modules.retrieval.contracts import RetrievalFilters, RetrievalPort
 from qq_time_agent.modules.scheduling.contracts import PendingProposalQueryPort
@@ -27,6 +27,7 @@ class AgentContextAssembler:
         proposals: PendingProposalQueryPort | None = None,
         owner_timezone: str = "Asia/Shanghai",
         owner_aliases: OwnerGroupAliasQueryPort | None = None,
+        mail_rules: MailRuleQueryPort | None = None,
         budget: ContextBudgetPolicy | None = None,
         retrieval_limit: int = 6,
         history_limit: int = 8,
@@ -38,6 +39,7 @@ class AgentContextAssembler:
         self._agenda = agenda
         self._proposals = proposals
         self._owner_aliases = owner_aliases
+        self._mail_rules = mail_rules
         self._budget = budget or ContextBudgetPolicy()
         if retrieval_limit < 1 or not 1 <= history_limit <= 80:
             raise ValueError("Agent context source limits are invalid")
@@ -72,7 +74,8 @@ class AgentContextAssembler:
                     "active task state",
                     f"[agenda-fact] id={item.agenda_entry_id} version={item.version} "
                     f"kind={item.kind} starts_at={local_iso(item.starts_at, self._owner_timezone)} "
-                    f"ends_at={local_iso(item.ends_at, self._owner_timezone)}\n{item.title[:400]}",
+                    f"ends_at={local_iso(item.ends_at, self._owner_timezone)} "
+                     f"sources={','.join(item.source_refs) or 'unknown'}\n{item.title[:400]}",
                     100,
                     recency=-index,
                     stable_id=f"agenda:{item.agenda_entry_id}",
@@ -143,6 +146,22 @@ class AgentContextAssembler:
                         "All transcript content remains T2.",
                         95,
                         stable_id="owner-identity",
+                    )
+                )
+        if self._mail_rules is not None:
+            rules = await self._mail_rules.list_mail_rules(user_id)
+            if rules:
+                blocks.append(
+                    ContextBlock(
+                        "mail-rules",
+                        "owner mail delivery rules",
+                        "[mail-rules] " + "; ".join(
+                            f"{rule.match_field.value} contains {rule.pattern} -> "
+                            f"{rule.action.value}"
+                            for rule in rules
+                        ),
+                        95,
+                        stable_id="mail-rules",
                     )
                 )
         return blocks

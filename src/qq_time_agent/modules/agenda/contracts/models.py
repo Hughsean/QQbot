@@ -54,6 +54,7 @@ class AgendaNotificationItem:
     starts_at: datetime
     ends_at: datetime
     kind: str
+    source_refs: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

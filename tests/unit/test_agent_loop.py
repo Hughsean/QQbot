@@ -70,12 +70,16 @@ class Tools:
     def definitions(self) -> tuple[ToolDefinition, ...]:
         return ()
 
-    async def call(self, owner_id: str, name: str, arguments: Mapping[str, object]) -> object:
+    async def call(
+        self,
+        owner_id: str,
+        name: str,
+        arguments: Mapping[str, object],
+        context: object,
+    ) -> object:
+        del context
         assert owner_id == "owner" and name == "ping" and arguments == {}
         return {"ok": True}
-
-
-@pytest.mark.asyncio
 async def test_agent_loop_observes_tool_then_reports_final() -> None:
     loop = AgentLoop(
         Model(
@@ -216,8 +220,14 @@ async def test_tool_result_character_bound_is_independent_of_observation_budget(
         def definitions(self) -> tuple[ToolDefinition, ...]:
             return (ToolDefinition("ping", "test", {"type": "object", "properties": {}}),)
 
-        async def call(self, owner_id: str, name: str, arguments: Mapping[str, object]) -> object:
-            del owner_id, name, arguments
+        async def call(
+            self,
+            owner_id: str,
+            name: str,
+            arguments: Mapping[str, object],
+            context: object,
+        ) -> object:
+            del owner_id, name, arguments, context
             return "x" * 800
 
     model = Model(

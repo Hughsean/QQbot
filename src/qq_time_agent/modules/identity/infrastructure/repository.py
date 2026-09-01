@@ -6,8 +6,15 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from qq_time_agent.modules.identity.contracts import OwnerGroupAlias, UserPreferencesView
+from qq_time_agent.modules.identity.contracts import (
+    MailRuleAction,
+    MailRuleMatchField,
+    MailRuleView,
+    OwnerGroupAlias,
+    UserPreferencesView,
+)
 from qq_time_agent.modules.identity.infrastructure.tables import (
+    IdentityMailRuleRow,
     OwnerGroupAliasRow,
     UserPreferencesRow,
 )
@@ -105,3 +112,69 @@ class SqlOwnerGroupAliasRepository:
             if row is None:
                 raise RuntimeError("Identity alias idempotent insert lost stored row")
             return OwnerGroupAlias(row.alias)
+
+
+class SqlMailRuleRepository:
+    def __init__(self, sessions: async_sessionmaker[AsyncSession]) -> None:
+        self._sessions = sessions
+
+    async def list(self, user_id: str) -> tuple[MailRuleView, ...]:
+        async with self._sessions() as session:
+            rows = await session.scalars(
+                select(IdentityMailRuleRow)
+                .where(IdentityMailRuleRow.user_id == user_id)
+                .order_by(IdentityMailRuleRow.created_at, IdentityMailRuleRow.rule_id)
+            )
+            return tuple(_mail_rule_view(row) for row in rows)
+
+    async def add_or_get(
+        self,
+        user_id: str,
+        match_field: MailRuleMatchField,
+        pattern: str,
+        normalized_pattern: str,
+        action: MailRuleAction,
+        now: datetime,
+    ) -> MailRuleView:
+        from uuid import uuid4
+
+        async with self._sessions.begin() as session:
+            await session.execute(
+                insert(IdentityMailRuleRow)
+                .values(
+                    rule_id=uuid4(), user_id=user_id, match_field=match_field.value,
+                    pattern=pattern, normalized_pattern=normalized_pattern,
+                    action=action.value, created_at=now,
+                )
+                .on_conflict_do_update(
+                    index_elements=[
+                        IdentityMailRuleRow.user_id,
+                        IdentityMailRuleRow.match_field,
+                        IdentityMailRuleRow.normalized_pattern,
+                    ],
+                    set_={
+                        "pattern": pattern,
+                        "action": action.value,
+                        "created_at": now,
+                    },
+                )
+            )
+            row = await session.scalar(
+                select(IdentityMailRuleRow).where(
+                    IdentityMailRuleRow.user_id == user_id,
+                    IdentityMailRuleRow.match_field == match_field.value,
+                    IdentityMailRuleRow.normalized_pattern == normalized_pattern,
+                )
+            )
+            if row is None:
+                raise RuntimeError("Identity mail rule idempotent insert lost stored row")
+            return _mail_rule_view(row)
+
+
+def _mail_rule_view(row: IdentityMailRuleRow) -> MailRuleView:
+    return MailRuleView(
+        row.rule_id,
+        MailRuleMatchField(row.match_field),
+        row.pattern,
+        MailRuleAction(row.action),
+    )

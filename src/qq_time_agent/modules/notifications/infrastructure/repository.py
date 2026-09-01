@@ -2,6 +2,7 @@
 
 from datetime import datetime, timedelta
 from typing import cast
+from uuid import UUID
 
 from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert
@@ -149,6 +150,27 @@ class SqlNotificationIntentRepository:
                 .limit(1)
             )
             return row is not None
+
+    async def list_immediate_mail_run_ids(
+        self, user_id: str, run_ids: tuple[UUID, ...]
+    ) -> frozenset[UUID]:
+        if not run_ids:
+            return frozenset()
+        subject_keys = {f"agent-run:{run_id}": run_id for run_id in run_ids}
+        async with self._sessions() as session:
+            values = await session.scalars(
+                select(NotificationIntentRow.subject_key).where(
+                    NotificationIntentRow.user_id == user_id,
+                    NotificationIntentRow.kind.in_(
+                        (
+                            NotificationKind.OUTLOOK_MAIL_RESULT.value,
+                            NotificationKind.QQ_MAIL_RESULT.value,
+                        )
+                    ),
+                    NotificationIntentRow.subject_key.in_(tuple(subject_keys)),
+                )
+            )
+            return frozenset(subject_keys[value] for value in values)
 
     async def notification_metrics(self) -> NotificationIntentMetrics:
         async with self._sessions() as session:

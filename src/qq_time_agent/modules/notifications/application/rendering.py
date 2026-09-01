@@ -46,6 +46,7 @@ def _lead_text(lead: timedelta) -> str:
 def _label(kind: NotificationKind) -> str:
     labels = {
         NotificationKind.DAILY_DIGEST: "日程摘要",
+        NotificationKind.MAIL_DIGEST: "邮件摘要",
         NotificationKind.AGENDA_CONFLICT: "日程冲突",
         NotificationKind.CONNECTION_REAUTH: "系统通知",
         NotificationKind.OUTLOOK_MAIL_RESULT: "邮件处理\N{FULLWIDTH VERTICAL LINE}Outlook",
@@ -61,6 +62,14 @@ def render_digest(day: date, entries: tuple[AgendaNotificationItem, ...]) -> str
         lines.append("今日暂无已确认日程。")
     for value in entries:
         lines.append(f"{value.starts_at:%H:%M}-{value.ends_at:%H:%M} {value.title}")
+    return "\n".join(lines)
+
+
+def render_mail_digest(day: date, summaries: tuple[tuple[str, str], ...]) -> str:
+    lines = [f"{day.isoformat()} 邮件摘要"]
+    if not summaries:
+        lines.append("暂无未即时推送的邮件处理结果。")
+    lines.extend(f"{stamp} {summary}" for stamp, summary in summaries)
     return "\n".join(lines)
 
 

@@ -96,6 +96,37 @@ registerOwnerGroupAlias(userId, alias) -> OwnerGroupAlias
 可信的发言归属规则，但转发聊天记录本身仍是 T2 外部内容，不能获得命令权限。缺少映射时必须要求
 所有者登记，禁止依据聊天语气、日程或模型猜测身份。
 
+### MailRulePort（ADR-0014）
+
+```text
+listMailRules(userId) -> MailRule[]
+registerMailRule(userId, matchField, pattern, action) -> MailRule
+```
+
+所有者邮件通知规则由 Identity 保存。`matchField` 只允许 `SENDER`/`SUBJECT`（包含匹配，大小写不敏感），
+`action` 只允许 `NOTIFY`/`HOLD`。只有 QQ 直接身份验证的所有者 AgentRun 可以经
+`register_mail_rule` 工具登记；规则按所有者与归一化 pattern 幂等。通知投递解析读取规则并
+双向覆盖模型判定；上下文装配以只读方式注入规则，使模型自述与真实配置一致。
+
+### RecentMailQueryPort（ADR-0014）
+
+```text
+listRecentMail(limit, keyword?) -> RecentMailItem[]
+```
+
+Inbox 拥有的只读近期邮件元数据查询，支撑 Agent 的 `find_recent_mail` 工具。返回项只包含
+inbox_item_id、source_type、主题、脱敏发件人、occurred_at、状态与删除标志；`limit` 上限 20，
+`keyword` 只匹配主题。不得暴露正文、附件、凭据或 Provider 内部标识。
+
+### MailRunSummaryQueryPort（ADR-0014）
+
+```text
+listRecentMailSummaries(since, limit) -> MailRunSummary[]
+```
+
+Agent 拥有的邮件 run 摘要只读查询，供 Notifications 生成每日邮件摘要。返回项只包含 run_id、
+inbox_item_id、source_type、final_content 摘要与完成时间；只返回 COMPLETED 的邮件来源 run。
+
 ### 统一 MailProvider
 
 ```text

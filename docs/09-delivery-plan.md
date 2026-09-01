@@ -216,3 +216,15 @@ Worker 只生成持久化意图，QQ 进程发送前重新校验 Agenda/Connecti
 `AMBIGUOUS` 且不自动重发。每日摘要只读取 ACTIVE Agenda 快照，冲突键规范化排序 Agenda ID 并包含双方版本，
 重新授权 episode 仅在状态转入 `REAUTH_REQUIRED` 时递增。0014/0015 往返、空库直升 head、PostgreSQL
 幂等/并发租约/重启恢复、Ruff、strict mypy、架构和全量非沙箱回归已通过；官方 QQ 主动消息沙箱验证成功。
+
+## 阶段 16：邮件通知策略修复（ADR-0014）
+
+交付物：邮件分类 × 投递矩阵提示词、确定性投递层（Identity 邮件规则 > 模型判定）、
+`MAIL_DIGEST` 次日邮件摘要兜底、邮件 run 日程变更工具授权拒绝、`ToolCallContext` 来源
+溯源与 `source_refs` 渲染、`find_recent_mail` 只读工具、`register_mail_rule` 规则工具、
+`create_agenda` 显式 `reminder_due_at`、固定去敏投递评估集和 `identity_mail_rules` 迁移。
+
+完成标准：以 2026-08-31 事件为原型的固定评估集中，面试/测评/到期类邮件必须 NOTIFY，
+确认/记录类 HOLD，不确定类倾向 NOTIFY；邮件来源 run 调用日程变更工具被授权层拒绝；
+规则命中双向覆盖模型判定；每个完成的邮件 run 摘要出现在次日邮件摘要（已推送的除外）；
+提示词改动必须通过该评估集；Ruff、strict mypy、架构与全量非沙箱回归通过。

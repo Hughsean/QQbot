@@ -8,14 +8,17 @@ from qq_time_agent.modules.agenda.contracts import (
     AgendaNotificationItem,
     AgendaNotificationQueryPort,
 )
+from qq_time_agent.modules.agent.contracts import MailRunSummaryQueryPort
 from qq_time_agent.modules.connections.contracts import ConnectionNotificationQueryPort
 from qq_time_agent.modules.identity.contracts import UserPreferencesPort, UserPreferencesView
+from qq_time_agent.modules.inbox.contracts import MailDigestTitleQueryPort
 from qq_time_agent.modules.notifications.application.ports import NotificationIntentRepository
 from qq_time_agent.modules.notifications.application.rendering import (
     TEMPLATE_VERSION,
     conflict_key,
     render_conflict,
     render_digest,
+    render_mail_digest,
     render_reauth,
 )
 from qq_time_agent.modules.notifications.domain.models import (
@@ -32,17 +35,22 @@ class NotificationPlanningService:
         preferences: UserPreferencesPort,
         agenda: AgendaNotificationQueryPort,
         connections: ConnectionNotificationQueryPort,
+        mail_summaries: MailRunSummaryQueryPort | None = None,
+        mail_titles: MailDigestTitleQueryPort | None = None,
     ) -> None:
         self._repository = repository
         self._preferences = preferences
         self._agenda = agenda
         self._connections = connections
+        self._mail_summaries = mail_summaries
+        self._mail_titles = mail_titles
 
     async def plan(self, user_id: str, now: datetime) -> int:
         preferences = await self._preferences.get_preferences(user_id)
         count = 0
         if preferences.digest_enabled:
             count += await self._plan_digest(user_id, now, preferences)
+            count += await self._plan_mail_digest(user_id, now, preferences)
         if preferences.conflict_notifications_enabled:
             count += await self._plan_conflicts(user_id, now, preferences)
         if preferences.reauth_notifications_enabled:
@@ -70,6 +78,49 @@ class NotificationPlanningService:
                 key,
                 TEMPLATE_VERSION,
                 render_digest(local.date(), entries),
+                next_allowed_at(now, preferences),
+            ),
+            now,
+        )
+        return 1
+
+    async def _plan_mail_digest(
+        self, user_id: str, now: datetime, preferences: UserPreferencesView
+    ) -> int:
+        if self._mail_summaries is None or self._mail_titles is None:
+            return 0
+        zone = ZoneInfo(preferences.timezone)
+        local = now.astimezone(zone)
+        if local.timetz().replace(tzinfo=None) < preferences.digest_local_time:
+            return 0
+        summaries = await self._mail_summaries.list_recent_mail_summaries(
+            user_id, now - timedelta(days=1), 20
+        )
+        immediate = await self._repository.list_immediate_mail_run_ids(
+            user_id, tuple(value.run_id for value in summaries)
+        )
+        digest_summaries = tuple(value for value in summaries if value.run_id not in immediate)
+        titles = await self._mail_titles.list_mail_digest_titles(
+            user_id, tuple(value.inbox_item_id for value in digest_summaries), 20
+        )
+        title_by_id = {value.inbox_item_id: value.subject for value in titles}
+        lines = [
+            (
+                f"{value.completed_at.astimezone(zone):%H:%M}",
+                f"{title_by_id[value.inbox_item_id]}: {' '.join(value.summary.split())[:180]}",
+            )
+            for value in digest_summaries
+            if value.inbox_item_id in title_by_id
+        ]
+        key = f"mail-digest:{user_id}:{local.date().isoformat()}:{TEMPLATE_VERSION}"
+        await self._repository.add_or_get(
+            NotificationIntentDraft(
+                user_id,
+                NotificationKind.MAIL_DIGEST,
+                f"mail-digest:{user_id}",
+                key,
+                TEMPLATE_VERSION,
+                render_mail_digest(local.date(), tuple(lines)),
                 next_allowed_at(now, preferences),
             ),
             now,

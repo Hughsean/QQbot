@@ -18,7 +18,11 @@ from qq_time_agent.modules.agent.contracts import (
     AgentRunStatus,
 )
 from qq_time_agent.modules.ai_gateway.contracts import ModelFailure
-from qq_time_agent.modules.inbox.contracts import InboxContentView, InboxSourceView
+from qq_time_agent.modules.inbox.contracts import (
+    InboxContentView,
+    InboxSourceView,
+    MailDeliverySourceView,
+)
 from qq_time_agent.modules.notifications.contracts import AgentMailResultRequest
 
 NOW = datetime(2026, 8, 26, tzinfo=UTC)
@@ -37,7 +41,18 @@ class Runs:
         assert run_id == self.run.run_id and message == "邮件正文" and context == "事件上下文"
         if self.failure is not None:
             raise self.failure
+        self.run.status = AgentRunStatus.COMPLETED
+        self.run.final_content = self.result.content
+        self.run.final_delivery = self.result.delivery
         return self.result
+
+    async def freeze_effective_delivery(
+        self, run_id: UUID, delivery: AgentDelivery
+    ) -> AgentDelivery:
+        assert run_id == self.run.run_id
+        if self.run.effective_delivery is None:
+            self.run.effective_delivery = delivery
+        return self.run.effective_delivery
 
 
 @dataclass
@@ -60,6 +75,20 @@ class Source:
 
     async def get_source(self, inbox_item_id: UUID) -> InboxSourceView | None:
         return self.value if inbox_item_id == self.value.inbox_item_id else None
+
+    async def get_mail_delivery_source(
+        self, user_id: str, inbox_item_id: UUID
+    ) -> MailDeliverySourceView | None:
+        del user_id
+        source = await self.get_source(inbox_item_id)
+        if source is None:
+            return None
+        return MailDeliverySourceView(
+            source.inbox_item_id,
+            source.source_type,
+            "sender@example.com",
+            source.subject,
+        )
 
 
 @dataclass

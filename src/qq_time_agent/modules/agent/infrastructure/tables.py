@@ -23,6 +23,7 @@ class AgentRunRow(AgentBase):
     observations: Mapped[list[dict[str, object]]] = mapped_column(JSONB, nullable=False)
     final_content: Mapped[str | None] = mapped_column(Text)
     final_delivery: Mapped[str | None] = mapped_column(String(16))
+    effective_delivery: Mapped[str | None] = mapped_column(String(16))
     failure_class: Mapped[str | None] = mapped_column(String(120))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

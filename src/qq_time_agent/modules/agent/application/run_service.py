@@ -11,6 +11,7 @@ from qq_time_agent.modules.agent.application.loop import AgentLoop
 from qq_time_agent.modules.agent.application.observation_codec import deserialize_observation
 from qq_time_agent.modules.agent.contracts import (
     AgentContextRepository,
+    AgentDelivery,
     AgentFinal,
     AgentRun,
     AgentRunClaimError,
@@ -69,6 +70,11 @@ class AgentRunService:
 
     async def get(self, run_id: UUID) -> AgentRun | None:
         return await self._repository.get(run_id)
+
+    async def freeze_effective_delivery(
+        self, run_id: UUID, delivery: AgentDelivery
+    ) -> AgentDelivery:
+        return await self._repository.freeze_effective_delivery(run_id, delivery)
 
     async def execute(  # noqa: C901
         self, run_id: UUID, message: str, context: str = ""
@@ -149,6 +155,8 @@ class AgentRunService:
                 record,
                 renew,
                 record_event,
+                source_type=claim.run.source_type,
+                inbox_item_id=claim.run.inbox_item_id,
             )
             await renew()
             await self._repository.complete_claim(claim, result, self._clock.now())
@@ -173,7 +181,13 @@ class AgentRunService:
 
         try:
             result = await self._loop.run(
-                run.user_id, message, context, _observations(run.observations), record
+                run.user_id,
+                message,
+                context,
+                _observations(run.observations),
+                record,
+                source_type=run.source_type,
+                inbox_item_id=run.inbox_item_id,
             )
         except Exception as exc:
             current = await self._repository.get(run_id)

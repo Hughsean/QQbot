@@ -7,7 +7,7 @@ from enum import StrEnum
 from typing import TYPE_CHECKING, Protocol
 from uuid import UUID
 
-from qq_time_agent.contracts.tools import ToolDefinition
+from qq_time_agent.contracts.tools import ToolCallContext, ToolDefinition
 
 if TYPE_CHECKING:
     from qq_time_agent.modules.agent.contracts.runs import AgentRun, AgentRunExecution
@@ -90,7 +90,13 @@ class AgentModelPort(Protocol):
 class AgentToolPort(Protocol):
     def definitions(self) -> tuple[AgentToolDefinition, ...]: ...
 
-    async def call(self, owner_id: str, name: str, arguments: Mapping[str, object]) -> object: ...
+    async def call(
+        self,
+        owner_id: str,
+        name: str,
+        arguments: Mapping[str, object],
+        context: ToolCallContext,
+    ) -> object: ...
 
 
 class AgentContextPort(Protocol):
@@ -111,6 +117,10 @@ class AgentRunPort(Protocol):
 
 class AgentRunExecutionPort(Protocol):
     async def get(self, run_id: UUID) -> "AgentRun | None": ...
+
+    async def freeze_effective_delivery(
+        self, run_id: UUID, delivery: AgentDelivery
+    ) -> AgentDelivery: ...
 
     async def execute(
         self, run_id: UUID, message: str, context: str = ""

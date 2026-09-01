@@ -17,7 +17,7 @@ api           对外控制器和 DTO 映射
 
 | 模块 | 唯一职责 | 拥有的数据 | 不负责 |
 |---|---|---|---|
-| Identity | 唯一所有者身份、QQ 白名单、群聊展示昵称映射和偏好 | 单用户、身份映射、偏好 | OAuth token、邮件、排程 |
+| Identity | 唯一所有者身份、QQ 白名单、群聊展示昵称映射、偏好和邮件通知规则 | 单用户、身份映射、偏好、邮件规则 | OAuth token、邮件、排程 |
 | Connections | 外部连接生命周期和能力 | 多连接元数据、账号 fingerprint、授权状态 | 保存明文凭据、同步邮件 |
 | Credential Vault | 加密保存和读取凭据 | 密文、密钥版本、凭据引用 | 业务状态、OAuth 页面 |
 | Inbox | 原始信息信封、资产、去重、处理状态 | InboxItem、原始内容引用、SourceAsset 元数据 | AI 理解、执行操作、解析文件 |
@@ -34,7 +34,7 @@ api           对外控制器和 DTO 映射
 | Agent | Conversation/EventCase 作用域、AgentRun、上下文选择与工具编排 | Conversation、EventCase、AgentRun、工具调用记录 | 日程事实、直接 Provider 调用 |
 | Reminders | 提醒计划、到期租约、重试和死信 | Reminder、执行租约 | 改写日程、直接依赖 QQ SDK |
 | Actions | 所有日程副作用门禁、幂等执行、提醒一致性和撤销 | ActionRequest、执行结果 | 自行决定用户意图 |
-| Notifications | 规划、渲染并发送 QQ 通知 | 通知意图、投递记录、模板版本、cooldown | 修改 Proposal、Connection 或 Agenda 状态 |
+| Notifications | 规划、渲染并发送 QQ 通知，以及邮件结果投递策略解析 | 通知意图、投递记录、模板版本、cooldown、邮件投递决策 | 修改 Proposal、Connection 或 Agenda 状态 |
 | Data Lifecycle | 计算保留期限、删除编排、删除记录重放 | Tombstone、PurgeRun、保留策略版本 | 直接跨模块删表、保存业务正文 |
 | Audit | 追加式审计和可追溯视图 | 审计记录 | 业务决策、凭据 |
 | Provider Adapters | Microsoft、QQ、DeepSeek、Ollama SDK/HTTP 适配 | Provider 特定游标可由所属模块托管 | 跨 Provider 业务编排 |
@@ -49,6 +49,8 @@ api           对外控制器和 DTO 映射
 | 连接状态 | Connections | `ConnectionQueryPort` |
 | token/授权码 | Credential Vault | 短生命周期 `CredentialHandle` |
 | 原始邮件/消息 | Inbox | `InboxContentPort`，按授权读取 |
+| 邮件通知规则 | Identity | `MailRuleQueryPort`（通知投递解析与上下文注入只读） |
+| 邮件 run 摘要 | Agent | `MailRunSummaryQueryPort`（Notifications 每日邮件摘要只读） |
 | 提取候选 | Understanding | 候选查询契约 |
 | AI 调用元数据 | AI Gateway | `ModelInvocationQueryPort` |
 | 知识来源和片段 | Knowledge | `KnowledgeQueryPort`、来源事件 |

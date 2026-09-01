@@ -1,14 +1,28 @@
 """SQLAlchemy table exclusively owned by Identity."""
 
 from datetime import datetime, time
+from uuid import UUID
 
 from sqlalchemy import Boolean, DateTime, Integer, String, Time
 from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
 class IdentityBase(DeclarativeBase):
     pass
+
+
+class IdentityMailRuleRow(IdentityBase):
+    __tablename__ = "identity_mail_rules"
+
+    rule_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    user_id: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
+    match_field: Mapped[str] = mapped_column(String(20), nullable=False)
+    pattern: Mapped[str] = mapped_column(String(240), nullable=False)
+    normalized_pattern: Mapped[str] = mapped_column(String(240), nullable=False)
+    action: Mapped[str] = mapped_column(String(10), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
 class UserPreferencesRow(IdentityBase):
