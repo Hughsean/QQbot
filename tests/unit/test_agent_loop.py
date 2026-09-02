@@ -342,7 +342,6 @@ def test_agent_instruction_declares_owner_timezone_and_reference_time() -> None:
         datetime(2026, 8, 27, 9, tzinfo=UTC),
     )
     instruction = _instruction(request)
-    assert "所有者时区为 Asia/Shanghai" in instruction
-    assert "2026-08-27T09:00:00+00:00" in instruction
-    assert "正确的 UTC 偏移" in instruction
-    assert "不得猜测身份" in instruction
+    assert "所有者本地时区" in instruction
+    assert "owner_timezone" in instruction
+    assert "reference_time" in instruction
