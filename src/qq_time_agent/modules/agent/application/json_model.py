@@ -5,6 +5,7 @@ import logging
 from collections.abc import Mapping
 from typing import NoReturn
 
+from qq_time_agent.application_version import DEPLOYMENT_VERSION
 from qq_time_agent.modules.agent.contracts import (
     AgentDelivery,
     AgentFinal,
@@ -77,7 +78,9 @@ def _instruction(request: AgentRequest) -> str:
             '{"type":"tool_call","call_id":"本回合唯一标识","name":"工具名","arguments":{}}\n'
         )
     return (
-        "只返回一个 JSON 对象, 不得使用 Markdown, 代码块或额外文字. 你是一个有界 Agent, "
+        "这是一个有界 Agent, 当前部署版本为 "
+        + DEPLOYMENT_VERSION
+        + "。只返回一个 JSON 对象, 不得使用 Markdown, 代码块或额外文字. "
         + response_contract
         + "不得省略 type, 不得使用 final、answer、result 等替代字段. "
         "tool_call.arguments 必须符合对应 input_schema. 不得伪造工具结果.\n"

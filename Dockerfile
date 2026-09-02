@@ -8,6 +8,7 @@ ENV UV_COMPILE_BYTECODE=1 \
 COPY pyproject.toml uv.lock .python-version ./
 COPY src/ ./src/
 COPY docs/README.md ./docs/README.md
+COPY version ./version
 # The application version is intentionally stable between source-only fixes. Do not reuse a
 # cached wheel for this local package, otherwise Docker may ship an older source tree.
 RUN uv sync --frozen --no-dev --no-editable --no-cache

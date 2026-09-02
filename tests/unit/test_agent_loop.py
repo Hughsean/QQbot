@@ -6,6 +6,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
+from qq_time_agent.application_version import DEPLOYMENT_VERSION
 from qq_time_agent.contracts.tools import ToolDefinition
 from qq_time_agent.modules.agent.application.json_model import _instruction, _parse
 from qq_time_agent.modules.agent.application.loop import (
@@ -326,6 +327,7 @@ def test_agent_instruction_contains_the_exact_response_shapes() -> None:
     instruction = _instruction(request)
     assert '"type":"final"' in instruction
     assert '"type":"tool_call"' in instruction
+    assert DEPLOYMENT_VERSION in instruction
 
 
 def test_agent_instruction_declares_owner_timezone_and_reference_time() -> None:

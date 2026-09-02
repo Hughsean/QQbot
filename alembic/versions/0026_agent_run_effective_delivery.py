@@ -1,6 +1,6 @@
 """Freeze the effective delivery decision for completed Agent runs.
 
-Revision ID: 0026_agent_run_effective_delivery
+Revision ID: 0026_effective_delivery
 Revises: 0025_identity_mail_rules
 """
 
@@ -9,7 +9,7 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "0026_agent_run_effective_delivery"
+revision: str = "0026_effective_delivery"
 down_revision: str | None = "0025_identity_mail_rules"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
