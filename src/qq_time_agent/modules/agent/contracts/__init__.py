@@ -1,5 +1,24 @@
 """Public contracts for the owner-agent runtime."""
 
+from qq_time_agent.modules.agent.contracts.conversation_events import (
+    ContextDiagnostics,
+    ConversationContextRepository,
+    ConversationDeliveryStatus,
+    ConversationEvent,
+    ConversationEventRepository,
+    ConversationEventRole,
+    ConversationEventType,
+    ConversationEventView,
+    ConversationScopeType,
+    ConversationSnapshot,
+    ConversationSummaryView,
+    NotificationEventCommandPort,
+    NotificationEventRequest,
+    bounded_event_content,
+    is_notification_event,
+    owner_timeline_scope_id,
+    snapshot_hash,
+)
 from qq_time_agent.modules.agent.contracts.events import (
     AgentRunEvent,
     AgentRunEventRepository,
@@ -7,7 +26,9 @@ from qq_time_agent.modules.agent.contracts.events import (
     AgentRunEventView,
 )
 from qq_time_agent.modules.agent.contracts.models import (
+    AgentContextAssemblyPort,
     AgentContextPort,
+    AgentContextResult,
     AgentDelivery,
     AgentFinal,
     AgentModelPort,
@@ -39,8 +60,10 @@ from qq_time_agent.modules.agent.contracts.runs import (
 )
 
 __all__ = [
+    "AgentContextAssemblyPort",
     "AgentContextPort",
     "AgentContextRepository",
+    "AgentContextResult",
     "AgentDelivery",
     "AgentFinal",
     "AgentModelPort",
@@ -65,9 +88,26 @@ __all__ = [
     "AgentToolCall",
     "AgentToolDefinition",
     "AgentToolPort",
+    "ContextDiagnostics",
     "ContextScope",
+    "ConversationContextRepository",
+    "ConversationDeliveryStatus",
+    "ConversationEvent",
+    "ConversationEventRepository",
+    "ConversationEventRole",
+    "ConversationEventType",
+    "ConversationEventView",
+    "ConversationScopeType",
+    "ConversationSnapshot",
+    "ConversationSummaryView",
     "MailRunSummary",
     "MailRunSummaryQueryPort",
+    "NotificationEventCommandPort",
+    "NotificationEventRequest",
     "ScopedAgentReply",
     "ToolObservation",
+    "bounded_event_content",
+    "is_notification_event",
+    "owner_timeline_scope_id",
+    "snapshot_hash",
 ]

@@ -8,6 +8,8 @@ import httpx
 
 from qq_time_agent.bootstrap.config_models import DeepSeekConfig
 from qq_time_agent.modules.ai_gateway.contracts import (
+    AgentMessage,
+    AgentMessageRole,
     ModelFailure,
     ModelRoute,
     StructuredRequest,
@@ -16,6 +18,16 @@ from qq_time_agent.modules.ai_gateway.contracts import (
 )
 
 RETRYABLE = {408, 409, 429, 500, 502, 503, 504}
+
+# DeepSeek chat input accepts system/user/assistant roles only. Timeline
+# system and tool messages flatten to user turns whose content already
+# carries self-describing event labels composed by the agent layer.
+_API_ROLE = {
+    AgentMessageRole.SYSTEM: "user",
+    AgentMessageRole.USER: "user",
+    AgentMessageRole.ASSISTANT: "assistant",
+    AgentMessageRole.TOOL: "user",
+}
 
 
 class DeepSeekStructuredAdapter:
@@ -34,10 +46,7 @@ class DeepSeekStructuredAdapter:
         model, timeout = self._route(request.route)
         payload = {
             "model": model,
-            "messages": [
-                {"role": "system", "content": request.system_instruction},
-                {"role": "user", "content": request.external_data},
-            ],
+            "messages": _api_messages(request),
             "response_format": {"type": "json_object"},
             "max_tokens": request.max_output_tokens,
             "temperature": 0,
@@ -109,6 +118,17 @@ class DeepSeekStructuredAdapter:
 def _serialize_payload(payload: Mapping[str, object]) -> bytes:
     """Produce once the exact UTF-8 bytes used for preflight and transmission."""
     return json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+
+
+def _api_messages(request: StructuredRequest) -> list[dict[str, str]]:
+    messages = [{"role": "system", "content": request.system_instruction}]
+    messages.extend(_timeline_message(item) for item in request.messages)
+    messages.append({"role": "user", "content": request.external_data})
+    return messages
+
+
+def _timeline_message(item: AgentMessage) -> dict[str, str]:
+    return {"role": _API_ROLE[item.role], "content": item.content}
 
 
 def _preflight(request: StructuredRequest, content: bytes) -> None:

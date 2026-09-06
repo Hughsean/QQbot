@@ -28,7 +28,7 @@ from qq_time_agent.modules.agent.contracts import (
     ToolObservation,
 )
 from qq_time_agent.modules.agent.contracts.models import AgentToolCall
-from qq_time_agent.modules.ai_gateway.contracts import estimate_tokens
+from qq_time_agent.modules.ai_gateway.contracts import AgentMessage, estimate_tokens
 
 LOGGER = logging.getLogger(__name__)
 
@@ -83,6 +83,7 @@ class AgentLoop:
         owner_id: str,
         message: str,
         context: str = "",
+        timeline_messages: tuple[AgentMessage, ...] = (),
         prior_observations: tuple[ToolObservation, ...] = (),
         on_tool_call: Callable[[ToolObservation], Awaitable[None]] | None = None,
         on_boundary: Callable[[], Awaitable[None]] | None = None,
@@ -127,6 +128,7 @@ class AgentLoop:
             response = await self._respond(
                 message,
                 context,
+                timeline_messages,
                 observations,
                 owner_time,
                 request_step,
@@ -165,6 +167,7 @@ class AgentLoop:
         response = await self._respond(
             message,
             context,
+            timeline_messages,
             observations,
             owner_time,
             request_step,
@@ -182,6 +185,7 @@ class AgentLoop:
         self,
         message: str,
         context: str,
+        timeline_messages: tuple[AgentMessage, ...],
         observations: list[ToolObservation],
         owner_time: datetime,
         step: int,
@@ -208,6 +212,7 @@ class AgentLoop:
                     owner_time,
                     output_tokens,
                     response_mode,
+                    timeline_messages,
                 )
             )
             await _emit(

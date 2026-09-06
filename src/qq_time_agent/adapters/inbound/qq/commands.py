@@ -20,12 +20,14 @@ from qq_time_agent.contracts.source import (
     SourceType,
 )
 from qq_time_agent.modules.agent.contracts import (
-    AgentContextPort,
+    AgentContextAssemblyPort,
     AgentFinal,
+    AgentRun,
     AgentRunCommandPort,
     AgentRunExecution,
     AgentRunExecutionStatus,
     AgentRunStatus,
+    ConversationSnapshot,
 )
 from qq_time_agent.modules.inbox.contracts import InboxProcessingPort, IngestResult, QqInboxPort
 from qq_time_agent.modules.normalization.contracts import NormalizationPort
@@ -42,7 +44,7 @@ class QqCommandRouter:
         jobs: JobQueue,
         clock: Clock,
         asset_discovery: SourceAssetDiscoveryPort | None,
-        agent_context: AgentContextPort,
+        agent_context: AgentContextAssemblyPort,
         agent_runs: AgentRunCommandPort,
         display_name: str = "小智",
     ) -> None:
@@ -92,6 +94,7 @@ class QqCommandRouter:
             envelope.source_type.value,
             conversation_key=envelope.thread_id or envelope.sender.provider_id,
             occurred_at=envelope.occurred_at,
+            message=content,
         )
         if run.status is AgentRunStatus.COMPLETED:
             if run.final_content is None or run.final_delivery is None:
@@ -114,15 +117,19 @@ class QqCommandRouter:
                 "QQ Agent 恢复任务入队失败: 继续当前安全执行",
                 extra={"role": "qq", "path": "agent", "run_id": str(run.run_id)},
             )
-        context = await self._agent_context.build(
+        assembled = await self._agent_context.assemble(
             "owner",
             content,
             before=envelope.occurred_at,
             exclude_id=ingested.inbox_item_id,
             conversation_id=run.conversation_id,
             event_case_id=run.event_case_id,
+            run_id=run.run_id,
+            snapshot=_run_snapshot(run),
         )
-        raw_outcome = await self._agent_runs.execute(run.run_id, content, context)
+        raw_outcome = await self._agent_runs.execute(
+            run.run_id, content, assembled.context, assembled.messages, assembled.snapshot
+        )
         outcome = _execution_outcome(raw_outcome)
         if outcome.status is AgentRunExecutionStatus.IN_PROGRESS:
             message = "正在处理中, 请稍后查看结果。"
@@ -139,7 +146,8 @@ class QqCommandRouter:
                 "path": "agent",
                 "result_type": "agent_final",
                 "result_chars": len(result.content),
-                "context_chars": len(context),
+                "context_chars": len(assembled.context),
+                "timeline_messages": len(assembled.messages),
             },
         )
         return self._format_direct_reply(result.content)
@@ -184,6 +192,23 @@ class QqCommandRouter:
         await self._processing.mark_normalized(result.inbox_item_id)
         if envelope.source_type is SourceType.OWNER_NOTE:
             await self._processing.mark_completed(result.inbox_item_id)
+
+
+def _run_snapshot(run: AgentRun) -> ConversationSnapshot | None:
+    if (
+        run.context_revision is None
+        or run.context_max_sequence is None
+        or run.context_hash is None
+        or run.conversation_id is None
+    ):
+        return None
+    return ConversationSnapshot(
+        user_id=run.user_id,
+        scope_id=run.conversation_id,
+        revision=run.context_revision,
+        max_sequence=run.context_max_sequence,
+        context_hash=run.context_hash,
+    )
 
 
 def _execution_outcome(value: AgentRunExecution | AgentFinal) -> AgentRunExecution:

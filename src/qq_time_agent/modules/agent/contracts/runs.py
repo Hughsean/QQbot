@@ -3,7 +3,7 @@
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 from uuid import UUID
 
 from qq_time_agent.modules.agent.contracts.models import (
@@ -11,6 +11,9 @@ from qq_time_agent.modules.agent.contracts.models import (
     AgentFinal,
     ToolObservation,
 )
+
+if TYPE_CHECKING:
+    from qq_time_agent.modules.agent.contracts.conversation_events import ConversationSnapshot
 
 
 class AgentRunStatus(StrEnum):
@@ -42,6 +45,10 @@ class AgentRun:
     execution_lease_until: datetime | None = None
     execution_epoch: int = 0
     effective_delivery: AgentDelivery | None = None
+    completed_at: datetime | None = None
+    context_revision: int | None = None
+    context_max_sequence: int | None = None
+    context_hash: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -105,8 +112,6 @@ class ContextScope:
     event_case_id: UUID | None
 
 
-
-
 @dataclass(frozen=True, slots=True)
 class ScopedAgentReply:
     run_id: UUID
@@ -161,6 +166,10 @@ class AgentRunRepository(Protocol):
     async def get(self, run_id: UUID) -> AgentRun | None: ...
 
     async def save(self, run: AgentRun, expected_version: int) -> None: ...
+
+    async def record_context_snapshot(
+        self, run_id: UUID, snapshot: "ConversationSnapshot"
+    ) -> None: ...
 
     async def freeze_effective_delivery(
         self, run_id: UUID, delivery: AgentDelivery

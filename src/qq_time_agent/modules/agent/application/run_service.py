@@ -22,8 +22,15 @@ from qq_time_agent.modules.agent.contracts import (
     AgentRunExecutionStatus,
     AgentRunRepository,
     AgentRunStatus,
+    ConversationEvent,
+    ConversationEventRepository,
+    ConversationEventType,
+    ConversationScopeType,
+    ConversationSnapshot,
     ToolObservation,
+    bounded_event_content,
 )
+from qq_time_agent.modules.ai_gateway.contracts import AgentMessage
 
 
 class AgentRunService:
@@ -34,6 +41,7 @@ class AgentRunService:
         clock: Clock,
         events: AgentRunEventRepository | None = None,
         execution_lease: timedelta = timedelta(minutes=5),
+        timeline: ConversationEventRepository | None = None,
     ) -> None:
         if execution_lease <= timedelta(0):
             raise ValueError("AgentRun execution lease must be positive")
@@ -47,6 +55,7 @@ class AgentRunService:
             else None
         )
         self._events = events
+        self._timeline = timeline
 
     async def ensure_run(
         self,
@@ -56,6 +65,7 @@ class AgentRunService:
         conversation_key: str | None = None,
         event_key: str | None = None,
         occurred_at: datetime | None = None,
+        message: str | None = None,
     ) -> AgentRun:
         scope = None
         timestamp = occurred_at or self._clock.now()
@@ -64,9 +74,42 @@ class AgentRunService:
                 user_id, conversation_key, event_key, timestamp
             )
             await self._context_repository.attach_item(scope, inbox_item_id, timestamp)
-        return await self._repository.get_or_create(
+        run = await self._repository.get_or_create(
             inbox_item_id, user_id, source_type, self._clock.now(), scope
         )
+        await self._record_user_message(scope, run, message, source_type, timestamp)
+        return run
+
+    async def _record_user_message(
+        self,
+        scope: object,
+        run: AgentRun,
+        message: str | None,
+        source_type: str,
+        occurred_at: datetime,
+    ) -> None:
+        conversation_id = getattr(scope, "conversation_id", None) or run.conversation_id
+        if (
+            self._timeline is None
+            or message is None
+            or not message.strip()
+            or conversation_id is None
+        ):
+            return
+        event = ConversationEvent(
+            scope_type=ConversationScopeType.CONVERSATION,
+            scope_id=conversation_id,
+            user_id=run.user_id,
+            event_type=ConversationEventType.USER_MESSAGE,
+            occurred_at=occurred_at,
+            content=bounded_event_content(message),
+            idempotency_key=f"user-message:{run.inbox_item_id}",
+            inbox_item_id=run.inbox_item_id,
+            content_ref=f"inbox:{run.inbox_item_id}",
+            metadata={"source_type": source_type},
+        )
+        with suppress(Exception):
+            await self._timeline.append(event, self._clock.now())
 
     async def get(self, run_id: UUID) -> AgentRun | None:
         return await self._repository.get(run_id)
@@ -77,7 +120,12 @@ class AgentRunService:
         return await self._repository.freeze_effective_delivery(run_id, delivery)
 
     async def execute(  # noqa: C901
-        self, run_id: UUID, message: str, context: str = ""
+        self,
+        run_id: UUID,
+        message: str,
+        context: str = "",
+        timeline_messages: tuple[AgentMessage, ...] = (),
+        snapshot: ConversationSnapshot | None = None,
     ) -> AgentRunExecution:
         run = await self._repository.get(run_id)
         if run is None:
@@ -86,7 +134,9 @@ class AgentRunService:
         if completed is not None:
             return AgentRunExecution(AgentRunExecutionStatus.COMPLETED, completed)
         if not hasattr(self._repository, "claim"):
-            return await self._execute_legacy(run, run_id, message, context)
+            return await self._execute_legacy(
+                run, run_id, message, context, timeline_messages, snapshot
+            )
 
         now = self._clock.now()
         execution_owner = f"agent-run:{uuid4().hex}"
@@ -102,7 +152,16 @@ class AgentRunService:
                 return AgentRunExecution(AgentRunExecutionStatus.COMPLETED, completed)
             return AgentRunExecution(AgentRunExecutionStatus.IN_PROGRESS)
 
-        assert claim is not None
+        try:
+            _validate_snapshot(claim.run, snapshot)
+            if snapshot is not None and not _has_snapshot(claim.run):
+                await self._record_snapshot(run_id, snapshot)
+        except AgentRunClaimError:
+            return AgentRunExecution(AgentRunExecutionStatus.IN_PROGRESS)
+        except Exception as exc:
+            with suppress(AgentRunClaimError):
+                await self._repository.fail_claim(claim, type(exc).__name__, self._clock.now())
+            raise
         if self._events is not None:
             with suppress(Exception):
                 await self._events.append(
@@ -115,9 +174,7 @@ class AgentRunService:
                     )
                 )
 
-        async def record_event(
-            event_type: str, step: int, metadata: Mapping[str, object]
-        ) -> None:
+        async def record_event(event_type: str, step: int, metadata: Mapping[str, object]) -> None:
             if self._events is not None:
                 with suppress(Exception):
                     await self._events.append(
@@ -151,6 +208,7 @@ class AgentRunService:
                 claim.run.user_id,
                 message,
                 context,
+                timeline_messages,
                 _observations(claim.run.observations),
                 record,
                 renew,
@@ -168,12 +226,28 @@ class AgentRunService:
             raise
         return AgentRunExecution(AgentRunExecutionStatus.EXECUTED, result)
 
+    async def _record_snapshot(self, run_id: UUID, snapshot: ConversationSnapshot | None) -> None:
+        """Persist the pinned context snapshot as execution metadata."""
+        if snapshot is None:
+            return
+        recorder = getattr(self._repository, "record_context_snapshot", None)
+        if recorder is None:
+            raise RuntimeError("AgentRun repository cannot persist context snapshot")
+        await recorder(run_id, snapshot)
+
     async def _execute_legacy(
-        self, run: AgentRun, run_id: UUID, message: str, context: str
+        self,
+        run: AgentRun,
+        run_id: UUID,
+        message: str,
+        context: str,
+        timeline_messages: tuple[AgentMessage, ...],
+        snapshot: ConversationSnapshot | None,
     ) -> AgentRunExecution:
         expected_version = run.version
         run.status = AgentRunStatus.RUNNING
         run.updated_at = self._clock.now()
+        _pin_snapshot(run, snapshot)
         await self._repository.save(run, expected_version)
 
         async def record(observation: ToolObservation) -> None:
@@ -184,6 +258,7 @@ class AgentRunService:
                 run.user_id,
                 message,
                 context,
+                timeline_messages,
                 _observations(run.observations),
                 record,
                 source_type=run.source_type,
@@ -200,12 +275,50 @@ class AgentRunService:
         current = await self._repository.get(run_id)
         if current is None:
             raise RuntimeError("AgentRun disappeared during execution")
+        finished_at = self._clock.now()
         current.status = AgentRunStatus.COMPLETED
         current.final_content = result.content[:12000]
         current.final_delivery = result.delivery
-        current.updated_at = self._clock.now()
+        current.updated_at = finished_at
+        current.completed_at = finished_at
         await self._repository.save(current, current.version)
         return AgentRunExecution(AgentRunExecutionStatus.EXECUTED, result)
+
+
+def _pin_snapshot(run: AgentRun, snapshot: ConversationSnapshot | None) -> None:
+    _validate_snapshot(run, snapshot)
+    if snapshot is None:
+        return
+    current = (run.context_revision, run.context_max_sequence, run.context_hash)
+    incoming = (snapshot.revision, snapshot.max_sequence, snapshot.context_hash)
+    if any(value is not None for value in current):
+        if current != incoming:
+            raise ValueError("AgentRun context snapshot is already pinned")
+        return
+    run.context_revision, run.context_max_sequence, run.context_hash = incoming
+
+
+def _has_snapshot(run: AgentRun) -> bool:
+    return all(
+        value is not None
+        for value in (run.context_revision, run.context_max_sequence, run.context_hash)
+    )
+
+
+def _validate_snapshot(run: AgentRun, snapshot: ConversationSnapshot | None) -> None:
+    if snapshot is None:
+        return
+    if snapshot.user_id != run.user_id:
+        raise ValueError("AgentRun context snapshot user does not match run")
+    if run.conversation_id is not None and snapshot.scope_id != run.conversation_id:
+        raise ValueError("AgentRun context snapshot scope does not match run")
+    current = (run.context_revision, run.context_max_sequence, run.context_hash)
+    if any(value is not None for value in current) and current != (
+        snapshot.revision,
+        snapshot.max_sequence,
+        snapshot.context_hash,
+    ):
+        raise ValueError("AgentRun context snapshot is already pinned")
 
 
 def _completed_final(run: AgentRun) -> AgentFinal | None:

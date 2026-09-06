@@ -3,10 +3,9 @@
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import and_, select
+from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
-from sqlalchemy.sql.elements import ColumnElement
 
 from qq_time_agent.modules.agent.application.observation_codec import serialize_observation
 from qq_time_agent.modules.agent.contracts import (
@@ -17,26 +16,30 @@ from qq_time_agent.modules.agent.contracts import (
     AgentRunClaimError,
     AgentRunStatus,
     ContextScope,
+    ConversationSnapshot,
     MailRunSummary,
-    ScopedAgentReply,
     ToolObservation,
 )
+from qq_time_agent.modules.agent.infrastructure.conversation_events import (
+    append_timeline_event,
+    build_agent_reply_event,
+    build_tool_events,
+)
+from qq_time_agent.modules.agent.infrastructure.scopes import SqlAgentContextScopes
 from qq_time_agent.modules.agent.infrastructure.tables import (
     AgentRunRow,
     AgentToolCallRow,
-    ContextItemRow,
-    ConversationRow,
-    EventCaseRow,
 )
 
 
-class SqlAgentRunRepository:
+class SqlAgentRunRepository(SqlAgentContextScopes):
     def __init__(self, sessions: async_sessionmaker[AsyncSession]) -> None:
-        self._sessions = sessions
+        super().__init__(sessions)
 
     async def list_recent_mail_summaries(
         self, user_id: str, since: datetime, limit: int = 20
     ) -> tuple[MailRunSummary, ...]:
+        completed_at = func.coalesce(AgentRunRow.completed_at, AgentRunRow.updated_at)
         async with self._sessions() as session:
             rows = await session.scalars(
                 select(AgentRunRow)
@@ -45,9 +48,9 @@ class SqlAgentRunRepository:
                     AgentRunRow.source_type.in_(("MICROSOFT_MAIL", "QQ_MAIL")),
                     AgentRunRow.status == AgentRunStatus.COMPLETED.value,
                     AgentRunRow.final_content.is_not(None),
-                    AgentRunRow.updated_at >= since,
+                    completed_at >= since,
                 )
-                .order_by(AgentRunRow.updated_at.desc())
+                .order_by(completed_at.desc())
                 .limit(max(1, min(limit, 20)))
             )
             return tuple(
@@ -56,7 +59,7 @@ class SqlAgentRunRepository:
                     row.inbox_item_id,
                     row.source_type,
                     row.final_content or "",
-                    row.updated_at,
+                    row.completed_at or row.updated_at,
                 )
                 for row in rows
             )
@@ -97,87 +100,6 @@ class SqlAgentRunRepository:
                 raise RuntimeError("AgentRun idempotent insert lost stored row")
             return _to_run(row)
 
-    async def ensure_scope(
-        self,
-        user_id: str,
-        conversation_key: str | None,
-        event_key: str | None,
-        now: datetime,
-    ) -> ContextScope:
-        conversation_id = None
-        event_case_id = None
-        async with self._sessions.begin() as session:
-            if conversation_key:
-                conversation_id = await _ensure_conversation(
-                    session, user_id, conversation_key, now
-                )
-            if event_key:
-                event_case_id = await _ensure_event_case(session, user_id, event_key, now)
-        return ContextScope(conversation_id, event_case_id)
-
-    async def attach_item(
-        self, scope: ContextScope, inbox_item_id: UUID, occurred_at: datetime
-    ) -> None:
-        async with self._sessions.begin() as session:
-            for scope_type, scope_id in (
-                ("conversation", scope.conversation_id),
-                ("event", scope.event_case_id),
-            ):
-                if scope_id is not None:
-                    await session.execute(
-                        insert(ContextItemRow)
-                        .values(
-                            scope_type=scope_type,
-                            scope_id=scope_id,
-                            inbox_item_id=inbox_item_id,
-                            occurred_at=occurred_at,
-                        )
-                        .on_conflict_do_nothing()
-                    )
-
-    async def list_item_ids(
-        self, scope_id: UUID, scope_type: str, exclude_id: UUID, before: datetime, limit: int
-    ) -> tuple[UUID, ...]:
-        async with self._sessions() as session:
-            values = await session.scalars(
-                select(ContextItemRow.inbox_item_id)
-                .where(
-                    and_(
-                        ContextItemRow.scope_id == scope_id,
-                        ContextItemRow.scope_type == scope_type,
-                        ContextItemRow.inbox_item_id != exclude_id,
-                        ContextItemRow.occurred_at < before,
-                    )
-                )
-                .order_by(ContextItemRow.occurred_at.desc())
-                .limit(limit)
-            )
-            return tuple(values)
-
-    async def list_final_replies(
-        self, scope_id: UUID, scope_type: str, before: datetime, limit: int
-    ) -> tuple[ScopedAgentReply, ...]:
-        scope_condition = _scope_run_condition(scope_id, scope_type)
-        async with self._sessions() as session:
-            rows = await session.scalars(
-                select(AgentRunRow)
-                .where(
-                    and_(
-                        scope_condition,
-                        AgentRunRow.status == AgentRunStatus.COMPLETED.value,
-                        AgentRunRow.final_content.is_not(None),
-                        AgentRunRow.updated_at < before,
-                    )
-                )
-                .order_by(AgentRunRow.updated_at.desc(), AgentRunRow.run_id)
-                .limit(limit)
-            )
-            return tuple(
-                ScopedAgentReply(row.run_id, row.final_content, row.updated_at)
-                for row in rows
-                if row.final_content is not None
-            )
-
     async def get(self, run_id: UUID) -> AgentRun | None:
         async with self._sessions() as session:
             row = await session.get(AgentRunRow, run_id)
@@ -200,7 +122,30 @@ class SqlAgentRunRepository:
             if run.updated_at is None:
                 raise ValueError("AgentRun updated_at is required")
             row.updated_at = run.updated_at
+            row.completed_at = run.completed_at
+            row.context_revision = run.context_revision
+            row.context_max_sequence = run.context_max_sequence
+            row.context_hash = run.context_hash
             row.version = expected_version + 1
+
+    async def record_context_snapshot(self, run_id: UUID, snapshot: ConversationSnapshot) -> None:
+        """Pin the timeline read that produced this execution's context."""
+        async with self._sessions.begin() as session:
+            row = await session.get(AgentRunRow, run_id, with_for_update=True)
+            if row is None:
+                raise LookupError("AgentRun does not exist")
+            if row.user_id != snapshot.user_id:
+                raise ValueError("AgentRun context snapshot user does not match run")
+            if row.conversation_id is not None and row.conversation_id != snapshot.scope_id:
+                raise ValueError("AgentRun context snapshot scope does not match run")
+            current = (row.context_revision, row.context_max_sequence, row.context_hash)
+            incoming = (snapshot.revision, snapshot.max_sequence, snapshot.context_hash)
+            if any(value is not None for value in current):
+                if current != incoming:
+                    raise ValueError("AgentRun context snapshot is already pinned")
+                return
+            row.context_revision, row.context_max_sequence, row.context_hash = incoming
+            row.version += 1
 
     async def freeze_effective_delivery(
         self, run_id: UUID, delivery: AgentDelivery
@@ -277,6 +222,8 @@ class SqlAgentRunRepository:
                 run.updated_at = now
                 run.version += 1
                 await _insert_tool_call(session, run.run_id, observation, serialized, now)
+                for event in build_tool_events(run, observation, now):
+                    await append_timeline_event(session, event, now)
             await session.flush()
             return _to_claim(run)
 
@@ -295,8 +242,12 @@ class SqlAgentRunRepository:
             row.execution_owner = None
             row.execution_lease_until = None
             row.updated_at = now
+            row.completed_at = now
             row.version += 1
             await session.flush()
+            reply_event = build_agent_reply_event(row, result.delivery.value, now)
+            if reply_event is not None:
+                await append_timeline_event(session, reply_event, now)
             return _to_run(row)
 
     async def fail_claim(
@@ -334,6 +285,8 @@ class SqlAgentRunRepository:
             run.updated_at = now
             run.version += 1
             await _insert_tool_call(session, run_id, observation, serialized, now)
+            for event in build_tool_events(run, observation, now):
+                await append_timeline_event(session, event, now)
 
 
 def _to_run(row: AgentRunRow) -> AgentRun:
@@ -357,6 +310,10 @@ def _to_run(row: AgentRunRow) -> AgentRun:
         row.execution_lease_until,
         row.execution_epoch,
         None if row.effective_delivery is None else AgentDelivery(row.effective_delivery),
+        row.completed_at,
+        row.context_revision,
+        row.context_max_sequence,
+        row.context_hash,
     )
 
 
@@ -408,66 +365,3 @@ async def _insert_tool_call(
         )
         .on_conflict_do_nothing()
     )
-
-
-def _scope_run_condition(scope_id: UUID, scope_type: str) -> ColumnElement[bool]:
-    if scope_type == "conversation":
-        return AgentRunRow.conversation_id == scope_id
-    if scope_type == "event":
-        return AgentRunRow.event_case_id == scope_id
-    raise ValueError("Agent context scope type is invalid")
-
-
-async def _ensure_conversation(
-    session: AsyncSession, user_id: str, key: str, now: datetime
-) -> UUID:
-    value = await session.scalar(
-        insert(ConversationRow)
-        .values(
-            conversation_id=uuid4(),
-            user_id=user_id,
-            channel="owner",
-            conversation_key=key,
-            created_at=now,
-            updated_at=now,
-        )
-        .on_conflict_do_nothing(constraint="uq_agent_conversation_scope")
-        .returning(ConversationRow.conversation_id)
-    )
-    if value is not None:
-        return value
-    result = await session.scalar(
-        select(ConversationRow.conversation_id).where(
-            ConversationRow.user_id == user_id,
-            ConversationRow.channel == "owner",
-            ConversationRow.conversation_key == key,
-        )
-    )
-    if result is None:
-        raise RuntimeError("conversation scope creation lost row")
-    return result
-
-
-async def _ensure_event_case(session: AsyncSession, user_id: str, key: str, now: datetime) -> UUID:
-    value = await session.scalar(
-        insert(EventCaseRow)
-        .values(
-            event_case_id=uuid4(),
-            user_id=user_id,
-            event_key=key,
-            created_at=now,
-            updated_at=now,
-        )
-        .on_conflict_do_nothing(constraint="uq_agent_event_scope")
-        .returning(EventCaseRow.event_case_id)
-    )
-    if value is not None:
-        return value
-    result = await session.scalar(
-        select(EventCaseRow.event_case_id).where(
-            EventCaseRow.user_id == user_id, EventCaseRow.event_key == key
-        )
-    )
-    if result is None:
-        raise RuntimeError("event scope creation lost row")
-    return result

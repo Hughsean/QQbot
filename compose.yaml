@@ -19,6 +19,8 @@ x-app-service: &app-service
       condition: service_healthy
     ollama-init:
       condition: service_completed_successfully
+    asset-init:
+      condition: service_completed_successfully
   logging:
     driver: json-file
     options:
@@ -74,6 +76,19 @@ services:
         if ollama list | awk 'NR > 1 {print $1}' | grep -Fxq "$${OLLAMA_EMBEDDING_MODEL}";
         then echo "Ollama model already present";
         else ollama pull "$${OLLAMA_EMBEDDING_MODEL}"; fi
+
+  asset-init:
+    image: qq-time-agent:local
+    restart: "no"
+    user: "0:0"
+    volumes:
+      - qq_time_agent_assets:/var/lib/qq-time-agent/assets
+    entrypoint: ["sh", "-c"]
+    command:
+      - >-
+        mkdir -p /var/lib/qq-time-agent/assets
+        && chown -R 10001:10001 /var/lib/qq-time-agent/assets
+        && chmod u+rwx /var/lib/qq-time-agent/assets
 
   web:
     <<: *app-service

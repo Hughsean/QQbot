@@ -8,6 +8,7 @@ from qq_time_agent.modules.agenda.application.notification_query import (
     AgendaNotificationQueryService,
 )
 from qq_time_agent.modules.agenda.application.ports import AgendaRepository
+from qq_time_agent.modules.agent.contracts import NotificationEventCommandPort
 from qq_time_agent.modules.connections.application.notification_query import (
     ConnectionNotificationQueryService,
 )
@@ -36,6 +37,7 @@ def build_qq_notification_services(
     owner_timezone: str = "Asia/Shanghai",
     action_tokens: ReminderActionTokenPort | None = None,
     action_owner_id: str = "owner",
+    timeline: NotificationEventCommandPort | None = None,
 ) -> tuple[NotificationService, NotificationIntentDeliveryService]:
     agenda = AgendaNotificationQueryService(agenda_repository)
     connections = ConnectionNotificationQueryService(SqlConnectionRepository(sessions))
@@ -53,5 +55,6 @@ def build_qq_notification_services(
             NotificationSourceEligibilityService(preferences, agenda, connections),
             gateway,
             "qq-notification-intents",
+            timeline=timeline,
         ),
     )

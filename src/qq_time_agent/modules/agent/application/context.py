@@ -6,7 +6,14 @@ from uuid import UUID
 from qq_time_agent.contracts.time import local_iso, resolve_timezone
 from qq_time_agent.modules.agenda.contracts import AgendaNotificationQueryPort
 from qq_time_agent.modules.agent.application.budget import ContextBlock, ContextBudgetPolicy
-from qq_time_agent.modules.agent.contracts import AgentContextRepository, ScopedAgentReply
+from qq_time_agent.modules.agent.application.timeline_context import TimelineContextAssembler
+from qq_time_agent.modules.agent.contracts import (
+    AgentContextRepository,
+    AgentContextResult,
+    ConversationContextRepository,
+    ConversationSnapshot,
+    ScopedAgentReply,
+)
 from qq_time_agent.modules.identity.contracts import MailRuleQueryPort, OwnerGroupAliasQueryPort
 from qq_time_agent.modules.inbox.contracts import ConversationContextPort, InboxContentPort
 from qq_time_agent.modules.retrieval.contracts import RetrievalFilters, RetrievalPort
@@ -31,6 +38,7 @@ class AgentContextAssembler:
         budget: ContextBudgetPolicy | None = None,
         retrieval_limit: int = 6,
         history_limit: int = 8,
+        timeline: ConversationContextRepository | None = None,
     ) -> None:
         self._retrieval = retrieval
         self._conversation = conversation
@@ -47,6 +55,52 @@ class AgentContextAssembler:
         self._history_limit = history_limit
         resolve_timezone(owner_timezone)
         self._owner_timezone = owner_timezone
+        self._timeline = TimelineContextAssembler(timeline) if timeline is not None else None
+
+    async def assemble(
+        self,
+        user_id: str,
+        message: str,
+        before: datetime | None = None,
+        exclude_id: UUID | None = None,
+        conversation_id: UUID | None = None,
+        event_case_id: UUID | None = None,
+        run_id: UUID | None = None,
+        run_status: str = "RUNNING",
+        step: int = 0,
+        snapshot: ConversationSnapshot | None = None,
+    ) -> AgentContextResult:
+        """Unified reading: pinned timeline messages plus runtime state blocks."""
+        timeline_context = None
+        if self._timeline is not None and conversation_id is not None:
+            timeline_context = await self._timeline.build(
+                user_id,
+                conversation_id,
+                current_run_id=run_id,
+                current_inbox_item_id=exclude_id,
+                snapshot=snapshot,
+            )
+        has_timeline_messages = timeline_context is not None and bool(timeline_context.messages)
+        context = await self.build(
+            user_id,
+            message,
+            before,
+            exclude_id,
+            conversation_id,
+            event_case_id,
+            run_id,
+            run_status,
+            step,
+            timeline_history=has_timeline_messages,
+        )
+        if timeline_context is None:
+            return AgentContextResult(context)
+        return AgentContextResult(
+            context,
+            timeline_context.messages,
+            timeline_context.snapshot,
+            timeline_context.diagnostics,
+        )
 
     async def build(
         self,
@@ -59,11 +113,15 @@ class AgentContextAssembler:
         run_id: UUID | None = None,
         run_status: str = "RUNNING",
         step: int = 0,
+        timeline_history: bool = False,
     ) -> str:
         blocks = await self._initial_blocks(user_id, message)
-        blocks.extend(
-            await self._history_blocks(user_id, before, exclude_id, conversation_id, event_case_id)
-        )
+        if not timeline_history:
+            blocks.extend(
+                await self._history_blocks(
+                    user_id, before, exclude_id, conversation_id, event_case_id
+                )
+            )
         if before is not None and self._agenda is not None:
             entries = await self._agenda.list_active(
                 before - _AGENDA_LOOKBACK, before + _AGENDA_LOOKAHEAD

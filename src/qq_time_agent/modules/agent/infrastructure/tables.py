@@ -3,7 +3,15 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Index, Integer, String, Text, UniqueConstraint
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -33,6 +41,10 @@ class AgentRunRow(AgentBase):
     execution_owner: Mapped[str | None] = mapped_column(String(160))
     execution_lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     execution_epoch: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    context_revision: Mapped[int | None] = mapped_column(Integer)
+    context_max_sequence: Mapped[int | None] = mapped_column(Integer)
+    context_hash: Mapped[str | None] = mapped_column(String(64))
     __table_args__ = (UniqueConstraint("inbox_item_id", name="uq_agent_runs_inbox_item"),)
 
 
@@ -104,3 +116,103 @@ class ContextItemRow(AgentBase):
     scope_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
     inbox_item_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class ConversationSequenceRow(AgentBase):
+    """Per-user monotonic sequence counter shared by all timeline scopes."""
+
+    __tablename__ = "agent_conversation_sequence_counters"
+    user_id: Mapped[str] = mapped_column(String(120), primary_key=True)
+    last_sequence: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+
+_EVENT_TYPE_CHECK = (
+    "event_type IN ('USER_MESSAGE', 'AGENT_REPLY', 'TOOL_CALL', 'TOOL_RESULT', "
+    "'MAIL_NOTIFICATION', 'MAIL_DIGEST', 'DAILY_DIGEST', 'SYSTEM_RESULT')"
+)
+_ROLE_CHECK = "role IN ('user', 'agent', 'tool', 'system')"
+_SCOPE_CHECK = "scope_type IN ('conversation', 'owner_timeline')"
+_DELIVERY_CHECK = (
+    "delivery_status IS NULL OR delivery_status IN ('DELIVERED', 'FAILED')"
+)
+
+
+class ConversationEventRow(AgentBase):
+    """Append-only unified conversation timeline event."""
+
+    __tablename__ = "agent_conversation_events"
+    __table_args__ = (
+        UniqueConstraint(
+            "scope_type", "scope_id", "sequence", name="uq_agent_conversation_events_scope_sequence"
+        ),
+        UniqueConstraint(
+            "user_id", "sequence", name="uq_agent_conversation_events_user_sequence"
+        ),
+        UniqueConstraint(
+            "idempotency_key", name="uq_agent_conversation_events_idempotency"
+        ),
+        Index(
+            "ix_agent_conversation_events_scope_time",
+            "scope_type",
+            "scope_id",
+            "occurred_at",
+        ),
+        CheckConstraint("sequence >= 1", name="ck_agent_conversation_events_sequence"),
+        CheckConstraint(_SCOPE_CHECK, name="ck_agent_conversation_events_scope"),
+        CheckConstraint(_EVENT_TYPE_CHECK, name="ck_agent_conversation_events_type"),
+        CheckConstraint(_ROLE_CHECK, name="ck_agent_conversation_events_role"),
+        CheckConstraint(_DELIVERY_CHECK, name="ck_agent_conversation_events_delivery"),
+    )
+
+    event_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    scope_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    scope_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    user_id: Mapped[str] = mapped_column(String(120), nullable=False)
+    sequence: Mapped[int] = mapped_column(Integer, nullable=False)
+    event_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    role: Mapped[str] = mapped_column(String(16), nullable=False)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    content_ref: Mapped[str | None] = mapped_column(String(160))
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    delivery_status: Mapped[str | None] = mapped_column(String(16))
+    run_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    inbox_item_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    notification_intent_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    idempotency_key: Mapped[str] = mapped_column(String(255), nullable=False)
+    metadata_json: Mapped[dict[str, object]] = mapped_column(
+        "metadata", JSONB, nullable=False
+    )
+
+
+class ConversationSummaryRow(AgentBase):
+    """Read-only layered compression view; never replaces original events."""
+
+    __tablename__ = "agent_conversation_summaries"
+    __table_args__ = (
+        UniqueConstraint(
+            "scope_type",
+            "scope_id",
+            "from_sequence",
+            "to_sequence",
+            name="uq_agent_conversation_summaries_range",
+        ),
+        Index(
+            "ix_agent_conversation_summaries_scope_to",
+            "scope_type",
+            "scope_id",
+            "to_sequence",
+        ),
+    )
+
+    summary_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    scope_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    scope_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    user_id: Mapped[str] = mapped_column(String(120), nullable=False)
+    summary_kind: Mapped[str] = mapped_column(String(40), nullable=False)
+    from_sequence: Mapped[int] = mapped_column(Integer, nullable=False)
+    to_sequence: Mapped[int] = mapped_column(Integer, nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

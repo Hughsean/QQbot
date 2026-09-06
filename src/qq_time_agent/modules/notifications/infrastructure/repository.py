@@ -58,6 +58,11 @@ _BLOCKING_STATES = (
     NotificationIntentState.DEAD_LETTER.value,
 )
 
+_SETTLED_STATES = (
+    NotificationIntentState.SENT.value,
+    NotificationIntentState.DEAD_LETTER.value,
+)
+
 
 class SqlNotificationIntentRepository:
     def __init__(self, sessions: async_sessionmaker[AsyncSession]) -> None:
@@ -171,6 +176,23 @@ class SqlNotificationIntentRepository:
                 )
             )
             return frozenset(subject_keys[value] for value in values)
+
+    async def list_recently_settled(
+        self, since: datetime, limit: int
+    ) -> tuple[NotificationIntent, ...]:
+        if limit < 1 or limit > 200:
+            raise ValueError("settled notification query limit must be between 1 and 200")
+        async with self._sessions() as session:
+            rows = await session.scalars(
+                select(NotificationIntentRow)
+                .where(
+                    NotificationIntentRow.state.in_(_SETTLED_STATES),
+                    NotificationIntentRow.updated_at >= since,
+                )
+                .order_by(NotificationIntentRow.updated_at.desc())
+                .limit(limit)
+            )
+            return tuple(_to_intent(row) for row in rows)
 
     async def notification_metrics(self) -> NotificationIntentMetrics:
         async with self._sessions() as session:

@@ -42,13 +42,14 @@ class JsonAgentModel(AgentModelPort):
         response = await self._model.invoke(
             StructuredRequest(
                 "agent.loop",
-                "agent-loop-v1",
+                "agent-loop-v2",
                 ModelRoute.FAST,
                 _instruction(request),
                 _external_data(request),
                 self._user_alias,
                 request.max_output_tokens,
                 self._token_budget,
+                request.timeline_messages,
             )
         )
         return _parse(response.output)
@@ -103,8 +104,9 @@ def _instruction(request: AgentRequest) -> str:
 
 
 def _external_data(request: AgentRequest) -> str:
+    # Current tool observations precede the user message so the final model
+    # input ends with the live request, after the pinned timeline messages.
     value = {
-        "user_message": request.user_message,
         "context_t2": request.context,
         "tool_observations": [
             {
@@ -120,6 +122,7 @@ def _external_data(request: AgentRequest) -> str:
         "reference_time": (
             request.reference_time.isoformat() if request.reference_time is not None else None
         ),
+        "user_message": request.user_message,
     }
     return json.dumps(value, ensure_ascii=False)
 

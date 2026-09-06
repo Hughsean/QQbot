@@ -8,8 +8,13 @@ from typing import TYPE_CHECKING, Protocol
 from uuid import UUID
 
 from qq_time_agent.contracts.tools import ToolCallContext, ToolDefinition
+from qq_time_agent.modules.ai_gateway.contracts import AgentMessage
 
 if TYPE_CHECKING:
+    from qq_time_agent.modules.agent.contracts.conversation_events import (
+        ContextDiagnostics,
+        ConversationSnapshot,
+    )
     from qq_time_agent.modules.agent.contracts.runs import AgentRun, AgentRunExecution
 
 AgentToolDefinition = ToolDefinition
@@ -52,6 +57,7 @@ class AgentRequest:
     reference_time: datetime | None = None
     max_output_tokens: int = 1200
     response_mode: AgentResponseMode = AgentResponseMode.TOOL_OR_FINAL
+    timeline_messages: tuple[AgentMessage, ...] = ()
 
     def __post_init__(self) -> None:
         if self.max_output_tokens < 1:
@@ -111,6 +117,35 @@ class AgentContextPort(Protocol):
     ) -> str: ...
 
 
+@dataclass(frozen=True, slots=True)
+class AgentContextResult:
+    """Unified context assembly output for one Agent execution.
+
+    ``messages`` carries the pinned timeline conversation projected into
+    provider-neutral internal messages; ``context`` carries runtime state
+    blocks (retrieval, agenda, proposals) that are not timeline events.
+    """
+
+    context: str
+    messages: tuple[AgentMessage, ...] = ()
+    snapshot: "ConversationSnapshot | None" = None
+    diagnostics: tuple["ContextDiagnostics", ...] = ()
+
+
+class AgentContextAssemblyPort(Protocol):
+    async def assemble(
+        self,
+        user_id: str,
+        message: str,
+        before: datetime | None = None,
+        exclude_id: UUID | None = None,
+        conversation_id: UUID | None = None,
+        event_case_id: UUID | None = None,
+        run_id: UUID | None = None,
+        snapshot: "ConversationSnapshot | None" = None,
+    ) -> AgentContextResult: ...
+
+
 class AgentRunPort(Protocol):
     async def run(self, owner_id: str, message: str, context: str = "") -> AgentFinal: ...
 
@@ -123,7 +158,12 @@ class AgentRunExecutionPort(Protocol):
     ) -> AgentDelivery: ...
 
     async def execute(
-        self, run_id: UUID, message: str, context: str = ""
+        self,
+        run_id: UUID,
+        message: str,
+        context: str = "",
+        timeline_messages: tuple[AgentMessage, ...] = (),
+        snapshot: "ConversationSnapshot | None" = None,
     ) -> "AgentRunExecution": ...
 
 
@@ -136,4 +176,5 @@ class AgentRunCommandPort(AgentRunExecutionPort, Protocol):
         conversation_key: str | None = None,
         event_key: str | None = None,
         occurred_at: datetime | None = None,
+        message: str | None = None,
     ) -> "AgentRun": ...

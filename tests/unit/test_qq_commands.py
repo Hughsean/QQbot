@@ -16,13 +16,16 @@ from qq_time_agent.contracts.source import (
     TrustLevel,
 )
 from qq_time_agent.modules.agent.contracts import (
+    AgentContextResult,
     AgentDelivery,
     AgentFinal,
     AgentRun,
     AgentRunExecution,
     AgentRunExecutionStatus,
     AgentRunStatus,
+    ConversationSnapshot,
 )
+from qq_time_agent.modules.ai_gateway.contracts import AgentMessage
 from qq_time_agent.modules.inbox.contracts import IngestResult
 from qq_time_agent.modules.normalization.contracts import NormalizedContentView
 
@@ -137,6 +140,7 @@ class Runs:
     run_id: UUID = field(default_factory=uuid4)
     ensured: list[UUID] = field(default_factory=list)
     executed: list[tuple[UUID, str, str]] = field(default_factory=list)
+    snapshot: ConversationSnapshot | None = None
 
     async def ensure_run(
         self,
@@ -146,16 +150,33 @@ class Runs:
         conversation_key: str | None = None,
         event_key: str | None = None,
         occurred_at: datetime | None = None,
+        message: str | None = None,
     ) -> AgentRun:
         assert user_id == "owner" and source_type == "QQ_DIRECT" and event_key is None
         assert conversation_key == "owner" and occurred_at is not None
+        assert message is not None and message.strip()
         self.ensured.append(inbox_item_id)
-        return AgentRun(self.run_id, inbox_item_id, user_id, source_type, AgentRunStatus.PENDING, 0)
+        run = AgentRun(self.run_id, inbox_item_id, user_id, source_type, AgentRunStatus.PENDING, 0)
+        if self.snapshot is not None:
+            run.conversation_id = self.snapshot.scope_id
+            run.context_revision = self.snapshot.revision
+            run.context_max_sequence = self.snapshot.max_sequence
+            run.context_hash = self.snapshot.context_hash
+        return run
 
     async def get(self, run_id: UUID) -> AgentRun | None:
         return None
 
-    async def execute(self, run_id: UUID, message: str, context: str = "") -> AgentFinal:
+    async def execute(
+        self,
+        run_id: UUID,
+        message: str,
+        context: str = "",
+        timeline_messages: tuple[AgentMessage, ...] = (),
+        snapshot: ConversationSnapshot | None = None,
+    ) -> AgentFinal:
+        del timeline_messages
+        assert snapshot == self.snapshot
         self.executed.append((run_id, message, context))
         return AgentFinal("Agent已处理", AgentDelivery.HOLD)
 
@@ -164,6 +185,10 @@ class Context:
     async def build(self, *args: object, **kwargs: object) -> str:
         del args, kwargs
         return "历史上下文"
+
+    async def assemble(self, *args: object, **kwargs: object) -> AgentContextResult:
+        del args
+        return AgentContextResult("历史上下文", snapshot=kwargs.get("snapshot"))
 
 
 def _router(
@@ -189,6 +214,16 @@ def _envelope(content: str) -> SourceEnvelope:
         TrustLevel.T1,
         {"message_kind": "c2c"},
     )
+
+
+@pytest.mark.asyncio
+async def test_direct_message_passes_persisted_snapshot_to_execution() -> None:
+    inbox, queue, runs = Inbox(), Queue(), Runs()
+    runs.snapshot = ConversationSnapshot("owner", uuid4(), 5, 5, "c" * 64)
+
+    await _router(inbox, queue, runs).receive(_envelope("继续"), "继续")
+
+    assert len(runs.executed) == 1
 
 
 @pytest.mark.asyncio
@@ -318,8 +353,15 @@ async def test_recovery_enqueue_failure_does_not_block_immediate_agent_execution
 @pytest.mark.asyncio
 async def test_in_progress_result_is_explicit_when_recovery_enqueue_fails() -> None:
     class InProgressRuns(Runs):
-        async def execute(self, run_id: UUID, message: str, context: str = "") -> AgentRunExecution:
-            del run_id, message, context
+        async def execute(
+            self,
+            run_id: UUID,
+            message: str,
+            context: str = "",
+            timeline_messages: tuple[AgentMessage, ...] = (),
+            snapshot: ConversationSnapshot | None = None,
+        ) -> AgentRunExecution:
+            del run_id, message, context, timeline_messages, snapshot
             return AgentRunExecution(AgentRunExecutionStatus.IN_PROGRESS)
 
     inbox, queue, runs = Inbox(), Queue(failure=RuntimeError("queue unavailable")), InProgressRuns()
@@ -359,8 +401,9 @@ async def test_completed_duplicate_reuses_persisted_agent_reply() -> None:
             conversation_key: str | None = None,
             event_key: str | None = None,
             occurred_at: datetime | None = None,
+            message: str | None = None,
         ) -> AgentRun:
-            del user_id, source_type, conversation_key, event_key, occurred_at
+            del user_id, source_type, conversation_key, event_key, occurred_at, message
             self.ensured.append(inbox_item_id)
             return AgentRun(
                 self.run_id,
@@ -373,7 +416,15 @@ async def test_completed_duplicate_reuses_persisted_agent_reply() -> None:
                 final_delivery=AgentDelivery.HOLD,
             )
 
-        async def execute(self, run_id: UUID, message: str, context: str = "") -> AgentFinal:
+        async def execute(
+            self,
+            run_id: UUID,
+            message: str,
+            context: str = "",
+            timeline_messages: tuple[AgentMessage, ...] = (),
+            snapshot: ConversationSnapshot | None = None,
+        ) -> AgentFinal:
+            del run_id, message, context, timeline_messages, snapshot
             raise AssertionError("completed duplicate must not execute")
 
     inbox, queue, runs = Inbox(), Queue(), CompletedRuns()

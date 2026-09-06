@@ -55,6 +55,9 @@ from qq_time_agent.modules.agent.application.context import AgentContextAssemble
 from qq_time_agent.modules.agent.application.json_model import JsonAgentModel
 from qq_time_agent.modules.agent.application.loop import AgentLoop, AgentLoopConfig
 from qq_time_agent.modules.agent.application.run_service import AgentRunService
+from qq_time_agent.modules.agent.infrastructure.conversation_events import (
+    SqlConversationEventRepository,
+)
 from qq_time_agent.modules.agent.infrastructure.events import SqlAgentRunEventRepository
 from qq_time_agent.modules.agent.infrastructure.repository import SqlAgentRunRepository
 from qq_time_agent.modules.ai_gateway.application.service import AIGatewayService
@@ -294,6 +297,7 @@ def build_worker() -> tuple[JobRunner, AsyncEngine, tuple[AsyncClosable, ...]]:
     )
     run_repository = SqlAgentRunRepository(sessions)
     run_event_repository = SqlAgentRunEventRepository(sessions)
+    conversation_events = SqlConversationEventRepository(sessions)
     agent_context = AgentContextAssembler(
         retrieval,
         inbox,
@@ -307,8 +311,15 @@ def build_worker() -> tuple[JobRunner, AsyncEngine, tuple[AsyncClosable, ...]]:
         budget=context_policy,
         retrieval_limit=config.agent_context.retrieval_limit,
         history_limit=config.agent_context.history_limit,
+        timeline=conversation_events,
     )
-    agent_runs = AgentRunService(run_repository, agent, clock, events=run_event_repository)
+    agent_runs = AgentRunService(
+        run_repository,
+        agent,
+        clock,
+        events=run_event_repository,
+        timeline=conversation_events,
+    )
     agent_scheduler = MailAgentRunScheduler(
         agent_runs, inbox_repository, inbox_repository, queue, clock
     )

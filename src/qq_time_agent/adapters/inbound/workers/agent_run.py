@@ -10,7 +10,7 @@ from qq_time_agent.contracts.clock import Clock
 from qq_time_agent.contracts.jobs import JobLease, JobQueue, JobRequest
 from qq_time_agent.modules.agent.application.run_service import AgentRunService
 from qq_time_agent.modules.agent.contracts import (
-    AgentContextPort,
+    AgentContextAssemblyPort,
     AgentDelivery,
     AgentFinal,
     AgentResponseProtocolError,
@@ -19,6 +19,7 @@ from qq_time_agent.modules.agent.contracts import (
     AgentRunExecutionPort,
     AgentRunExecutionStatus,
     AgentRunStatus,
+    ConversationSnapshot,
 )
 from qq_time_agent.modules.ai_gateway.contracts import ModelFailure
 from qq_time_agent.modules.inbox.contracts import (
@@ -40,7 +41,7 @@ class AgentRunJobHandler:
         self,
         runs: AgentRunExecutionPort,
         content: InboxContentPort,
-        context: AgentContextPort,
+        context: AgentContextAssemblyPort,
         delivery_source: MailDeliverySourcePort | None = None,
         notifications: NotificationIntentCommandPort | None = None,
         clock: Clock | None = None,
@@ -69,16 +70,20 @@ class AgentRunJobHandler:
             return
 
         item = await self._require_content(item_id)
-        context = await self._context.build(
+        assembled = await self._context.assemble(
             "owner",
             item.body_text,
             before=item.occurred_at,
             exclude_id=item.inbox_item_id,
             conversation_id=run.conversation_id,
             event_case_id=run.event_case_id,
+            run_id=run.run_id,
+            snapshot=_run_snapshot(run),
         )
         try:
-            raw_outcome = await self._runs.execute(run_id, item.body_text, context)
+            raw_outcome = await self._runs.execute(
+                run_id, item.body_text, assembled.context, assembled.messages, assembled.snapshot
+            )
             outcome = _execution_outcome(raw_outcome)
         except AgentResponseProtocolError as exc:
             raise PermanentJobError("InvalidAgentResponse") from exc
@@ -192,6 +197,7 @@ class MailAgentRunScheduler:
             conversation_key=source.thread_id or f"mail:{source.source_type}",
             event_key=source.thread_id or source.external_id,
             occurred_at=source.occurred_at,
+            message=content.body_text,
         )
         await self._queue.enqueue(
             JobRequest(
@@ -202,6 +208,22 @@ class MailAgentRunScheduler:
             )
         )
 
+
+def _run_snapshot(run: AgentRun) -> ConversationSnapshot | None:
+    if (
+        run.context_revision is None
+        or run.context_max_sequence is None
+        or run.context_hash is None
+        or run.conversation_id is None
+    ):
+        return None
+    return ConversationSnapshot(
+        user_id=run.user_id,
+        scope_id=run.conversation_id,
+        revision=run.context_revision,
+        max_sequence=run.context_max_sequence,
+        context_hash=run.context_hash,
+    )
 
 def _payload_ids(job: JobLease) -> tuple[UUID, UUID]:
     raw_run = job.payload.get("run_id")

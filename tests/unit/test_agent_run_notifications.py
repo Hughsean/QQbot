@@ -11,13 +11,15 @@ from qq_time_agent.adapters.inbound.workers.runner import (
 )
 from qq_time_agent.contracts.jobs import JobLease
 from qq_time_agent.modules.agent.contracts import (
+    AgentContextResult,
     AgentDelivery,
     AgentFinal,
     AgentResponseProtocolError,
     AgentRun,
     AgentRunStatus,
+    ConversationSnapshot,
 )
-from qq_time_agent.modules.ai_gateway.contracts import ModelFailure
+from qq_time_agent.modules.ai_gateway.contracts import AgentMessage, ModelFailure
 from qq_time_agent.modules.inbox.contracts import (
     InboxContentView,
     InboxSourceView,
@@ -33,12 +35,22 @@ class Runs:
     run: AgentRun
     result: AgentFinal
     failure: Exception | None = None
+    snapshots: list[ConversationSnapshot | None] = field(default_factory=list)
 
     async def get(self, run_id: UUID) -> AgentRun | None:
         return self.run if run_id == self.run.run_id else None
 
-    async def execute(self, run_id: UUID, message: str, context: str = "") -> AgentFinal:
+    async def execute(
+        self,
+        run_id: UUID,
+        message: str,
+        context: str = "",
+        timeline_messages: tuple[AgentMessage, ...] = (),
+        snapshot: ConversationSnapshot | None = None,
+    ) -> AgentFinal:
+        del timeline_messages
         assert run_id == self.run.run_id and message == "邮件正文" and context == "事件上下文"
+        self.snapshots.append(snapshot)
         if self.failure is not None:
             raise self.failure
         self.run.status = AgentRunStatus.COMPLETED
@@ -67,6 +79,10 @@ class Context:
     async def build(self, *args: object, **kwargs: object) -> str:
         del args, kwargs
         return "事件上下文"
+
+    async def assemble(self, *args: object, **kwargs: object) -> AgentContextResult:
+        del args
+        return AgentContextResult("事件上下文", snapshot=kwargs.get("snapshot"))
 
 
 @dataclass
@@ -139,6 +155,22 @@ def _handler(
         uuid4(), "agent-run", {"run_id": str(run_id), "inbox_item_id": str(item_id)}, "worker", 1, 5
     )
     return handler, job, notifications
+
+
+@pytest.mark.asyncio
+async def test_worker_reuses_persisted_snapshot_for_retry() -> None:
+    handler, job, _ = _handler(AgentDelivery.HOLD)
+    runs = handler._runs
+    assert isinstance(runs, Runs)
+    snapshot = ConversationSnapshot("owner", uuid4(), 11, 11, "b" * 64)
+    runs.run.conversation_id = snapshot.scope_id
+    runs.run.context_revision = snapshot.revision
+    runs.run.context_max_sequence = snapshot.max_sequence
+    runs.run.context_hash = snapshot.context_hash
+
+    await handler(job)
+
+    assert runs.snapshots == [snapshot]
 
 
 @pytest.mark.asyncio

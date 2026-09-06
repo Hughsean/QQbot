@@ -4,11 +4,46 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Protocol
+from uuid import UUID
 
 
 class ModelRoute(StrEnum):
     FAST = "FAST"
     REASONING = "REASONING"
+
+
+class AgentMessageRole(StrEnum):
+    """Provider-neutral role labels projected from unified timeline events."""
+
+    SYSTEM = "system"
+    USER = "user"
+    ASSISTANT = "assistant"
+    TOOL = "tool"
+
+
+@dataclass(frozen=True, slots=True)
+class AgentMessage:
+    """One provider-neutral model input message derived from a timeline event.
+
+    ``event_id``/``event_type``/``delivery_status`` are traceability labels
+    only; adapters must render ``content`` verbatim, which the agent layer
+    composes to be self-describing. No adapter may fabricate tool-call
+    payloads from these fields.
+    """
+
+    role: AgentMessageRole
+    content: str
+    event_id: UUID | None = None
+    event_type: str | None = None
+    delivery_status: str | None = None
+
+    def __post_init__(self) -> None:
+        if not self.content.strip():
+            raise ValueError("agent message content is required")
+        if self.delivery_status is not None and not self.delivery_status.strip():
+            raise ValueError("agent message delivery status must be a label")
+        if self.event_type is not None and not self.event_type.strip():
+            raise ValueError("agent message event type must be a label")
 
 
 def estimate_tokens(value: str) -> int:
@@ -44,6 +79,7 @@ class StructuredRequest:
     user_alias: str
     max_output_tokens: int = 1200
     token_budget: TokenBudget | None = None
+    messages: tuple[AgentMessage, ...] = ()
 
     def __post_init__(self) -> None:
         if not self.use_case.strip() or not self.prompt_version.strip():

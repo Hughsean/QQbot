@@ -1,6 +1,8 @@
 """Public AI Gateway contracts."""
 
 from qq_time_agent.modules.ai_gateway.contracts.models import (
+    AgentMessage,
+    AgentMessageRole,
     ModelFailure,
     ModelRoute,
     StructuredModelPort,
@@ -11,6 +13,8 @@ from qq_time_agent.modules.ai_gateway.contracts.models import (
 )
 
 __all__ = [
+    "AgentMessage",
+    "AgentMessageRole",
     "ModelFailure",
     "ModelRoute",
     "StructuredModelPort",
