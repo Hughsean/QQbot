@@ -33,11 +33,11 @@
 
 部分完成 / 待验证：
 
-- [ ] 统一 timeline message 尚未完全成为所有模型请求的唯一输入路径，仍需审查 `context.py`、`loop.py`、model port 和 adapter 的兼容路径。
-- [ ] `AGENT_REPLY`、`TOOL_CALL`、`TOOL_RESULT` 是否已在所有实际执行路径写入会话事件，需补齐并验证；当前 `agent_run_events` 仍主要是 AgentRun 执行审计。
+- [x] 统一 timeline message 已接入模型请求优先路径；旧 fallback 仍保留用于无 scope/空时间线兼容。
+- [x] `AGENT_REPLY`、`TOOL_CALL`、`TOOL_RESULT` 已由 AgentRun repository 写入会话事件；`agent_run_events` 仍作为执行审计保留。
 - [ ] 摘要表已建立，但尚未实现真正的摘要生成、范围校验、压缩 worker 和摘要回读策略。
 - [ ] `TimelineContextAssembler` 当前以硬字符限制为主，尚未完成基于模型可用 token budget 的统一预算计算。
-- [ ] 诊断对象已存在，但尚未确认所有生产路径都记录 selected/dropped event counts、token counts 和 sequence range。
+- [x] 诊断对象已记录 selected/dropped、token count、sequence range、scope hash 和 context hash；仍需审计所有生产入口。
 - [ ] 旧数据 fallback、迁移后历史事件回填策略尚未完整验证。
 - [ ] `MissingAgentNotificationSource` 和资产目录权限问题仍是独立运行时问题，尚未纳入本改造闭环。
 
@@ -47,20 +47,20 @@
 
 - [x] 检查现有未提交改动，避免覆盖用户修改。
 - [x] 检查 `0027` 迁移、事件 contract、repository、timeline assembler 和相关测试。
-- [ ] 运行并记录 Agent context、AgentRun recovery、notification timeline、foundation persistence 聚焦测试。
-- [ ] 确认当前工作区改动属于本任务还是其他任务，保持不相关改动不变。
-- [ ] 输出当前数据流和剩余差距，作为 GLM5.3 的实施基线。
+- [x] 运行并记录 Agent context、AgentRun recovery、notification timeline、foundation persistence 聚焦测试。
+- [x] 确认当前工作区改动属于本任务还是其他任务，保持不相关改动不变。
+- [x] 输出当前数据流和剩余差距，作为 GLM5.3 的实施基线。
 
 ### 阶段 1：统一事件流完整性
 
 - [x] 建立事件类型和 scope contract。
 - [x] 建立用户级单调 sequence 和 append-only 持久化。
 - [x] 建立事件幂等约束和内容 hash。
-- [ ] 在 AgentRun 完成路径写入不可变 `AGENT_REPLY` 会话事件。
-- [ ] 在工具执行路径决定并实现 `TOOL_CALL` / `TOOL_RESULT` 的会话事件记录边界。
-- [ ] 复核通知成功、失败、重试状态与 `MAIL_NOTIFICATION` / digest 事件语义。
-- [ ] 确保事件写入与业务状态变更具有事务一致性，或明确 outbox/retry 方案。
-- [ ] 增加并发 sequence、重复 append、失败重试测试。
+- [x] 在 AgentRun 完成路径写入不可变 `AGENT_REPLY` 会话事件。
+- [x] 在工具执行路径决定并实现 `TOOL_CALL` / `TOOL_RESULT` 的会话事件记录边界。
+- [x] 复核通知成功、失败、重试状态与 `MAIL_NOTIFICATION` / digest 事件语义。
+- [x] 确保事件写入与业务状态变更具有事务一致性，或明确 outbox/retry 方案。
+- [x] 增加并发 sequence、重复 append、失败重试测试。
 
 ### 阶段 2：统一时间线读取
 
@@ -68,32 +68,32 @@
 - [x] 按统一 sequence 排序，不依赖 `updated_at`。
 - [x] 当前输入 item 和当前 run 从历史区排除。
 - [x] 最近 protected turns、通知和旧事件边界已实现。
-- [ ] 确保 recent turn 始终按用户消息到 Agent 回复完整成组。
-- [ ] 明确 owner timeline 事件在 QQ conversation 中的插入位置和标记格式。
-- [ ] 确保群聊不能读取个人 owner timeline。
-- [ ] 统一旧 context assembler 与 timeline assembler 的 fallback、切换和删除时机。
-- [ ] 增加 `USER → AGENT → MAIL → USER → AGENT`、`DAILY_DIGEST → USER → AGENT` 集成测试。
+- [x] 确保 recent turn 始终按用户消息到 Agent 回复完整成组。
+- [x] 明确 owner timeline 事件在 QQ conversation 中的插入位置和标记格式。
+- [x] 确保群聊不能读取个人 owner timeline。
+- [x] 统一旧 context assembler 与 timeline assembler 的 fallback、切换和删除时机。
+- [x] 增加 `USER → AGENT → MAIL → USER → AGENT`、`DAILY_DIGEST → USER → AGENT` 集成测试。
 
 ### 阶段 3：固定 AgentRun context snapshot
 
 - [x] snapshot contract、revision、max sequence 和 context hash 已建立。
 - [x] AgentRun 持久化 snapshot 并拒绝改变已 pin 的 snapshot。
 - [x] 重试路径复用已有 snapshot 的单元测试已建立。
-- [ ] 确认首次执行和 Worker 恢复路径都在模型调用前完成 snapshot 持久化。
-- [ ] 确认 snapshot 读取条件统一为 `sequence <= context_max_sequence`。
-- [ ] 确认新事件不会影响正在执行的 AgentRun。
-- [ ] 为并发新消息、通知到达、模型重试增加 snapshot hash 一致性测试。
-- [ ] 将 snapshot 范围和 hash 纳入脱敏结构化日志。
+- [x] 确认首次执行和 Worker 恢复路径都在模型调用前完成 snapshot 持久化。
+- [x] 确认 snapshot 读取条件统一为 `sequence <= context_max_sequence`。
+- [x] 确认新事件不会影响正在执行的 AgentRun。
+- [x] 为并发新消息、通知到达、模型重试增加 snapshot hash 一致性测试。
+- [x] 将 snapshot 范围和 hash 纳入脱敏结构化日志。
 
 ### 阶段 4：provider-neutral message 输入
 
-- [ ] 审查 `StructuredRequest` 是否支持稳定的 provider-neutral `AgentMessage` 列表。
-- [ ] 保留必要旧字段兼容，但让新 timeline message list 成为优先路径。
-- [ ] DeepSeek adapter 只负责转换消息，不在 adapter 内管理会话状态。
-- [ ] 明确 `user`、`assistant`、`tool`、`system` 与 event type 的映射。
-- [ ] 外部通知使用明确事件标记，不伪造不存在的 tool call。
-- [ ] 确认当前 AgentLoop 的实时工具 observations 与持久 timeline events 不重复、不冲突。
-- [ ] 增加 adapter payload 顺序和角色映射测试。
+- [x] 审查 `StructuredRequest` 是否支持稳定的 provider-neutral `AgentMessage` 列表。
+- [x] 保留必要旧字段兼容，但让新 timeline message list 成为优先路径。
+- [x] DeepSeek adapter 只负责转换消息，不在 adapter 内管理会话状态。
+- [x] 明确 `user`、`assistant`、`tool`、`system` 与 event type 的映射。
+- [x] 外部通知使用明确事件标记，不伪造不存在的 tool call。
+- [x] 确认当前 AgentLoop 的实时工具 observations 与持久 timeline events 不重复、不冲突。
+- [x] 增加 adapter payload 顺序和角色映射测试。
 
 ### 阶段 5：预算与最近 turn 保护
 
@@ -102,7 +102,7 @@
 - [ ] 最近 6–12 个完整 turn设为 protected region。
 - [ ] 旧事件、旧摘要、通知按明确优先级裁剪，不能淘汰 protected recent turns。
 - [ ] 达到约 65%–70% usable budget 时触发压缩准备。
-- [ ] 记录 selected/dropped event count、scope、sequence range 和 token count。
+- [x] 记录 selected/dropped event count、scope、sequence range 和 token count。
 - [ ] 增加预算不足、长通知、大工具结果和多轮对话测试。
 
 ### 阶段 6：分层摘要与压缩
@@ -118,9 +118,9 @@
 
 ### 阶段 7：诊断、隐私与运行时问题
 
-- [ ] 记录 conversation scope hash、owner timeline scope hash、snapshot max sequence、事件计数、摘要计数和裁剪计数。
-- [ ] 禁止日志输出 QQ 正文、邮件正文、原始邮箱、sender ID 和敏感标题。
-- [ ] 继续定位 `MissingAgentNotificationSource` 的 source resolution 路径。
+- [x] 记录 conversation scope hash、owner timeline scope hash、snapshot max sequence、事件计数、摘要计数和裁剪计数。
+- [x] 禁止日志输出 QQ 正文、邮件正文、原始邮箱、sender ID 和敏感标题。
+- [x] `MissingAgentNotificationSource` 已区分 source 缺失（永久失败）与 source 查询异常（可重试）；尚缺独立运行时闭环验证。
 - [ ] 修复或验证 `/var/lib/qq-time-agent/assets` 容器权限初始化问题。
 - [ ] 为事件缺失、scope 不一致、无 AgentRun、非 COMPLETED run 增加脱敏告警。
 - [ ] 生产验证只查询元数据，不输出 PII。
@@ -136,15 +136,15 @@
 
 ### 阶段 9：最终验证
 
-- [ ] 聚焦 unit tests。
-- [ ] 聚焦 integration tests。
-- [ ] Agent、通知、摘要和事件的 contract tests。
-- [ ] `uv run ruff check src tests alembic`。
-- [ ] `uv run mypy src`。
-- [ ] `git diff --check`。
-- [ ] 非 sandbox 全量测试。
-- [ ] 检查 `git status --short`、`git diff --stat`，不提交、不部署。
-- [ ] 输出已完成、失败、跳过和环境阻塞项目。
+- [x] 聚焦 unit tests。
+- [x] 聚焦 integration tests（隔离 PostgreSQL 已验证；默认环境未运行）。
+- [x] Agent、通知、摘要和事件的 contract tests。
+- [x] `uv run ruff check src tests alembic`。
+- [x] `uv run mypy src`。
+- [x] `git diff --check`。
+- [ ] 非 sandbox 全量测试（非集成 509 passed、10 skipped；集成测试因数据库连接超时失败）。
+- [x] 检查 `git status --short`、`git diff --stat`。
+- [x] 输出已完成、失败、跳过和环境阻塞项目。
 
 ## 验收标准
 

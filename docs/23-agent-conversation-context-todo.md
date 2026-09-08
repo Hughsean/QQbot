@@ -21,38 +21,38 @@
 
 ### P0：事件流完整性
 
-- [ ] Agent 完成路径写入不可变 `AGENT_REPLY`
-- [ ] 明确并实现 `TOOL_CALL` / `TOOL_RESULT` 会话事件边界
-- [ ] 复核通知成功、失败、重试的事件语义
-- [ ] 保证事件与业务状态事务一致，或建立 outbox/retry 方案
-- [ ] 增加并发 sequence、重复 append、失败重试测试
+- [x] Agent 完成路径写入不可变 `AGENT_REPLY`
+- [x] 明确并实现 `TOOL_CALL` / `TOOL_RESULT` 会话事件边界
+- [x] 复核通知成功、失败、重试的事件语义
+- [x] 保证事件与业务状态事务一致，或建立 outbox/retry 方案
+- [x] 增加并发 sequence、重复 append、失败重试测试
 
 ### P0：统一上下文读取
 
-- [ ] 让 timeline message list 成为模型请求的优先输入路径
-- [ ] 确保最近 6–12 个完整 turn 成组保留
-- [ ] 验证 `USER → AGENT → MAIL → USER → AGENT`
-- [ ] 验证 `DAILY_DIGEST → USER → AGENT`
-- [ ] 明确 owner timeline 插入位置和事件标记
-- [ ] 确保群聊不能读取个人 owner timeline
-- [ ] 收敛旧 context assembler fallback 和切换逻辑
+- [x] 让 timeline message list 成为模型请求的优先输入路径
+- [x] 确保最近 6–12 个完整 turn 成组保留
+- [x] 验证 `USER → AGENT → MAIL → USER → AGENT`
+- [x] 验证 `DAILY_DIGEST → USER → AGENT`
+- [x] 明确 owner timeline 插入位置和事件标记
+- [x] 确保群聊不能读取个人 owner timeline
+- [x] 收敛旧 context assembler fallback 和切换逻辑
 
 ### P0：Snapshot 一致性
 
-- [ ] 确认首次执行和 Worker 恢复均先持久化 snapshot
-- [ ] 统一使用 `sequence <= context_max_sequence`
-- [ ] 验证运行期间新事件不影响当前 AgentRun
-- [ ] 验证模型重试复用相同 `context_hash`
-- [ ] 增加并发消息、通知到达和重试测试
+- [x] 确认首次执行和 Worker 恢复均先持久化 snapshot
+- [x] 统一使用 `sequence <= context_max_sequence`
+- [x] 验证运行期间新事件不影响当前 AgentRun
+- [x] 验证模型重试复用相同 `context_hash`
+- [x] 增加并发消息、通知到达和重试测试
 
 ### P1：Provider-neutral message
 
-- [ ] 审查并完善 `StructuredRequest` 的 `AgentMessage` 列表
-- [ ] DeepSeek adapter 仅转换消息，不管理会话状态
-- [ ] 验证 user / assistant / tool / system 映射
-- [ ] 外部通知使用明确事件类型，不伪造 tool call
-- [ ] 避免实时 observations 与持久事件重复
-- [ ] 增加 adapter 顺序和角色映射测试
+- [x] 审查并完善 `StructuredRequest` 的 `AgentMessage` 列表
+- [x] DeepSeek adapter 仅转换消息，不管理会话状态
+- [x] 验证 user / assistant / tool / system 映射
+- [x] 外部通知使用明确事件类型，不伪造 tool call
+- [x] 避免实时 observations 与持久事件重复
+- [x] 增加 adapter 顺序和角色映射测试
 
 ### P1：预算和近期保护
 
@@ -60,7 +60,7 @@
 - [ ] 从字符限制升级为 token budget，保留字符硬上限
 - [ ] 预算达到约 65%–70% 时触发压缩准备
 - [ ] 确保旧事件和摘要不能淘汰最近保护区
-- [ ] 记录 selected/dropped event、sequence 和 token 统计
+- [x] 记录 selected/dropped event、sequence 和 token 统计
 - [ ] 增加长通知、大工具结果和预算不足测试
 
 ### P1：分层摘要
@@ -76,10 +76,10 @@
 
 ### P1：诊断与隐私
 
-- [ ] 记录 scope hash、snapshot sequence、事件/摘要/裁剪数量
-- [ ] 记录 context hash 和 token count
-- [ ] 禁止日志输出 QQ 正文、邮件正文、原始邮箱和 sender ID
-- [ ] 定位 `MissingAgentNotificationSource`
+- [x] 记录 scope hash、snapshot sequence、事件/摘要/裁剪数量
+- [x] 记录 context hash 和 token count
+- [x] 禁止日志输出 QQ 正文、邮件正文、原始邮箱和 sender ID
+- [x] `MissingAgentNotificationSource` 已有 source 缺失与 source 查询异常的分类；仍需独立运行时闭环验证
 - [ ] 验证 `/var/lib/qq-time-agent/assets` 权限问题
 - [ ] 为事件缺失和 scope 不一致增加脱敏告警
 
@@ -94,15 +94,15 @@
 
 ### 最终验证
 
-- [ ] 聚焦 unit tests
-- [ ] 聚焦 integration tests
-- [ ] contract / architecture tests
-- [ ] `uv run ruff check src tests alembic`
-- [ ] `uv run mypy src`
-- [ ] `git diff --check`
-- [ ] 非 sandbox 全量测试
-- [ ] 检查 `git status --short` 和 `git diff --stat`
-- [ ] 不提交、不部署，除非获得明确授权
+- [x] 聚焦 unit tests
+- [x] 聚焦 integration tests（隔离 PostgreSQL 已验证；默认环境未运行）
+- [x] contract / architecture tests
+- [x] `uv run ruff check src tests alembic`
+- [x] `uv run mypy src`
+- [x] `git diff --check`
+- [ ] 非 sandbox 全量测试（非集成 509 passed、10 skipped；集成测试因数据库连接超时失败）
+- [x] 检查 `git status --short` 和 `git diff --stat`
+- [x] 不提交、不部署，除非获得明确授权
 
 ## GLM5.3 每阶段交付格式
 
