@@ -1,6 +1,6 @@
 """Notification delivery mirroring into the owner timeline."""
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
@@ -125,7 +125,16 @@ class Timeline:
     async def record_notification_event(self, request: NotificationEventRequest) -> None:
         if self.failure is not None:
             raise self.failure
-        self.requests.append(request)
+        existing = next(
+            (
+                item
+                for item in self.requests
+                if item.idempotency_key == request.idempotency_key
+            ),
+            None,
+        )
+        if existing is None:
+            self.requests.append(request)
 
 
 def _service(
@@ -169,13 +178,59 @@ async def test_repeated_cycles_keep_a_single_idempotent_timeline_key() -> None:
     await service.run_once(NOW + timedelta(seconds=5))
     await service.run_once(NOW + timedelta(seconds=10))
 
-    assert len(timeline.requests) == 3
+    assert len(timeline.requests) == 1
     assert {request.idempotency_key for request in timeline.requests} == {
         f"notification:{intent.intent_id}"
     }
     assert all(
         request.event_type is ConversationEventType.DAILY_DIGEST for request in timeline.requests
     )
+
+
+@pytest.mark.asyncio
+async def test_settled_content_snapshot_is_unchanged_when_draft_mutates() -> None:
+    intent = NotificationIntent.create(_draft(NotificationKind.MAIL_DIGEST, "original"), NOW)
+    repository = Repository([intent])
+    timeline = Timeline()
+    service = _service(repository, timeline)
+
+    await service.run_once(NOW)
+    original = timeline.requests[0].content
+    intent.draft = replace(intent.draft, content="mutated")
+
+    await service.run_once(NOW + timedelta(seconds=5))
+
+    assert timeline.requests[0].content == original
+    assert len(timeline.requests) == 1
+
+
+@pytest.mark.asyncio
+async def test_failed_event_never_becomes_delivered_on_retry_reconciliation() -> None:
+    intent = NotificationIntent.create(_draft(NotificationKind.QQ_MAIL_RESULT), NOW)
+    intent.attempt_count = 2
+    repository = Repository([intent])
+    timeline = Timeline()
+    sender = Sender(failure=NotificationPreSendPermanentError("rejected"))
+    service = _service(repository, timeline, sender)
+
+    await service.run_once(NOW)
+    intent.state = NotificationIntentState.SENT  # simulate an inconsistent external mutation
+    intent.sent_at = NOW + timedelta(seconds=1)
+    await _service(repository, timeline).run_once(NOW + timedelta(seconds=2))
+
+    assert timeline.requests[0].delivery_status is ConversationDeliveryStatus.FAILED
+
+
+@pytest.mark.asyncio
+async def test_system_result_is_used_for_calendar_and_reauth_notifications() -> None:
+    for kind in (NotificationKind.AGENDA_CONFLICT, NotificationKind.CONNECTION_REAUTH):
+        intent = NotificationIntent.create(_draft(kind), NOW)
+        repository = Repository([intent])
+        timeline = Timeline()
+
+        await _service(repository, timeline).run_once(NOW)
+
+        assert timeline.requests[0].event_type is ConversationEventType.SYSTEM_RESULT
 
 
 @pytest.mark.asyncio
@@ -218,7 +273,7 @@ async def test_permanent_failure_records_dead_letter_as_failed_event() -> None:
     assert request.occurred_at == intent.updated_at
 
     await _service(repository, timeline).run_once(NOW)
-    assert len(timeline.requests) == 2
+    assert len(timeline.requests) == 1
     assert {item.idempotency_key for item in timeline.requests} == {
         f"notification:{intent.intent_id}"
     }

@@ -142,6 +142,8 @@ class AgentContextAssemblyPort(Protocol):
         conversation_id: UUID | None = None,
         event_case_id: UUID | None = None,
         run_id: UUID | None = None,
+        run_status: str = "RUNNING",
+        step: int = 0,
         snapshot: "ConversationSnapshot | None" = None,
     ) -> AgentContextResult: ...
 

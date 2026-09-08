@@ -199,6 +199,23 @@ async def test_snapshot_persistence_failure_stops_model_execution() -> None:
 
 
 @pytest.mark.asyncio
+async def test_retry_reuses_same_pinned_snapshot_hash() -> None:
+    run = AgentRun(uuid4(), uuid4(), "owner", "QQ_DIRECT", AgentRunStatus.PENDING, 0)
+    repository = Repository(run)
+    snapshot = ConversationSnapshot("owner", uuid4(), 9, 9, "b" * 64)
+    model = Model([RuntimeError("interrupted"), AgentResponse(final=AgentFinal("已恢复"))])
+    service = AgentRunService(repository, AgentLoop(model, Tools()), Clock())  # type: ignore[arg-type]
+
+    with pytest.raises(RuntimeError, match="interrupted"):
+        await service.execute(run.run_id, "继续", snapshot=snapshot)
+    result = await service.execute(run.run_id, "继续", snapshot=snapshot)
+
+    assert result.content == "已恢复"
+    assert repository.snapshots == [snapshot]
+    assert (repository.run.context_max_sequence, repository.run.context_hash) == (9, "b" * 64)
+
+
+@pytest.mark.asyncio
 async def test_snapshot_is_persisted_before_execution_and_reused_on_retry() -> None:
     run = AgentRun(uuid4(), uuid4(), "owner", "QQ_DIRECT", AgentRunStatus.PENDING, 0)
     repository = Repository(run)

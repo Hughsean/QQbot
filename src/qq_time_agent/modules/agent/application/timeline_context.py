@@ -1,7 +1,9 @@
 """Unified timeline context assembly with pinned snapshots and protected turns."""
 
 import logging
+from collections import Counter
 from dataclasses import dataclass
+from hashlib import sha256
 from uuid import UUID
 
 from qq_time_agent.modules.agent.contracts import (
@@ -131,9 +133,15 @@ class TimelineContextAssembler:
         messages = [
             *(_summary_message(item) for item in summaries),
             *(_older_message(item) for item in older),
-            *(_turn_message(item) for item in _flatten(turns)),
-            *(_notification_message(item) for item in notifications),
+            *(
+                _turn_message(item) if item.scope_type is ConversationScopeType.CONVERSATION
+                else _notification_message(item)
+                for item in sorted(
+                    (*_flatten(turns), *notifications), key=lambda item: item.sequence
+                )
+            ),
         ]
+        diagnostics.append(_selection_diagnostics(snapshot, visible, messages))
         return TimelineContext(snapshot, tuple(messages), tuple(diagnostics))
 
     async def _visible_events(
@@ -276,6 +284,46 @@ def _notification_message(event: ConversationEventView) -> AgentMessage:
         event_type=event.event_type.value,
         delivery_status=None if event.delivery_status is None else event.delivery_status.value,
     )
+
+
+def _selection_diagnostics(
+    snapshot: ConversationSnapshot,
+    events: list[ConversationEventView],
+    messages: list[AgentMessage],
+) -> ContextDiagnostics:
+    selected_ids = _message_events(messages)
+    selected = Counter(
+        item.event_type.value for item in events if item.event_id in selected_ids
+    )
+    detail = (
+        f"scope={_scope_hash(snapshot.scope_id)} max_sequence={snapshot.max_sequence} "
+        f"sequence_range={_sequence_range(events)} selected={len(messages)} "
+        f"dropped={max(0, len(events) - len(selected_ids))} "
+        f"token_count={sum(_message_tokens(item) for item in messages)} "
+        f"types={','.join(f'{key}:{value}' for key, value in sorted(selected.items()))} "
+        f"context_hash={snapshot.context_hash}"
+    )
+    return ContextDiagnostics("timeline-selection", detail)
+
+
+def _message_events(messages: list[AgentMessage]) -> set[UUID]:
+    return {item.event_id for item in messages if item.event_id is not None}
+
+
+def _message_tokens(message: AgentMessage) -> int:
+    from qq_time_agent.modules.ai_gateway.contracts import estimate_tokens
+
+    return estimate_tokens(message.content)
+
+
+def _scope_hash(scope_id: UUID) -> str:
+    return sha256(str(scope_id).encode()).hexdigest()[:12]
+
+
+def _sequence_range(events: list[ConversationEventView]) -> str:
+    if not events:
+        return "none"
+    return f"{events[0].sequence}-{events[-1].sequence}"
 
 
 def _older_message(event: ConversationEventView) -> AgentMessage:

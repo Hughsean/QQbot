@@ -45,7 +45,11 @@ class Repository:
     summaries: list[ConversationSummaryView] = field(default_factory=list)
 
     async def create_snapshot(self, user_id: str, scope_id: UUID) -> ConversationSnapshot:
-        sequences = [item.sequence for item in (*self.conversation, *self.owner)]
+        sequences = [
+            item.sequence
+            for item in (*self.conversation, *self.owner)
+            if item.user_id == user_id
+        ]
         maximum = max(sequences, default=0)
         return ConversationSnapshot(
             user_id, scope_id, maximum, maximum, snapshot_hash(user_id, scope_id, maximum)
@@ -60,11 +64,15 @@ class Repository:
         max_sequence: int,
         limit: int,
     ) -> tuple[ConversationEventView, ...]:
-        del user_id, scope_id
+        del scope_id
         source = (
-            self.conversation if scope_type is ConversationScopeType.CONVERSATION else self.owner
+            self.conversation
+            if scope_type is ConversationScopeType.CONVERSATION
+            else self.owner
         )
-        visible = [item for item in source if item.sequence <= max_sequence]
+        visible = [
+            item for item in source if item.user_id == user_id and item.sequence <= max_sequence
+        ]
         return tuple(visible[-limit:])
 
     async def list_summaries(
@@ -76,8 +84,12 @@ class Repository:
         max_sequence: int,
         limit: int = 2,
     ) -> tuple[ConversationSummaryView, ...]:
-        del user_id, scope_type, scope_id, max_sequence
-        return tuple(self.summaries[-limit:])
+        visible = [
+            item
+            for item in self.summaries
+            if item.user_id == user_id and item.to_sequence <= max_sequence
+        ]
+        return tuple(visible[-limit:])
 
 
 def _event(
@@ -131,12 +143,14 @@ def _turn(repository: Repository, sequence: int, label: str, run_id: UUID) -> No
 async def _build(repository: Repository, **kwargs: object) -> TimelineContext:
     current_run_id = kwargs.pop("current_run_id", None)
     current_inbox_item_id = kwargs.pop("current_inbox_item_id", None)
+    snapshot = kwargs.pop("snapshot", None)
     assembler = TimelineContextAssembler(repository, **kwargs)  # type: ignore[arg-type]
     return await assembler.build(  # type: ignore[arg-type]
         "owner",
         CONVERSATION_ID,
         current_run_id=current_run_id,
         current_inbox_item_id=current_inbox_item_id,
+        snapshot=snapshot,
     )
 
 
@@ -173,7 +187,7 @@ async def test_regions_are_ordered_summaries_older_turns_notifications() -> None
     kinds = [message.event_type for message in context.messages]
     assert kinds[0] == "CONVERSATION_SUMMARY"
     assert "USER_MESSAGE" in kinds and "AGENT_REPLY" in kinds
-    assert kinds[-1] == "MAIL_NOTIFICATION"
+    assert kinds[5] == "MAIL_NOTIFICATION"
     assert context.messages[0].role is AgentMessageRole.SYSTEM
     assert context.messages[1].content == "用户消息一"
     assert context.messages[2].content == "答复一"
@@ -321,6 +335,108 @@ def test_protected_turns_bounds_are_enforced(turns: int) -> None:
 
 
 @pytest.mark.asyncio
+async def test_cross_source_events_keep_global_sequence_order() -> None:
+    repository = Repository()
+    repository.conversation.extend(
+        (
+            _event(1, ConversationEventType.USER_MESSAGE, "第一条用户消息", inbox_item_id=uuid4()),
+            _event(4, ConversationEventType.USER_MESSAGE, "第二条用户消息", inbox_item_id=uuid4()),
+            _event(5, ConversationEventType.AGENT_REPLY, "第二条答复", run_id=uuid4()),
+        )
+    )
+    repository.owner.append(
+        _event(
+            3,
+            ConversationEventType.MAIL_NOTIFICATION,
+            "邮件提醒",
+            scope=ConversationScopeType.OWNER_TIMELINE,
+            delivery=ConversationDeliveryStatus.DELIVERED,
+        )
+    )
+    repository.conversation.append(
+        _event(2, ConversationEventType.AGENT_REPLY, "第一条答复", run_id=uuid4())
+    )
+
+    context = await _build(repository, protected_turns=6)
+
+    assert [message.event_type for message in context.messages] == [
+        "USER_MESSAGE", "AGENT_REPLY", "MAIL_NOTIFICATION", "USER_MESSAGE", "AGENT_REPLY"
+    ]
+    assert [message.content for message in context.messages] == [
+        "第一条用户消息", "第一条答复", "[external-event MAIL_NOTIFICATION DELIVERED]\n邮件提醒",
+        "第二条用户消息", "第二条答复",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_daily_digest_precedes_following_conversation_turn() -> None:
+    repository = Repository()
+    repository.owner.append(
+        _event(
+            1, ConversationEventType.DAILY_DIGEST, "日常摘要",
+            scope=ConversationScopeType.OWNER_TIMELINE,
+            delivery=ConversationDeliveryStatus.DELIVERED,
+        )
+    )
+    _turn(repository, 2, "摘要后的对话", uuid4())
+
+    context = await _build(repository)
+
+    assert [message.event_type for message in context.messages] == [
+        "DAILY_DIGEST", "USER_MESSAGE", "AGENT_REPLY"
+    ]
+
+
+@pytest.mark.asyncio
+async def test_owner_timeline_isolated_by_user() -> None:
+    repository = Repository()
+    current = _event(
+        1, ConversationEventType.DAILY_DIGEST, "当前用户摘要",
+        scope=ConversationScopeType.OWNER_TIMELINE,
+        delivery=ConversationDeliveryStatus.DELIVERED,
+    )
+    other = _event(
+        2, ConversationEventType.DAILY_DIGEST, "其他用户摘要",
+        scope=ConversationScopeType.OWNER_TIMELINE,
+        delivery=ConversationDeliveryStatus.DELIVERED,
+    )
+    repository.owner.extend((current, _with_user(other, "other-owner")))
+
+    context = await _build(repository)
+
+    assert [message.content for message in context.messages] == [
+        "[external-event DAILY_DIGEST DELIVERED]\n当前用户摘要"
+    ]
+
+
+def _with_user(event: ConversationEventView, user_id: str) -> ConversationEventView:
+    return ConversationEventView(
+        event.event_id, event.scope_type, event.scope_id, user_id, event.sequence,
+        event.event_type, event.role, event.occurred_at, event.created_at, event.content,
+        event.content_ref, event.content_hash, event.delivery_status, event.run_id,
+        event.inbox_item_id, event.notification_intent_id, event.idempotency_key, event.metadata,
+    )
+
+
+@pytest.mark.asyncio
+async def test_pinned_snapshot_excludes_events_arriving_during_execution() -> None:
+    repository = Repository()
+    _turn(repository, 1, "快照前", uuid4())
+    snapshot = await repository.create_snapshot("owner", CONVERSATION_ID)
+    repository.conversation.extend(
+        (
+            _event(3, ConversationEventType.USER_MESSAGE, "快照后消息", inbox_item_id=uuid4()),
+            _event(4, ConversationEventType.AGENT_REPLY, "快照后答复", run_id=uuid4()),
+        )
+    )
+
+    context = await _build(repository, snapshot=snapshot)
+
+    assert [message.content for message in context.messages] == ["用户消息快照前", "答复快照前"]
+    assert context.snapshot == snapshot
+
+
+@pytest.mark.asyncio
 async def test_older_events_beyond_limit_record_diagnostics() -> None:
     repository = Repository()
     for index in range(10):
@@ -334,3 +450,28 @@ async def test_older_events_beyond_limit_record_diagnostics() -> None:
         message for message in context.messages if message.content.startswith("[history-event")
     ]
     assert len(older) == 4
+
+
+@pytest.mark.asyncio
+async def test_selection_diagnostics_are_bounded_and_do_not_include_content() -> None:
+    repository = Repository()
+    _turn(repository, 1, "敏感 QQ 正文", uuid4())
+    repository.owner.append(
+        _event(
+            3,
+            ConversationEventType.MAIL_NOTIFICATION,
+            "敏感邮件正文",
+            scope=ConversationScopeType.OWNER_TIMELINE,
+            delivery=ConversationDeliveryStatus.DELIVERED,
+        )
+    )
+
+    context = await _build(repository)
+
+    diagnostics = [item for item in context.diagnostics if item.kind == "timeline-selection"]
+    assert len(diagnostics) == 1
+    detail = diagnostics[0].detail
+    assert "sequence_range=1-3" in detail
+    assert "context_hash=" in detail
+    assert "敏感" not in detail
+    assert "scope=" in detail

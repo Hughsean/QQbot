@@ -70,6 +70,7 @@ class AgentRunEventRow(AgentBase):
         UniqueConstraint("run_id", "sequence", name="uq_agent_run_events_sequence"),
         UniqueConstraint("run_id", "idempotency_key", name="uq_agent_run_events_idempotency"),
         Index("ix_agent_run_events_run_time", "run_id", "occurred_at"),
+        Index("ix_agent_run_events_run_scope", "run_id", "sequence"),
     )
 
 

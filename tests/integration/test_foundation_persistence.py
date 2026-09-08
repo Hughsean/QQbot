@@ -20,10 +20,21 @@ from qq_time_agent.modules.agent.contracts import (
     AgentFinal,
     AgentRunClaimError,
     AgentRunStatus,
+    ConversationEvent,
+    ConversationEventType,
+    ConversationScopeType,
     ToolObservation,
 )
+from qq_time_agent.modules.agent.infrastructure.conversation_events import (
+    SqlConversationEventRepository,
+)
 from qq_time_agent.modules.agent.infrastructure.repository import SqlAgentRunRepository
-from qq_time_agent.modules.agent.infrastructure.tables import AgentRunRow, AgentToolCallRow
+from qq_time_agent.modules.agent.infrastructure.tables import (
+    AgentRunRow,
+    AgentToolCallRow,
+    ConversationEventRow,
+    ConversationSequenceRow,
+)
 from qq_time_agent.modules.data_lifecycle.domain.models import Tombstone, TombstoneStatus
 from qq_time_agent.modules.data_lifecycle.infrastructure.repository import SqlTombstoneRepository
 from qq_time_agent.modules.data_lifecycle.infrastructure.tables import PurgeResultRow, TombstoneRow
@@ -55,11 +66,78 @@ async def test_pgvector_extension_and_migration_are_active(engine: AsyncEngine) 
             )
         )
     assert extension is not None
-    assert revision == "0023_agent_run_events"
+    assert revision == "0027_conversation_events"
     assert job_constraint == "uq_platform_jobs_idempotency"
 
     health = await DatabaseReadinessProbe(engine).check()
     assert health.available and health.vector_enabled
+
+
+@pytest.mark.asyncio
+async def test_conversation_timeline_append_is_idempotent_and_snapshot_bounded(
+    engine: AsyncEngine,
+) -> None:
+    sessions = async_sessionmaker(engine, expire_on_commit=False)
+    repository = SqlConversationEventRepository(sessions)
+    user_id = f"integration-timeline-{uuid4()}"
+    conversation_id = uuid4()
+    now = datetime(2026, 8, 28, tzinfo=UTC)
+    first = ConversationEvent(
+        ConversationScopeType.CONVERSATION,
+        conversation_id,
+        user_id,
+        ConversationEventType.USER_MESSAGE,
+        now,
+        "synthetic message",
+        f"timeline:{uuid4()}",
+        inbox_item_id=uuid4(),
+    )
+    second = ConversationEvent(
+        ConversationScopeType.CONVERSATION,
+        conversation_id,
+        user_id,
+        ConversationEventType.AGENT_REPLY,
+        now,
+        "synthetic reply",
+        f"timeline:{uuid4()}",
+        run_id=uuid4(),
+    )
+    try:
+        stored = await repository.append(first, now)
+        duplicate = await repository.append(first, now + timedelta(seconds=1))
+        later = await repository.append(second, now + timedelta(seconds=2))
+        assert duplicate.event_id == stored.event_id
+        assert duplicate.sequence == stored.sequence
+        assert later.sequence == stored.sequence + 1
+
+        snapshot = await repository.create_snapshot(user_id, conversation_id)
+        after = ConversationEvent(
+            ConversationScopeType.CONVERSATION,
+            conversation_id,
+            user_id,
+            ConversationEventType.USER_MESSAGE,
+            now,
+            "after snapshot",
+            f"timeline:{uuid4()}",
+            inbox_item_id=uuid4(),
+        )
+        await repository.append(after, now + timedelta(seconds=3))
+        visible = await repository.list_snapshot_events(
+            user_id,
+            ConversationScopeType.CONVERSATION,
+            conversation_id,
+            max_sequence=snapshot.max_sequence,
+            limit=20,
+        )
+        assert [item.event_id for item in visible] == [stored.event_id, later.event_id]
+    finally:
+        async with sessions.begin() as session:
+            await session.execute(
+                delete(ConversationEventRow).where(ConversationEventRow.user_id == user_id)
+            )
+            await session.execute(
+                delete(ConversationSequenceRow).where(ConversationSequenceRow.user_id == user_id)
+            )
 
 
 @pytest.mark.asyncio
