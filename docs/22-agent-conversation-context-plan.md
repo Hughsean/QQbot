@@ -36,7 +36,7 @@
 - [x] 统一 timeline message 已接入模型请求优先路径；旧 fallback 仍保留用于无 scope/空时间线兼容。
 - [x] `AGENT_REPLY`、`TOOL_CALL`、`TOOL_RESULT` 已由 AgentRun repository 写入会话事件；`agent_run_events` 仍作为执行审计保留。
 - [ ] 摘要表已建立，但尚未实现真正的摘要生成、范围校验、压缩 worker 和摘要回读策略。
-- [ ] `TimelineContextAssembler` 当前以硬字符限制为主，尚未完成基于模型可用 token budget 的统一预算计算。
+- [x] `TimelineContextAssembler` 已按模型可用 token budget admission；固定预留 system/tool schema/current input/output/safety margin，字符限制仍为最终安全阀。
 - [x] 诊断对象已记录 selected/dropped、token count、sequence range、scope hash 和 context hash；仍需审计所有生产入口。
 - [ ] 旧数据 fallback、迁移后历史事件回填策略尚未完整验证。
 - [ ] `MissingAgentNotificationSource` 和资产目录权限问题仍是独立运行时问题，尚未纳入本改造闭环。
@@ -97,13 +97,13 @@
 
 ### 阶段 5：预算与最近 turn 保护
 
-- [ ] 将模型上下文限制、system prompt、tool schema、当前输入、output reserve 和 safety margin 纳入统一预算。
-- [ ] 采用 token budget，而不是只依赖字符数；字符数只作为硬安全上限。
-- [ ] 最近 6–12 个完整 turn设为 protected region。
-- [ ] 旧事件、旧摘要、通知按明确优先级裁剪，不能淘汰 protected recent turns。
-- [ ] 达到约 65%–70% usable budget 时触发压缩准备。
+- [x] 将模型上下文限制、system prompt、tool schema、当前输入、output reserve 和 safety margin 纳入统一预算。
+- [x] 采用 token budget，而不是只依赖字符数；字符数只作为硬安全上限。
+- [x] 最近 6–12 个完整 turn设为 protected region。
+- [x] 旧事件、旧摘要、通知按明确优先级裁剪，不能淘汰 protected recent turns。
+- [x] 达到约 65%–70% usable budget 时触发压缩准备。
 - [x] 记录 selected/dropped event count、scope、sequence range 和 token count。
-- [ ] 增加预算不足、长通知、大工具结果和多轮对话测试。
+- [x] 增加预算不足、长通知、大工具结果和多轮对话测试。
 
 ### 阶段 6：分层摘要与压缩
 

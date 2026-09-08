@@ -234,12 +234,36 @@ class ConversationSummaryView:
     to_sequence: int
     summary_text: str
     created_at: datetime
+    source_hash: str = ""
+    facts: tuple[str, ...] = ()
+    decisions: tuple[str, ...] = ()
+    commitments: tuple[str, ...] = ()
+    open_loops: tuple[str, ...] = ()
+    preferences: tuple[str, ...] = ()
+    time_anchors: tuple[str, ...] = ()
+    tool_side_effects: tuple[str, ...] = ()
+    idempotency_key: str = ""
 
     def __post_init__(self) -> None:
         if self.from_sequence < 1 or self.to_sequence < self.from_sequence:
             raise ValueError("conversation summary sequence range is invalid")
         if not self.summary_text.strip():
             raise ValueError("conversation summary text is required")
+        if self.source_hash and len(self.source_hash) != 64:
+            raise ValueError("conversation summary source hash is invalid")
+        for values in (
+            self.facts,
+            self.decisions,
+            self.commitments,
+            self.open_loops,
+            self.preferences,
+            self.time_anchors,
+            self.tool_side_effects,
+        ):
+            if any(not item.strip() for item in values):
+                raise ValueError("conversation summary fields must be non-empty")
+        if self.idempotency_key and not self.idempotency_key.strip():
+            raise ValueError("conversation summary idempotency key is invalid")
         _require_aware(self.created_at, "created_at")
 
 

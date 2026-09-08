@@ -320,5 +320,21 @@ def _summary_view(row: ConversationSummaryRow) -> ConversationSummaryView:
         from_sequence=row.from_sequence,
         to_sequence=row.to_sequence,
         summary_text=row.content,
+        source_hash=row.source_hash,
+        facts=_summary_values(row.structured_json, "facts"),
+        decisions=_summary_values(row.structured_json, "decisions"),
+        commitments=_summary_values(row.structured_json, "commitments"),
+        open_loops=_summary_values(row.structured_json, "open_loops"),
+        preferences=_summary_values(row.structured_json, "preferences"),
+        time_anchors=_summary_values(row.structured_json, "time_anchors"),
+        tool_side_effects=_summary_values(row.structured_json, "tool_side_effects"),
+        idempotency_key=row.idempotency_key,
         created_at=row.created_at,
     )
+
+
+def _summary_values(data: dict[str, object], key: str) -> tuple[str, ...]:
+    value = data.get(key, ())
+    if not isinstance(value, list | tuple):
+        return ()
+    return tuple(item for item in value if isinstance(item, str))

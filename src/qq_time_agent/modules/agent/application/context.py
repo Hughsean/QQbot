@@ -55,7 +55,11 @@ class AgentContextAssembler:
         self._history_limit = history_limit
         resolve_timezone(owner_timezone)
         self._owner_timezone = owner_timezone
-        self._timeline = TimelineContextAssembler(timeline) if timeline is not None else None
+        self._timeline = (
+            TimelineContextAssembler(timeline, budget=self._budget)
+            if timeline is not None
+            else None
+        )
 
     async def assemble(
         self,

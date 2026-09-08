@@ -6,6 +6,11 @@ from dataclasses import dataclass
 from hashlib import sha256
 from uuid import UUID
 
+from qq_time_agent.modules.agent.application.budget import (
+    ContextBlock,
+    ContextBudgetExceeded,
+    ContextBudgetPolicy,
+)
 from qq_time_agent.modules.agent.contracts import (
     ContextDiagnostics,
     ConversationContextRepository,
@@ -61,6 +66,7 @@ class TimelineContextAssembler:
         summary_limit: int = 2,
         read_limit: int = 200,
         hard_char_limit: int = 60_000,
+        budget: ContextBudgetPolicy | None = None,
     ) -> None:
         if not 6 <= protected_turns <= 12:
             raise ValueError("timeline protected turns must be between 6 and 12")
@@ -76,6 +82,7 @@ class TimelineContextAssembler:
         self._summary_limit = summary_limit
         self._read_limit = read_limit
         self._hard_char_limit = hard_char_limit
+        self._budget = budget or ContextBudgetPolicy()
 
     async def build(
         self,
@@ -85,6 +92,7 @@ class TimelineContextAssembler:
         current_run_id: UUID | None = None,
         current_inbox_item_id: UUID | None = None,
         snapshot: ConversationSnapshot | None = None,
+        budget: ContextBudgetPolicy | None = None,
     ) -> TimelineContext:
         snapshot = snapshot or await self._repository.create_snapshot(user_id, conversation_id)
         visible = await self._visible_events(user_id, conversation_id, snapshot)
@@ -123,6 +131,16 @@ class TimelineContextAssembler:
         )
         diagnostics.extend(
             _bound_regions(turns, notifications, older, summaries, self._hard_char_limit)
+        )
+        budget_policy = budget or self._budget
+        diagnostics.extend(
+            _budget_regions(
+                turns,
+                notifications,
+                older,
+                summaries,
+                budget_policy,
+            )
         )
         for item in diagnostics:
             if item.kind == "protected-turns-truncated":
@@ -211,6 +229,71 @@ def _bounded_diagnostics(older_dropped: int, notification_dropped: int) -> list[
             ContextDiagnostics("notifications-bounded", f"dropped_events={notification_dropped}")
         )
     return diagnostics
+
+
+def _budget_regions(
+    turns: list[list[ConversationEventView]],
+    notifications: list[ConversationEventView],
+    older: list[ConversationEventView],
+    summaries: list[ConversationSummaryView],
+    policy: ContextBudgetPolicy,
+) -> list[ContextDiagnostics]:
+    """Admit timeline messages after fixed request components are reserved."""
+    diagnostics: list[ContextDiagnostics] = []
+    while True:
+        blocks = _timeline_blocks(turns, notifications, older, summaries)
+        tokens = sum(item.token_count for item in blocks)
+        if tokens <= policy.usable_tokens:
+            if (
+                policy.usable_tokens > 0
+                and tokens / policy.usable_tokens >= policy.compression_threshold
+            ):
+                diagnostics.append(
+                    ContextDiagnostics(
+                        "compression-preparation",
+                        f"usable_tokens={policy.usable_tokens} timeline_tokens={tokens} "
+                        f"ratio={tokens / policy.usable_tokens:.2f}",
+                    )
+                )
+            return diagnostics
+        if older:
+            older.pop(0)
+            diagnostics.append(ContextDiagnostics("timeline-token-dropped", "region=older"))
+        elif summaries:
+            summaries.pop(0)
+            diagnostics.append(ContextDiagnostics("timeline-token-dropped", "region=summary"))
+        elif notifications:
+            notifications.pop(0)
+            diagnostics.append(ContextDiagnostics("timeline-token-dropped", "region=notification"))
+        elif len(turns) > 1:
+            turns.pop(0)
+            diagnostics.append(
+                ContextDiagnostics(
+                    "timeline-token-dropped", "region=protected-oldest"
+                )
+            )
+        else:
+            raise ContextBudgetExceeded("protected Agent timeline exceeds token budget")
+
+
+def _timeline_blocks(
+    turns: list[list[ConversationEventView]],
+    notifications: list[ConversationEventView],
+    older: list[ConversationEventView],
+    summaries: list[ConversationSummaryView],
+) -> tuple[ContextBlock, ...]:
+    blocks: list[ContextBlock] = []
+    blocks.extend(
+        ContextBlock("timeline", "protected turn", event.content, 100, mandatory=True)
+        for event in _flatten(turns)
+    )
+    blocks.extend(
+        ContextBlock("timeline", "notification", event.content, 60)
+        for event in notifications
+    )
+    blocks.extend(ContextBlock("timeline", "older event", event.content, 40) for event in older)
+    blocks.extend(ContextBlock("timeline", "summary", item.summary_text, 30) for item in summaries)
+    return tuple(blocks)
 
 
 def _bound_regions(

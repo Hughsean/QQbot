@@ -6,6 +6,7 @@ from uuid import UUID, uuid4
 
 import pytest
 
+from qq_time_agent.modules.agent.application.budget import ContextBudgetPolicy
 from qq_time_agent.modules.agent.application.timeline_context import (
     TimelineContext,
     TimelineContextAssembler,
@@ -167,6 +168,9 @@ async def test_regions_are_ordered_summaries_older_turns_notifications() -> None
             2,
             "早期摘要",
             NOW,
+            source_hash="b" * 64,
+            facts=("已确认事实",),
+            decisions=("已作决定",),
         )
     )
     _turn(repository, 1, "一", uuid4())
@@ -416,6 +420,22 @@ def _with_user(event: ConversationEventView, user_id: str) -> ConversationEventV
         event.content_ref, event.content_hash, event.delivery_status, event.run_id,
         event.inbox_item_id, event.notification_intent_id, event.idempotency_key, event.metadata,
     )
+
+
+@pytest.mark.asyncio
+async def test_timeline_budget_records_compression_preparation_without_content() -> None:
+    repository = Repository()
+    _turn(repository, 1, "A" * 60, uuid4())
+
+    context = await _build(
+        repository,
+        budget=ContextBudgetPolicy(max_context_tokens=60, safety_margin_tokens=2),
+    )
+
+    diagnostics = [item for item in context.diagnostics if item.kind == "compression-preparation"]
+    assert diagnostics
+    assert "ratio=" in diagnostics[0].detail
+    assert "AAAA" not in diagnostics[0].detail
 
 
 @pytest.mark.asyncio

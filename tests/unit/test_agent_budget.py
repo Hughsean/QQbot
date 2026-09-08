@@ -42,7 +42,40 @@ def test_budget_fails_closed_when_mandatory_context_does_not_fit() -> None:
         ContextBudgetPolicy(max_context_tokens=10).select([mandatory])
 
 
-def test_budget_tie_breaking_is_stable() -> None:
+def test_budget_admission_reserves_fixed_request_components() -> None:
+    policy = ContextBudgetPolicy(
+        max_context_tokens=30,
+        system_prompt_tokens=4,
+        tool_schema_tokens=3,
+        current_input_tokens=5,
+        output_reserve_tokens=6,
+        safety_margin_tokens=2,
+    )
+    selected, dropped, tokens = policy.admission(
+        [
+            ContextBlock("timeline", "recent", "R" * 24, 100, mandatory=True),
+            ContextBlock("timeline", "old", "O" * 24, 10),
+        ]
+    )
+
+    assert [item.label for item in selected] == ["recent"]
+    assert [item.label for item in dropped] == ["old"]
+    assert tokens == selected[0].token_count
+    assert policy.usable_tokens == 10
+
+
+def test_budget_rejects_mandatory_timeline_after_fixed_reservations() -> None:
+    policy = ContextBudgetPolicy(max_context_tokens=20, output_reserve_tokens=8)
+    mandatory = ContextBlock("timeline", "recent", "必须保留" * 8, 100, mandatory=True)
+    with pytest.raises(ContextBudgetExceeded, match="mandatory"):
+        policy.select([mandatory])
+
+
+def test_budget_compression_threshold_is_validated() -> None:
+    with pytest.raises(ValueError, match="compression threshold"):
+        ContextBudgetPolicy(compression_threshold=1.0)
+
+
     first = ContextBlock("history", "one", "first", 10, stable_id="a")
     second = ContextBlock("history", "two", "second", 10, stable_id="b")
     policy = ContextBudgetPolicy(max_context_tokens=20, safety_margin_tokens=0)

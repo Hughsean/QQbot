@@ -216,4 +216,9 @@ class ConversationSummaryRow(AgentBase):
     to_sequence: Mapped[int] = mapped_column(Integer, nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    source_hash: Mapped[str] = mapped_column(String(64), nullable=False, default="")
+    structured_json: Mapped[dict[str, object]] = mapped_column(
+        JSONB, nullable=False, default=dict
+    )
+    idempotency_key: Mapped[str] = mapped_column(String(240), nullable=False, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
