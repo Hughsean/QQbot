@@ -63,9 +63,7 @@ class AgentRunEventRow(AgentBase):
     call_id: Mapped[str | None] = mapped_column(String(160))
     invocation_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     idempotency_key: Mapped[str] = mapped_column(String(255), nullable=False)
-    metadata_json: Mapped[dict[str, object]] = mapped_column(
-        "metadata", JSONB, nullable=False
-    )
+    metadata_json: Mapped[dict[str, object]] = mapped_column("metadata", JSONB, nullable=False)
     __table_args__ = (
         UniqueConstraint("run_id", "sequence", name="uq_agent_run_events_sequence"),
         UniqueConstraint("run_id", "idempotency_key", name="uq_agent_run_events_idempotency"),
@@ -133,9 +131,7 @@ _EVENT_TYPE_CHECK = (
 )
 _ROLE_CHECK = "role IN ('user', 'agent', 'tool', 'system')"
 _SCOPE_CHECK = "scope_type IN ('conversation', 'owner_timeline')"
-_DELIVERY_CHECK = (
-    "delivery_status IS NULL OR delivery_status IN ('DELIVERED', 'FAILED')"
-)
+_DELIVERY_CHECK = "delivery_status IS NULL OR delivery_status IN ('DELIVERED', 'FAILED')"
 
 
 class ConversationEventRow(AgentBase):
@@ -146,12 +142,8 @@ class ConversationEventRow(AgentBase):
         UniqueConstraint(
             "scope_type", "scope_id", "sequence", name="uq_agent_conversation_events_scope_sequence"
         ),
-        UniqueConstraint(
-            "user_id", "sequence", name="uq_agent_conversation_events_user_sequence"
-        ),
-        UniqueConstraint(
-            "idempotency_key", name="uq_agent_conversation_events_idempotency"
-        ),
+        UniqueConstraint("user_id", "sequence", name="uq_agent_conversation_events_user_sequence"),
+        UniqueConstraint("idempotency_key", name="uq_agent_conversation_events_idempotency"),
         Index(
             "ix_agent_conversation_events_scope_time",
             "scope_type",
@@ -182,9 +174,7 @@ class ConversationEventRow(AgentBase):
     inbox_item_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     notification_intent_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     idempotency_key: Mapped[str] = mapped_column(String(255), nullable=False)
-    metadata_json: Mapped[dict[str, object]] = mapped_column(
-        "metadata", JSONB, nullable=False
-    )
+    metadata_json: Mapped[dict[str, object]] = mapped_column("metadata", JSONB, nullable=False)
 
 
 class ConversationSummaryRow(AgentBase):
@@ -217,8 +207,6 @@ class ConversationSummaryRow(AgentBase):
     content: Mapped[str] = mapped_column(Text, nullable=False)
     content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     source_hash: Mapped[str] = mapped_column(String(64), nullable=False, default="")
-    structured_json: Mapped[dict[str, object]] = mapped_column(
-        JSONB, nullable=False, default=dict
-    )
-    idempotency_key: Mapped[str] = mapped_column(String(240), nullable=False, default="")
+    structured_json: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False, default=dict)
+    idempotency_key: Mapped[str] = mapped_column(String(255), nullable=False, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

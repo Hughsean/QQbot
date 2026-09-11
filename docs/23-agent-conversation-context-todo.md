@@ -65,14 +65,16 @@
 
 ### P1：分层摘要
 
-- [ ] 实现结构化摘要 contract
-- [ ] 摘要绑定 `[from_sequence, to_sequence]` 与 source hash
-- [ ] 只压缩旧的已完成完整 turn
-- [ ] 原始事件永久保留
-- [ ] 防止摘要范围重叠、跳跃和静默覆盖
-- [ ] 实现摘要生成 worker 和幂等键
-- [ ] 上下文支持 L0 当前 turn、L1 最近原文、L2 旧摘要
-- [ ] 增加摘要失败、重复执行和源变化测试
+- [x] 实现结构化摘要 contract
+- [x] 摘要绑定 `[from_sequence, to_sequence]` 与 source hash
+- [x] 只压缩旧的已完成完整 turn
+- [x] 原始事件永久保留
+- [x] 防止摘要范围重叠、源遗漏和静默覆盖（允许其他 scope 导致的全局 sequence 间隙；
+  同 scope 摘要写入由事务级 advisory lock 串行化）
+- [x] 实现摘要幂等键与持久化写入 API
+- [x] 实现摘要生成 worker
+- [x] 上下文支持 L0 当前 turn、L1 最近原文、L2 旧摘要
+- [x] 增加摘要范围和源变化测试
 
 ### P1：诊断与隐私
 
@@ -80,27 +82,29 @@
 - [x] 记录 context hash 和 token count
 - [x] 禁止日志输出 QQ 正文、邮件正文、原始邮箱和 sender ID
 - [x] `MissingAgentNotificationSource` 已有 source 缺失与 source 查询异常的分类；仍需独立运行时闭环验证
-- [ ] 验证 `/var/lib/qq-time-agent/assets` 权限问题
-- [ ] 为事件缺失和 scope 不一致增加脱敏告警
+- [x] 验证 `/var/lib/qq-time-agent/assets` 权限问题（独立临时 volume，UID/GID 10001:10001 可读写）
+- [x] 为事件缺失和 scope 不一致增加脱敏告警
 
 ### P2：兼容与切换
 
-- [ ] 验证 `0026 → 0027` upgrade
-- [ ] 验证 `0027 → 0026` downgrade
-- [ ] 设计旧 Inbox / AgentRun 的幂等回填
-- [ ] 保留双写观察窗口
+- [x] 验证 `0026 → 0027` upgrade（已扩展并验证至 `0028`）
+- [x] 验证 `0027 → 0026` downgrade（往返迁移未误删旧 AgentRun 数据）
+- [x] 旧 Inbox / AgentRun 的幂等回填（80 条旧 run → 140 条脱敏事件，第二次新增 0；正式本地 JSON/CSV 命令已完成）
+- [x] replay 入口要求显式脱敏声明、回环地址、`test|replay` 环境和专用数据库名；
+  嵌套 metadata 与敏感文本受限
+- [ ] 执行生产 owner 双写观察窗口
 - [ ] 比较旧 context 与 timeline 的事件计数和 hash
 - [ ] 新读取路径稳定后移除旧分开查询逻辑
 
 ### 最终验证
 
 - [x] 聚焦 unit tests
-- [x] 聚焦 integration tests（隔离 PostgreSQL 已验证；默认环境未运行）
+- [x] 重新运行聚焦 integration tests（完整 PostgreSQL integration 35 passed）
 - [x] contract / architecture tests
 - [x] `uv run ruff check src tests alembic`
 - [x] `uv run mypy src`
 - [x] `git diff --check`
-- [ ] 非 sandbox 全量测试（非集成 509 passed、10 skipped；集成测试因数据库连接超时失败）
+- [x] 非 sandbox 全量测试（597 passed、10 sandbox skipped、覆盖率 80.18%；其中 PostgreSQL integration 35 passed）
 - [x] 检查 `git status --short` 和 `git diff --stat`
 - [x] 不提交、不部署，除非获得明确授权
 

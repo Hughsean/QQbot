@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "redacted": true,
+  "events": [
+    {
+      "user_id": "replay-user",
+      "scope_type": "conversation",
+      "scope_id": "00000000-0000-0000-0000-000000000001",
+      "sequence": 1,
+      "event_type": "USER_MESSAGE",
+      "role": "user",
+      "content": "脱敏回放消息",
+      "content_hash": "",
+      "idempotency_key": "replay:user:1"
+    },
+    {
+      "user_id": "replay-user",
+      "scope_type": "conversation",
+      "scope_id": "00000000-0000-0000-0000-000000000001",
+      "sequence": 2,
+      "event_type": "AGENT_REPLY",
+      "role": "agent",
+      "content": "脱敏回放答复",
+      "content_hash": "",
+      "idempotency_key": "replay:reply:1"
+    }
+  ]
+}

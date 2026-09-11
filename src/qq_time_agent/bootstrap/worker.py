@@ -11,6 +11,9 @@ from qq_time_agent.adapters.inbound.workers.agent_run import (
     AgentRunJobHandler,
     MailAgentRunScheduler,
 )
+from qq_time_agent.adapters.inbound.workers.conversation_summary import (
+    ConversationSummaryJobHandler,
+)
 from qq_time_agent.adapters.inbound.workers.data_lifecycle import DataLifecycleJobHandler
 from qq_time_agent.adapters.inbound.workers.knowledge import (
     KnowledgeAssetIndexJobHandler,
@@ -52,6 +55,9 @@ from qq_time_agent.modules.agenda.application.source_lookup import AgendaSourceL
 from qq_time_agent.modules.agenda.infrastructure.repository import SqlAgendaRepository
 from qq_time_agent.modules.agent.application.budget import ContextBudgetPolicy
 from qq_time_agent.modules.agent.application.context import AgentContextAssembler
+from qq_time_agent.modules.agent.application.conversation_summary import (
+    ConversationSummaryService,
+)
 from qq_time_agent.modules.agent.application.json_model import JsonAgentModel
 from qq_time_agent.modules.agent.application.loop import AgentLoop, AgentLoopConfig
 from qq_time_agent.modules.agent.application.run_service import AgentRunService
@@ -347,6 +353,9 @@ def build_worker() -> tuple[JobRunner, AsyncEngine, tuple[AsyncClosable, ...]]:
             clock,
             MailDeliveryPolicy(mail_rules),
         ),
+        "conversation-summary": ConversationSummaryJobHandler(
+            ConversationSummaryService(conversation_events, clock), clock
+        ),
         "knowledge-index": KnowledgeIndexJobHandler(
             inbox_repository, inbox_repository, normalization_repository, knowledge
         ),
@@ -361,6 +370,7 @@ def build_worker() -> tuple[JobRunner, AsyncEngine, tuple[AsyncClosable, ...]]:
             clock,
         ),
     }
+
     async def before_start() -> None:
         await bootstrap_qq_mail(config.qq_mail_bootstrap, qq_connections)
 
@@ -377,6 +387,7 @@ def build_worker() -> tuple[JobRunner, AsyncEngine, tuple[AsyncClosable, ...]]:
         inbox_repository,
         ollama,
         build_notification_planner(sessions, preferences, agenda_repository),
+        conversation_events,
         before_start=before_start,
     )
 

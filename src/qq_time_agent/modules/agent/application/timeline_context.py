@@ -126,9 +126,23 @@ class TimelineContextAssembler:
                 limit=self._summary_limit,
             )
         )
+        covered = tuple((item.from_sequence, item.to_sequence) for item in summaries)
+        older_before_summary = len(older)
+        older = [
+            event
+            for event in older
+            if not any(start <= event.sequence <= end for start, end in covered)
+        ]
         diagnostics = _bounded_diagnostics(
             len(older_all) - len(older), len(notifications_all) - len(notifications)
         )
+        if len(older) < older_before_summary:
+            diagnostics.append(
+                ContextDiagnostics(
+                    "summarized-events-dropped",
+                    f"dropped_events={older_before_summary - len(older)}",
+                )
+            )
         diagnostics.extend(
             _bound_regions(turns, notifications, older, summaries, self._hard_char_limit)
         )
@@ -152,7 +166,8 @@ class TimelineContextAssembler:
             *(_summary_message(item) for item in summaries),
             *(_older_message(item) for item in older),
             *(
-                _turn_message(item) if item.scope_type is ConversationScopeType.CONVERSATION
+                _turn_message(item)
+                if item.scope_type is ConversationScopeType.CONVERSATION
                 else _notification_message(item)
                 for item in sorted(
                     (*_flatten(turns), *notifications), key=lambda item: item.sequence
@@ -268,9 +283,7 @@ def _budget_regions(
         elif len(turns) > 1:
             turns.pop(0)
             diagnostics.append(
-                ContextDiagnostics(
-                    "timeline-token-dropped", "region=protected-oldest"
-                )
+                ContextDiagnostics("timeline-token-dropped", "region=protected-oldest")
             )
         else:
             raise ContextBudgetExceeded("protected Agent timeline exceeds token budget")
@@ -288,8 +301,7 @@ def _timeline_blocks(
         for event in _flatten(turns)
     )
     blocks.extend(
-        ContextBlock("timeline", "notification", event.content, 60)
-        for event in notifications
+        ContextBlock("timeline", "notification", event.content, 60) for event in notifications
     )
     blocks.extend(ContextBlock("timeline", "older event", event.content, 40) for event in older)
     blocks.extend(ContextBlock("timeline", "summary", item.summary_text, 30) for item in summaries)
@@ -375,9 +387,7 @@ def _selection_diagnostics(
     messages: list[AgentMessage],
 ) -> ContextDiagnostics:
     selected_ids = _message_events(messages)
-    selected = Counter(
-        item.event_type.value for item in events if item.event_id in selected_ids
-    )
+    selected = Counter(item.event_type.value for item in events if item.event_id in selected_ids)
     detail = (
         f"scope={_scope_hash(snapshot.scope_id)} max_sequence={snapshot.max_sequence} "
         f"sequence_range={_sequence_range(events)} selected={len(messages)} "

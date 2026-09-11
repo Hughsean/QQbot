@@ -1,5 +1,7 @@
 """Provider-neutral unified conversation timeline event contracts."""
 
+from __future__ import annotations
+
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -170,6 +172,55 @@ class ConversationEventView:
             raise ValueError("conversation event content hash is invalid")
 
 
+def summary_source_hash(
+    events: tuple[ConversationEventView, ...] | list[ConversationEventView],
+) -> str:
+    """Hash immutable source identity, not summary text or sensitive content."""
+    ordered = sorted(events, key=lambda item: item.sequence)
+    payload = "|".join(
+        f"{item.user_id}:{item.scope_type.value}:{item.scope_id}:{item.sequence}:"
+        f"{item.event_id}:{item.content_hash}"
+        for item in ordered
+    )
+    return sha256(payload.encode("utf-8")).hexdigest()
+
+
+@dataclass(frozen=True, slots=True)
+class ConversationSummaryWrite:
+    """Validated summary write request tied to an immutable event range."""
+
+    summary: ConversationSummaryView
+    source_events: tuple[ConversationEventView, ...]
+
+    def __post_init__(self) -> None:
+        events = tuple(sorted(self.source_events, key=lambda item: item.sequence))
+        object.__setattr__(self, "source_events", events)
+        if not events:
+            raise ValueError("conversation summary source events are required")
+        if (events[0].sequence, events[-1].sequence) != (
+            self.summary.from_sequence,
+            self.summary.to_sequence,
+        ):
+            raise ValueError("conversation summary source range does not match")
+        if any(item.user_id != self.summary.user_id for item in events):
+            raise ValueError("conversation summary source user does not match")
+        if any(
+            item.scope_type is not self.summary.scope_type or item.scope_id != self.summary.scope_id
+            for item in events
+        ):
+            raise ValueError("conversation summary source scope does not match")
+        from itertools import pairwise
+
+        if any(left.sequence >= right.sequence for left, right in pairwise(events)):
+            raise ValueError("conversation summary source sequence is not strictly increasing")
+        if not self.summary.source_hash:
+            raise ValueError("conversation summary source hash is required")
+        if not self.summary.idempotency_key.strip():
+            raise ValueError("conversation summary idempotency key is required")
+        if self.summary.source_hash != summary_source_hash(events):
+            raise ValueError("conversation summary source hash does not match")
+
+
 class ConversationEventRepository(Protocol):
     """Agent-owned append-only unified timeline persistence."""
 
@@ -190,6 +241,8 @@ class ConversationEventRepository(Protocol):
     ) -> tuple[ConversationEventView, ...]:
         """Most recent events in ascending sequence order for one scope."""
         ...
+
+    async def write_summary(self, request: ConversationSummaryWrite) -> ConversationSummaryView: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -303,6 +356,24 @@ class ConversationContextRepository(Protocol):
         max_sequence: int,
         limit: int = 2,
     ) -> tuple[ConversationSummaryView, ...]: ...
+
+    async def write_summary(self, request: ConversationSummaryWrite) -> ConversationSummaryView: ...
+
+
+@dataclass(frozen=True, slots=True)
+class ConversationSummaryCandidate:
+    """One old, complete conversation turn eligible for compression."""
+
+    user_id: str
+    scope_id: UUID
+    from_sequence: int
+    to_sequence: int
+
+
+class ConversationSummaryCandidateQueryPort(Protocol):
+    async def list_summary_candidates(
+        self, user_id: str, *, protected_turns: int = 8, limit: int = 20
+    ) -> tuple[ConversationSummaryCandidate, ...]: ...
 
 
 @dataclass(frozen=True, slots=True)

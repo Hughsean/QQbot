@@ -189,12 +189,17 @@ QQ 进程由 Compose `qq` 服务运行 `qq-time-agent-qq`。确认卡片与 Remi
   重放；生产主机不依赖 `.venv`，服务只能在 readiness 通过后启动。
 - Ollama 恢复后，只有经确认属于 `knowledge-index + DEAD_LETTER + TransientProvider` 的记录
   才能通过 `docker compose run --rm requeue-knowledge-jobs` 重置；永久错误和其他 Job 不变。
+- 会话历史回放命令只允许 `APP_ENV=test|replay`、回环数据库主机以及名称以
+  `qq_time_agent_test` 或 `qq_time_agent_replay` 开头的专用临时数据库；禁止对共享开发库或生产库执行。
 
 不得把 `docker compose config` 或镜像构建验证误报为已部署。2026-08-26 已在目标 Ubuntu
 主机完成首次 Docker Compose 部署：应用镜像在目标机本地构建，数据库从
-`0015_notifications` 升级至 `0018_agent_run_delivery`，Web 的 live/ready 检查均返回 200，
+`0015_notifications` 升级至当时迁移头 `0018_agent_run_delivery`，Web 的 live/ready 检查均返回 200，
 Ollama `qwen3-embedding:4b` 模型和 GPU 计算探针均通过。部署前已生成 PostgreSQL
 custom-format 备份及 SHA-256 校验；未修改生产 Caddy、SSHD 或 systemd。
+2026-09-11 经 `hp-tunnel` 只读复核，生产发布版本为 `0026-0903`，数据库迁移为
+`0026_effective_delivery`，Web readiness 的 database/embeddings 均正常；`0027`/`0028`
+会话时间线迁移尚未部署，不能将本地迁移或镜像构建结果记作生产升级。
 
 ## 5. 当前生产主机容量
 

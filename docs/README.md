@@ -38,6 +38,9 @@ QQ Time Agent 是一个仅供项目所有者本人使用、以 QQ 为主要交�
 | [19-containerization-verification-report.md](19-containerization-verification-report.md) | Python 应用容器化部署的验证证据、事件恢复与剩余风险 |
 | [20-agent-context-and-rag-upgrade.md](20-agent-context-and-rag-upgrade.md) | 会话上下文、通用回复、RAG 工具和提醒更新契约 |
 | [21-agent-harness-and-calendar-system.md](21-agent-harness-and-calendar-system.md) | Agent loop、日程系统工具边界和自动更新策略 |
+| [22-agent-conversation-context-plan.md](22-agent-conversation-context-plan.md) | 持久化统一会话时间线、快照和分层摘要实施计划 |
+| [23-agent-conversation-context-todo.md](23-agent-conversation-context-todo.md) | 会话上下文改造完成项与生产门槛 |
+| [24-agent-conversation-context-verification-report.md](24-agent-conversation-context-verification-report.md) | 会话上下文改造最终验证证据与生产基线 |
 | [adr/](adr/) | 已接受的关键架构决策 |
 
 ## 决策优先级
@@ -98,4 +101,6 @@ QQ Time Agent 是一个仅供项目所有者本人使用、以 QQ 为主要交�
   QQ 邮箱只读 IMAP，仍复用统一 Inbox/Understanding/RAG 与删除门禁。阶段 10 已按 ADR-0013
   启动统一内容资产与多连接基础实施；Gmail 保持关闭。当前生产环境为 Ubuntu Server Docker
   Compose，Ollama 与应用同栈运行。2026-08-26 已完成首个目标主机部署，数据库迁移至
-  `0018_agent_run_delivery`，Web readiness 与 Ollama GPU 模型探针均通过。
+  `0018_agent_run_delivery`，Web readiness 与 Ollama GPU 模型探针均通过。2026-09-11 只读复核
+  显示当前生产发布为 `0026-0903`、数据库为 `0026_effective_delivery`；会话时间线 `0027`/`0028`
+  尚未部署。

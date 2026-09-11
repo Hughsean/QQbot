@@ -107,6 +107,18 @@ class Source:
         )
 
 
+class MissingSource(Source):
+    async def get_mail_delivery_source(self, user_id: str, inbox_item_id: UUID):
+        del user_id, inbox_item_id
+        return None
+
+
+class FailingSource(Source):
+    async def get_mail_delivery_source(self, user_id: str, inbox_item_id: UUID):
+        del user_id, inbox_item_id
+        raise RuntimeError("source unavailable")
+
+
 @dataclass
 class Notifications:
     requests: list[AgentMailResultRequest] = field(default_factory=list)
@@ -195,6 +207,24 @@ async def test_mail_agent_notification_is_anchored_to_its_subject() -> None:
 async def test_non_mail_agent_notification_is_permanently_rejected() -> None:
     handler, job, notifications = _handler(AgentDelivery.NOTIFY, "QQ_DIRECT")
     with pytest.raises(PermanentJobError, match="UnsupportedAgentNotificationSource"):
+        await handler(job)
+    assert notifications.requests == []
+
+
+@pytest.mark.asyncio
+async def test_missing_notification_source_is_permanent() -> None:
+    handler, job, notifications = _handler(AgentDelivery.NOTIFY)
+    handler._delivery_source = MissingSource(handler._delivery_source.value)
+    with pytest.raises(PermanentJobError, match="MissingAgentNotificationSource"):
+        await handler(job)
+    assert notifications.requests == []
+
+
+@pytest.mark.asyncio
+async def test_notification_source_lookup_failure_is_retryable() -> None:
+    handler, job, notifications = _handler(AgentDelivery.NOTIFY)
+    handler._delivery_source = FailingSource(handler._delivery_source.value)
+    with pytest.raises(RetryableJobError, match="AgentNotificationSourceUnavailable"):
         await handler(job)
     assert notifications.requests == []
 

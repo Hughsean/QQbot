@@ -3,6 +3,9 @@
 from collections.abc import Awaitable, Callable
 from uuid import uuid4
 
+from qq_time_agent.adapters.inbound.workers.conversation_summary_schedule import (
+    ConversationSummaryScheduler,
+)
 from qq_time_agent.adapters.inbound.workers.data_lifecycle_schedule import DataLifecycleScheduler
 from qq_time_agent.adapters.inbound.workers.knowledge_schedule import KnowledgeIndexScheduler
 from qq_time_agent.adapters.inbound.workers.mail_schedule import (
@@ -17,6 +20,7 @@ from qq_time_agent.adapters.inbound.workers.provider_readiness import EmbeddingS
 from qq_time_agent.adapters.inbound.workers.runner import JobRunner
 from qq_time_agent.contracts.clock import Clock
 from qq_time_agent.contracts.jobs import JobLease, JobQueue
+from qq_time_agent.modules.agent.contracts import ConversationSummaryCandidateQueryPort
 from qq_time_agent.modules.embeddings.contracts import EmbeddingPort
 from qq_time_agent.modules.inbox.contracts import (
     InboxContentPort,
@@ -39,6 +43,7 @@ def build_scheduled_runner(
     sources: InboxSourcePort,
     embeddings: EmbeddingPort,
     notification_planner: NotificationPlanner,
+    summary_query: ConversationSummaryCandidateQueryPort,
     before_start: Callable[[], Awaitable[None]] | None = None,
 ) -> JobRunner:
     schedulers = (
@@ -49,6 +54,7 @@ def build_scheduled_runner(
         KnowledgeIndexScheduler(knowledge_query, content, sources, queue, clock),
         DataLifecycleScheduler(queue, clock),
         NotificationPlanningScheduler(notification_planner, clock),
+        ConversationSummaryScheduler(summary_query, queue, clock),
     )
 
     async def schedule_due() -> None:

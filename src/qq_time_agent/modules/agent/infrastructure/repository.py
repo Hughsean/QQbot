@@ -20,11 +20,11 @@ from qq_time_agent.modules.agent.contracts import (
     MailRunSummary,
     ToolObservation,
 )
-from qq_time_agent.modules.agent.infrastructure.conversation_events import (
-    append_timeline_event,
+from qq_time_agent.modules.agent.infrastructure.conversation_event_builders import (
     build_agent_reply_event,
     build_tool_events,
 )
+from qq_time_agent.modules.agent.infrastructure.conversation_events import append_timeline_event
 from qq_time_agent.modules.agent.infrastructure.scopes import SqlAgentContextScopes
 from qq_time_agent.modules.agent.infrastructure.tables import (
     AgentRunRow,

@@ -8,23 +8,28 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from qq_time_agent.modules.agent.contracts import (
-    ConversationDeliveryStatus,
     ConversationEvent,
-    ConversationEventRole,
-    ConversationEventType,
     ConversationEventView,
     ConversationScopeType,
     ConversationSnapshot,
+    ConversationSummaryCandidate,
     ConversationSummaryView,
-    ToolObservation,
-    bounded_event_content,
+    ConversationSummaryWrite,
     snapshot_hash,
 )
+from qq_time_agent.modules.agent.infrastructure.conversation_summary_persistence import (
+    list_summaries as list_persisted_summaries,
+)
+from qq_time_agent.modules.agent.infrastructure.conversation_summary_persistence import (
+    list_summary_candidates as list_persisted_summary_candidates,
+)
+from qq_time_agent.modules.agent.infrastructure.conversation_summary_persistence import (
+    write_summary as write_persisted_summary,
+)
+from qq_time_agent.modules.agent.infrastructure.conversation_views import event_view
 from qq_time_agent.modules.agent.infrastructure.tables import (
-    AgentRunRow,
     ConversationEventRow,
     ConversationSequenceRow,
-    ConversationSummaryRow,
 )
 
 _LIMIT_MAX = 500
@@ -84,7 +89,7 @@ class SqlConversationEventRepository:
                     .limit(limit)
                 )
             )
-        return tuple(_view(row) for row in reversed(rows))
+        return tuple(event_view(row) for row in reversed(rows))
 
     async def create_snapshot(self, user_id: str, scope_id: UUID) -> ConversationSnapshot:
         """Pin the timeline read without allocating a sequence."""
@@ -119,23 +124,27 @@ class SqlConversationEventRepository:
         max_sequence: int,
         limit: int = 2,
     ) -> tuple[ConversationSummaryView, ...]:
-        if not 1 <= limit <= 20:
-            raise ValueError("conversation summary limit must be between 1 and 20")
-        async with self._sessions() as session:
-            rows = tuple(
-                await session.scalars(
-                    select(ConversationSummaryRow)
-                    .where(
-                        ConversationSummaryRow.user_id == user_id,
-                        ConversationSummaryRow.scope_type == scope_type.value,
-                        ConversationSummaryRow.scope_id == scope_id,
-                        ConversationSummaryRow.to_sequence <= max_sequence,
-                    )
-                    .order_by(ConversationSummaryRow.to_sequence.desc())
-                    .limit(limit)
-                )
-            )
-        return tuple(_summary_view(row) for row in reversed(rows))
+        return await list_persisted_summaries(
+            self._sessions,
+            user_id,
+            scope_type,
+            scope_id,
+            max_sequence=max_sequence,
+            limit=limit,
+        )
+
+    async def list_summary_candidates(
+        self, user_id: str, *, protected_turns: int = 8, limit: int = 20
+    ) -> tuple[ConversationSummaryCandidate, ...]:
+        return await list_persisted_summary_candidates(
+            self._sessions,
+            user_id,
+            protected_turns=protected_turns,
+            limit=limit,
+        )
+
+    async def write_summary(self, request: ConversationSummaryWrite) -> ConversationSummaryView:
+        return await write_persisted_summary(self._sessions, request)
 
 
 async def append_timeline_event(
@@ -145,7 +154,7 @@ async def append_timeline_event(
     await _lock_sequence_counter(session, event.user_id)
     existing = await _find_by_key(session, event.idempotency_key)
     if existing is not None:
-        return _view(existing)
+        return event_view(existing)
     sequence = await _next_sequence(session, event.user_id)
     await session.execute(
         insert(ConversationEventRow)
@@ -174,78 +183,7 @@ async def append_timeline_event(
     stored = await _find_by_key(session, event.idempotency_key)
     if stored is None:
         raise RuntimeError("conversation event idempotent insert lost stored row")
-    return _view(stored)
-
-
-def build_agent_reply_event(
-    run: AgentRunRow, delivery: str, now: datetime
-) -> ConversationEvent | None:
-    """Immutable AGENT_REPLY event for the run's conversation scope."""
-    if run.conversation_id is None:
-        return None
-    content = run.final_content or ""
-    if not content.strip():
-        return None
-    return ConversationEvent(
-        scope_type=ConversationScopeType.CONVERSATION,
-        scope_id=run.conversation_id,
-        user_id=run.user_id,
-        event_type=ConversationEventType.AGENT_REPLY,
-        occurred_at=now,
-        content=bounded_event_content(content),
-        idempotency_key=f"agent-reply:{run.run_id}",
-        run_id=run.run_id,
-        content_ref=f"agent-run:{run.run_id}",
-        metadata={"delivery": delivery, "source_type": run.source_type},
-    )
-
-
-def build_tool_events(
-    run: AgentRunRow, observation: ToolObservation, now: datetime
-) -> tuple[ConversationEvent, ...]:
-    """TOOL_CALL plus TOOL_RESULT events for the run's conversation scope."""
-    if run.conversation_id is None:
-        return ()
-    output = bounded_event_content(observation_token_text(observation))
-    common = {
-        "tool": observation.name,
-        "call_id": observation.call_id,
-        "arguments_hash": observation.arguments_hash,
-        "is_error": observation.is_error,
-    }
-    call = ConversationEvent(
-        scope_type=ConversationScopeType.CONVERSATION,
-        scope_id=run.conversation_id,
-        user_id=run.user_id,
-        event_type=ConversationEventType.TOOL_CALL,
-        occurred_at=now,
-        content=bounded_event_content(
-            f"tool {observation.name} call {observation.call_id} "
-            f"arguments_sha256 {observation.arguments_hash}"
-        ),
-        idempotency_key=f"tool-call:{run.run_id}:{observation.call_id}",
-        run_id=run.run_id,
-        metadata=common,
-    )
-    result = ConversationEvent(
-        scope_type=ConversationScopeType.CONVERSATION,
-        scope_id=run.conversation_id,
-        user_id=run.user_id,
-        event_type=ConversationEventType.TOOL_RESULT,
-        occurred_at=now,
-        content=output,
-        idempotency_key=f"tool-result:{run.run_id}:{observation.call_id}",
-        run_id=run.run_id,
-        content_ref=f"agent-tool-call:{observation.call_id}",
-        metadata=common,
-    )
-    return (call, result)
-
-
-def observation_token_text(observation: ToolObservation) -> str:
-    if isinstance(observation.output, str):
-        return observation.output
-    return str(observation.output)
+    return event_view(stored)
 
 
 async def _lock_sequence_counter(session: AsyncSession, user_id: str) -> None:
@@ -284,57 +222,3 @@ async def _find_by_key(session: AsyncSession, idempotency_key: str) -> Conversat
         select(ConversationEventRow).where(ConversationEventRow.idempotency_key == idempotency_key)
     )
     return value
-
-
-def _view(row: ConversationEventRow) -> ConversationEventView:
-    return ConversationEventView(
-        event_id=row.event_id,
-        scope_type=ConversationScopeType(row.scope_type),
-        scope_id=row.scope_id,
-        user_id=row.user_id,
-        sequence=row.sequence,
-        event_type=ConversationEventType(row.event_type),
-        role=ConversationEventRole(row.role),
-        occurred_at=row.occurred_at,
-        created_at=row.created_at,
-        content=row.content,
-        content_ref=row.content_ref or "",
-        content_hash=row.content_hash,
-        delivery_status=None
-        if row.delivery_status is None
-        else ConversationDeliveryStatus(row.delivery_status),
-        run_id=row.run_id,
-        inbox_item_id=row.inbox_item_id,
-        notification_intent_id=row.notification_intent_id,
-        idempotency_key=row.idempotency_key,
-        metadata=dict(row.metadata_json),
-    )
-
-
-def _summary_view(row: ConversationSummaryRow) -> ConversationSummaryView:
-    return ConversationSummaryView(
-        summary_id=row.summary_id,
-        user_id=row.user_id,
-        scope_type=ConversationScopeType(row.scope_type),
-        scope_id=row.scope_id,
-        from_sequence=row.from_sequence,
-        to_sequence=row.to_sequence,
-        summary_text=row.content,
-        source_hash=row.source_hash,
-        facts=_summary_values(row.structured_json, "facts"),
-        decisions=_summary_values(row.structured_json, "decisions"),
-        commitments=_summary_values(row.structured_json, "commitments"),
-        open_loops=_summary_values(row.structured_json, "open_loops"),
-        preferences=_summary_values(row.structured_json, "preferences"),
-        time_anchors=_summary_values(row.structured_json, "time_anchors"),
-        tool_side_effects=_summary_values(row.structured_json, "tool_side_effects"),
-        idempotency_key=row.idempotency_key,
-        created_at=row.created_at,
-    )
-
-
-def _summary_values(data: dict[str, object], key: str) -> tuple[str, ...]:
-    value = data.get(key, ())
-    if not isinstance(value, list | tuple):
-        return ()
-    return tuple(item for item in value if isinstance(item, str))

@@ -19,7 +19,9 @@ from qq_time_agent.modules.agent.contracts import (
     ConversationScopeType,
     ConversationSnapshot,
     ConversationSummaryView,
+    ConversationSummaryWrite,
     snapshot_hash,
+    summary_source_hash,
 )
 from qq_time_agent.modules.ai_gateway.contracts import AgentMessageRole
 
@@ -47,9 +49,7 @@ class Repository:
 
     async def create_snapshot(self, user_id: str, scope_id: UUID) -> ConversationSnapshot:
         sequences = [
-            item.sequence
-            for item in (*self.conversation, *self.owner)
-            if item.user_id == user_id
+            item.sequence for item in (*self.conversation, *self.owner) if item.user_id == user_id
         ]
         maximum = max(sequences, default=0)
         return ConversationSnapshot(
@@ -67,9 +67,7 @@ class Repository:
     ) -> tuple[ConversationEventView, ...]:
         del scope_id
         source = (
-            self.conversation
-            if scope_type is ConversationScopeType.CONVERSATION
-            else self.owner
+            self.conversation if scope_type is ConversationScopeType.CONVERSATION else self.owner
         )
         visible = [
             item for item in source if item.user_id == user_id and item.sequence <= max_sequence
@@ -195,6 +193,33 @@ async def test_regions_are_ordered_summaries_older_turns_notifications() -> None
     assert context.messages[0].role is AgentMessageRole.SYSTEM
     assert context.messages[1].content == "用户消息一"
     assert context.messages[2].content == "答复一"
+
+
+@pytest.mark.asyncio
+async def test_summary_coverage_removes_duplicate_older_events() -> None:
+    repository = Repository()
+    for index in range(9):
+        _turn(repository, index * 2 + 1, str(index), uuid4())
+    repository.summaries.append(
+        ConversationSummaryView(
+            uuid4(),
+            "owner",
+            ConversationScopeType.CONVERSATION,
+            CONVERSATION_ID,
+            1,
+            2,
+            "已压缩第一轮",
+            NOW,
+            source_hash="b" * 64,
+            idempotency_key="summary:dedupe",
+        )
+    )
+
+    context = await _build(repository)
+
+    contents = [message.content for message in context.messages]
+    assert any("已压缩第一轮" in content for content in contents)
+    assert not any("用户消息0" in content for content in contents)
 
 
 @pytest.mark.asyncio
@@ -364,11 +389,18 @@ async def test_cross_source_events_keep_global_sequence_order() -> None:
     context = await _build(repository, protected_turns=6)
 
     assert [message.event_type for message in context.messages] == [
-        "USER_MESSAGE", "AGENT_REPLY", "MAIL_NOTIFICATION", "USER_MESSAGE", "AGENT_REPLY"
+        "USER_MESSAGE",
+        "AGENT_REPLY",
+        "MAIL_NOTIFICATION",
+        "USER_MESSAGE",
+        "AGENT_REPLY",
     ]
     assert [message.content for message in context.messages] == [
-        "第一条用户消息", "第一条答复", "[external-event MAIL_NOTIFICATION DELIVERED]\n邮件提醒",
-        "第二条用户消息", "第二条答复",
+        "第一条用户消息",
+        "第一条答复",
+        "[external-event MAIL_NOTIFICATION DELIVERED]\n邮件提醒",
+        "第二条用户消息",
+        "第二条答复",
     ]
 
 
@@ -377,7 +409,9 @@ async def test_daily_digest_precedes_following_conversation_turn() -> None:
     repository = Repository()
     repository.owner.append(
         _event(
-            1, ConversationEventType.DAILY_DIGEST, "日常摘要",
+            1,
+            ConversationEventType.DAILY_DIGEST,
+            "日常摘要",
             scope=ConversationScopeType.OWNER_TIMELINE,
             delivery=ConversationDeliveryStatus.DELIVERED,
         )
@@ -387,7 +421,9 @@ async def test_daily_digest_precedes_following_conversation_turn() -> None:
     context = await _build(repository)
 
     assert [message.event_type for message in context.messages] == [
-        "DAILY_DIGEST", "USER_MESSAGE", "AGENT_REPLY"
+        "DAILY_DIGEST",
+        "USER_MESSAGE",
+        "AGENT_REPLY",
     ]
 
 
@@ -395,12 +431,16 @@ async def test_daily_digest_precedes_following_conversation_turn() -> None:
 async def test_owner_timeline_isolated_by_user() -> None:
     repository = Repository()
     current = _event(
-        1, ConversationEventType.DAILY_DIGEST, "当前用户摘要",
+        1,
+        ConversationEventType.DAILY_DIGEST,
+        "当前用户摘要",
         scope=ConversationScopeType.OWNER_TIMELINE,
         delivery=ConversationDeliveryStatus.DELIVERED,
     )
     other = _event(
-        2, ConversationEventType.DAILY_DIGEST, "其他用户摘要",
+        2,
+        ConversationEventType.DAILY_DIGEST,
+        "其他用户摘要",
         scope=ConversationScopeType.OWNER_TIMELINE,
         delivery=ConversationDeliveryStatus.DELIVERED,
     )
@@ -415,11 +455,66 @@ async def test_owner_timeline_isolated_by_user() -> None:
 
 def _with_user(event: ConversationEventView, user_id: str) -> ConversationEventView:
     return ConversationEventView(
-        event.event_id, event.scope_type, event.scope_id, user_id, event.sequence,
-        event.event_type, event.role, event.occurred_at, event.created_at, event.content,
-        event.content_ref, event.content_hash, event.delivery_status, event.run_id,
-        event.inbox_item_id, event.notification_intent_id, event.idempotency_key, event.metadata,
+        event.event_id,
+        event.scope_type,
+        event.scope_id,
+        user_id,
+        event.sequence,
+        event.event_type,
+        event.role,
+        event.occurred_at,
+        event.created_at,
+        event.content,
+        event.content_ref,
+        event.content_hash,
+        event.delivery_status,
+        event.run_id,
+        event.inbox_item_id,
+        event.notification_intent_id,
+        event.idempotency_key,
+        event.metadata,
     )
+
+
+@pytest.mark.asyncio
+async def test_summary_write_rejects_duplicate_source_sequence() -> None:
+    first = _event(1, ConversationEventType.USER_MESSAGE, "一", inbox_item_id=uuid4())
+    duplicate = _event(1, ConversationEventType.AGENT_REPLY, "二", run_id=uuid4())
+    summary = ConversationSummaryView(
+        uuid4(),
+        "owner",
+        ConversationScopeType.CONVERSATION,
+        CONVERSATION_ID,
+        1,
+        1,
+        "摘要",
+        NOW,
+        source_hash="a" * 64,
+        idempotency_key="summary-1",
+    )
+    with pytest.raises(ValueError, match="strictly increasing"):
+        ConversationSummaryWrite(summary, (first, duplicate))
+
+
+@pytest.mark.asyncio
+async def test_summary_write_uses_immutable_source_hash() -> None:
+    first = _event(1, ConversationEventType.USER_MESSAGE, "一", inbox_item_id=uuid4())
+    second = _event(2, ConversationEventType.AGENT_REPLY, "二", run_id=uuid4())
+    source = (first, second)
+    summary = ConversationSummaryView(
+        uuid4(),
+        "owner",
+        ConversationScopeType.CONVERSATION,
+        CONVERSATION_ID,
+        1,
+        2,
+        "摘要",
+        NOW,
+        source_hash=summary_source_hash(source),
+        idempotency_key="summary-2",
+    )
+    request = ConversationSummaryWrite(summary, source)
+    assert request.source_events == source
 
 
 @pytest.mark.asyncio
