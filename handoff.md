@@ -1,21 +1,21 @@
 # QQbot Agent 会话上下文改造交接说明
 
-> 2026-09-11 收尾版本。后续工作开始前仍须检查当前 git diff 和最新测试结果，不能仅凭本文件假定完成。
+> 2026-09-11 生产部署后版本。后续工作开始前仍须检查当前 git diff、生产健康和最新观察结果。
 
 ## 1. 当前结论
 
-本地统一会话时间线、固定 AgentRun snapshot、token budget、分层摘要、正式脱敏 replay 入口和
-PostgreSQL 验证已完成，当前迁移头为 `0028_summary_contract`。
+统一会话时间线、固定 AgentRun snapshot、token budget、分层摘要和正式脱敏 replay 已部署生产，
+当前发布为 `0028-0911`、提交 `dc4427b`、迁移头为 `0028_summary_contract`。
 
-生产主机 SSH 别名为 `hp-tunnel`。2026-09-11 只读核验结果：
+生产主机 SSH 别名为 `hp-tunnel`。2026-09-11 部署结果：
 
 - 主机部署目录 `/home/x/qq-time-agent-bundle`；
-- 发布版本 `0026-0903`；
-- 数据库迁移 `0026_effective_delivery`；
+- 发布版本 `0028-0911`，提交 `dc4427b`；
+- 数据库迁移 `0028_summary_contract`；
 - Web、Worker、QQ、PostgreSQL、Ollama 正常，readiness 通过；
-- 生产尚不存在统一事件表和摘要表，未部署 `0027`/`0028`。
+- 统一事件表与摘要表存在，但部署后的真实 QQ 会话样本仍为零。
 
-未经新一轮明确授权，不提交、不部署、不迁移生产、不回填生产数据。
+本次部署授权已使用。未经新一轮明确决定，不回填生产历史、不伪造观察样本、不移除 fallback。
 
 ## 2. 必须遵守的边界
 
@@ -87,12 +87,20 @@ git diff --check: passed（仅 Windows 换行提示）
 第二次：input=2, inserted=0, skipped=2, failed=0
 ```
 
-全部临时 Compose project、容器、网络和 volume 在验证结束后删除，Docker Desktop 恢复停止。
+全部本地临时 Compose project、容器、网络和 volume 在验证结束后删除，Docker Desktop 恢复停止。
+
+生产验证：
+
+- 回滚点：`.deploy-backups/20260911-120839-pre0028`，数据库与源码快照哈希校验通过；
+- Web/Worker/QQ 均运行 `0028-0911 / dc4427b`，容器 restart count 为零；
+- readiness 的 database/embeddings 为 true，正式健康脚本通过；
+- 完全合成的 DeepSeek 冒烟调用通过；
+- QQ 邮箱为 `REAUTH_REQUIRED`，旧授权码认证失败，需要所有者重新授权。
 
 ## 5. 生产历史与 fallback 记录
 
-- 生产当前仍是 `0026`，所以生产统一时间线历史为零；这不是回填失败，而是尚未部署迁移。
-- 生产只读聚合显示 AgentRun 156 条、完成 147 条；未读取任何正文或身份值。
+- 生产已是 `0028`，但未执行历史回填；部署稳定快照的事件、摘要和 sequence counter 均为零。
+- 生产只读聚合显示 AgentRun 160 条、完成 151 条；未读取任何正文或身份值。
 - 先前获准的只读旧数据样本为 80 条 run，在本地临时数据库生成 140 条脱敏事件，第二次新增 0。
 - 有 timeline messages 时模型优先使用新路径并跳过旧会话历史；没有 timeline messages 时继续使用旧
   scope/conversation history。
@@ -100,14 +108,12 @@ git diff --check: passed（仅 Windows 换行提示）
 
 ## 6. 唯一剩余收尾动作
 
-以下均是生产门槛，不能作为普通本地开发动作执行：
+部署和迁移已经完成，剩余均依赖真实 owner 行为或新的明确决定：
 
-1. 获得明确部署授权。
-2. 备份生产 PostgreSQL 并校验备份。
-3. 构建同一不可变镜像，预检 `0026 → 0028` 后执行显式迁移。
-4. readiness 通过后启动 Web、Worker、QQ，并进行授权范围内的沙箱冒烟测试。
-5. 经授权获取脱敏历史并在本地专用库验证，再决定生产回填方式。
-6. 执行 owner 双写观察，比较旧路径与 timeline 的聚合事件数和稳定 identity hash。
-7. 观察稳定后才移除旧 fallback。
+1. 所有者通过本机入口为 QQ 邮箱提供新 IMAP 授权码。
+2. 所有者向 QQ Bot 发起至少一轮真实普通会话，产生部署后的时间线样本。
+3. 只读比较旧路径与 timeline 的聚合事件数、sequence 和稳定 identity hash。
+4. 经单独决定后获取脱敏历史并在本地专用库复验，再决定是否生产回填。
+5. 观察窗口稳定后才移除旧 fallback。
 
 详细证据见 `docs/24-agent-conversation-context-verification-report.md`。

@@ -197,9 +197,12 @@ QQ 进程由 Compose `qq` 服务运行 `qq-time-agent-qq`。确认卡片与 Remi
 `0015_notifications` 升级至当时迁移头 `0018_agent_run_delivery`，Web 的 live/ready 检查均返回 200，
 Ollama `qwen3-embedding:4b` 模型和 GPU 计算探针均通过。部署前已生成 PostgreSQL
 custom-format 备份及 SHA-256 校验；未修改生产 Caddy、SSHD 或 systemd。
-2026-09-11 经 `hp-tunnel` 只读复核，生产发布版本为 `0026-0903`，数据库迁移为
-`0026_effective_delivery`，Web readiness 的 database/embeddings 均正常；`0027`/`0028`
-会话时间线迁移尚未部署，不能将本地迁移或镜像构建结果记作生产升级。
+2026-09-11 经所有者授权后完成生产升级：部署版本 `0028-0911`、提交 `dc4427b`，数据库从
+`0026_effective_delivery` 迁移至 `0028_summary_contract`。部署前 custom-format 数据库备份、
+旧源码快照和 SHA-256 校验均通过；Web readiness 的 database/embeddings、正式健康脚本和
+合成 DeepSeek 冒烟调用通过，Web/Worker/QQ/PostgreSQL/Ollama 均为零重启运行状态。升级时统一
+时间线事件数为零，因此旧读取 fallback 尚不能移除。QQ 邮箱连接处于 `REAUTH_REQUIRED`，需要
+所有者重新生成 IMAP 授权码后通过本机入口恢复，系统不得复用或猜测旧凭据。
 
 ## 5. 当前生产主机容量
 

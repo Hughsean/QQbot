@@ -1,9 +1,9 @@
-# Agent 连续会话上下文最终验证报告
+# Agent 连续会话上下文最终验证与部署报告
 
 - 日期：2026-09-11
 - 分支：`feat/conversation-context-hardening`
 - 本地目标迁移：`0028_summary_contract`
-- 生产只读基线：发布 `0026-0903`、数据库 `0026_effective_delivery`
+- 生产当前版本：发布 `0028-0911`、提交 `dc4427b`、数据库 `0028_summary_contract`
 
 ## 1. 已完成能力
 
@@ -45,17 +45,28 @@ replay 命令在专用临时数据库执行两次：
 第二次：input=2, inserted=0, skipped=2, failed=0
 ```
 
-所有测试 Compose project、容器、网络和 volume 已清理；未触碰生产容器或生产数据。
+所有本地测试 Compose project、容器、网络和 volume 已清理。
 
-## 4. 生产基线与未回填记录
+## 4. 生产部署与未回填记录
 
-2026-09-11 通过 `hp-tunnel` 只读查询确认：
+2026-09-11 经所有者明确授权后通过 `hp-tunnel` 完成：
 
-- Web、Worker、QQ、PostgreSQL 和栈内 Ollama 正常运行，readiness 的 database/embeddings 为 true。
-- 生产数据库为 `0026_effective_delivery`，不存在统一事件表和摘要表。
-- 仅记录聚合元数据：AgentRun 共 156 条，其中 147 条完成；未读取正文、邮箱、sender ID 或凭据。
+- 创建 `.deploy-backups/20260911-120839-pre0028` 回滚点；custom-format 数据库备份可列出，
+  数据库与旧源码快照 SHA-256 校验通过。
+- 上传包 SHA-256 校验通过，服务器发布目录权限为 `700`，`.env` 保持 `600` 且未进入发布包。
+- 构建并切换版本 `0028-0911` / 提交 `dc4427b` 的不可变镜像；Web、Worker、QQ 均运行该镜像。
+- 数据库从 `0026_effective_delivery` 成功迁移至 `0028_summary_contract`；三个统一会话表、
+  三个摘要契约字段和摘要幂等唯一约束存在。
+- 迁移后 AgentRun 共 160 条，其中 151 条完成且 `completed_at` 已回填；未读取正文、邮箱、
+  sender ID 或凭据。
+- Web、Worker、QQ、PostgreSQL 和栈内 Ollama 正常运行且 restart count 为零；readiness 的
+  database/embeddings 为 true，正式健康脚本和一条完全合成的 DeepSeek 冒烟调用通过。
+- QQ 邮箱连接在升级前后均为 `REAUTH_REQUIRED`，旧 bootstrap 授权码返回 `Authentication`；
+  需要所有者提供新 IMAP 授权码，不能由部署过程自动修复。
 - 生产历史尚未写入统一时间线。先前授权只读样本的 80 条旧 run 已在本地临时库生成
   140 条脱敏事件并验证重复回放零新增，不代表生产已回填。
+- 部署稳定快照中 timeline/summaries/sequence counters 均为零；conversation-summary job 和
+  dead letter 均为零。现存 34 个其他类型死信为升级前运营存量，不属于本次迁移新增。
 
 ## 5. Fallback 与切换门槛
 
@@ -64,13 +75,15 @@ replay 命令在专用临时数据库执行两次：
 - 在生产升级、历史回填和 owner 双写观察完成前不得移除 fallback。
 - 观察窗口需要比较旧路径和 timeline 的事件聚合计数及稳定 identity hash，不输出正文或原始标识。
 
-## 6. 未执行与剩余风险
+## 6. 剩余风险与观察门槛
 
-- 未执行 Git commit、生产部署、生产迁移、生产历史回填或远端写入。
-- 未运行真实 DeepSeek、QQ、Microsoft Graph 或邮箱沙箱；这些不是本次本地修补的替代证据。
+- 已执行本地 Git commit、生产部署和生产迁移；未推送远端，也未执行生产历史回填。
+- 已运行完全合成的真实 DeepSeek 冒烟；未主动发送 QQ 消息、读取 Microsoft/QQ 邮件正文或
+  创建生产日程测试数据。
 - 仓库中仍有本次任务范围外的历史 Python 文件未满足当前 Ruff formatter；为避免制造无关格式化 diff，
   本次仅格式化并校验所有变更文件，全仓 lint 与 mypy 均通过。
-- 生产升级前必须备份并校验，执行 `0026 → 0028`，通过 readiness 后再进行只读元数据观察。
-- owner 双写观察和旧/新路径比较需要生产升级后才能执行，是当前唯一剩余的功能切换门槛。
+- owner 双写观察需要至少一条升级后的真实 QQ 会话；当前尚无样本，不能据此移除 fallback。
+- QQ 邮箱需所有者重新授权；这是外部凭据状态，不影响数据库迁移与 QQ Agent 主进程健康。
 
-当前结论：本地实现和数据库迁移已达到部署验收候选状态；生产发布仍需所有者明确授权。
+当前结论：生产部署和迁移完成；等待真实 owner 会话样本完成双写比较后，再决定历史回填和
+fallback 移除。
