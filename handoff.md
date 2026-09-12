@@ -1,23 +1,27 @@
 # QQbot Agent 会话上下文改造交接说明
 
-> 2026-09-12 生产修复发布后版本。后续工作开始前仍须检查当前 git diff、生产健康和最新观察结果。
+> 2026-09-13 生产修复发布后版本。后续工作开始前仍须检查当前 git diff、生产健康和最新观察结果。
 
 ## 1. 当前结论
 
 统一会话时间线、固定 AgentRun snapshot、token budget、分层摘要和正式脱敏 replay 已部署生产；
-多日程执行覆盖、权威日程查询、空检索门禁和异常恢复修复也已上线。当前发布为 `0029-0912`、
-提交 `ee5012e`、迁移头为 `0028_summary_contract`。
+多日程执行覆盖、权威日程查询、空检索门禁和异常恢复修复也已上线。当前发布为 `0030-0913`、
+提交 `0975e4c`、迁移头为 `0028_summary_contract`。
 
 生产主机 SSH 别名为 `hp-tunnel`。2026-09-12 部署结果：
 
 - 主机部署目录 `/home/x/qq-time-agent-bundle`；
-- 发布版本 `0029-0912`，提交 `ee5012e`；
+- 发布版本 `0030-0913`，提交 `0975e4c`；
 - 数据库迁移 `0028_summary_contract`；
 - Web、Worker、QQ、PostgreSQL、Ollama 正常，readiness 通过；
 - Agenda 与 Reminder 各 13 条，切换前后完整行摘要一致；
 - 南瑞继保测评日程为 ACTIVE，2026-09-12 18:00 Reminder 已为 SENT；
 - 纯标点请求遗留的 PENDING AgentRun 已修正为 `FAILED / InvalidAgentContext`。
 - QQ 邮箱已使用更新后的 bootstrap 授权码恢复为 ACTIVE，Worker bootstrap 成功。
+- 完成操作保留 `COMPLETED` 审计行，但当前日程清单只包含 `ACTIVE`；新华三笔试与蔚来笔试均为
+  `COMPLETED / version 2`，不再属于当前日程。
+- DeepSeek 在权威 `list_agenda` 成功后若持续返回空/非法结构，清单改由确定性路径输出，不再返回
+  “处理失败”；Worker 恢复 QQ 直接请求时使用独立幂等通知，不再要求邮件来源。
 
 未经新一轮明确决定，不回填生产历史、不伪造观察样本、不移除 fallback。
 
@@ -78,11 +82,20 @@
 - 上下文组装失败会把未领取 AgentRun 标记为 FAILED，区分永久输入错误与可重试基础设施错误，
   不再遗留 PENDING 运行或把永久错误反复重试至错误类型的死信。
 
+### 2026-09-13 完成状态与 QQ 恢复投递修复
+
+- Agenda 完成是 `ACTIVE → COMPLETED` 的版本化状态转换，不是物理删除；保留行用于审计、幂等和
+  过期按钮拒绝，所有“当前日程”读取只返回 ACTIVE，模型不得称其仍是当前日程或已被删除/归档。
+- `list_agenda` 成功后即使最终模型响应连续为空，也直接用本轮权威观察结果输出 ACTIVE 清单。
+- 同步 QQ 请求已完成时，其延迟恢复 Job 无副作用结束；只有 Worker 实际恢复完成时才创建按 Run ID
+  幂等的 `QQ_DIRECT_AGENT_RESULT` 通知，且不受邮件来源与邮件静默时段约束。
+- `InvalidOutput` 在单次模型有限重试耗尽后仍可由 durable Job 有界重试。
+
 ## 4. 最新验证证据
 
 ```text
-本地非 integration/sandbox: 570 passed, 46 deselected, 4 dependency warnings
-生产主机隔离 PostgreSQL integration: 36 passed, 580 deselected, 1 dependency warning
+本地非 integration/sandbox: 576 passed, 46 deselected, 4 dependency warnings
+生产主机隔离 PostgreSQL integration: 36 passed, 586 deselected, 1 dependency warning
 Ruff lint: passed
 mypy strict: passed
 git diff --check: passed（仅 Windows 换行提示）
@@ -106,6 +119,14 @@ git diff --check: passed（仅 Windows 换行提示）
 
 最新生产验证：
 
+- 回滚点：`.deploy-backups/20260913-001525-pre0030`，数据库与旧源码快照哈希校验通过；
+- Web/Worker/QQ 均运行 `0030-0913 / 0975e4c`，容器 restart count 为零；
+- readiness 的 database/embeddings 为 true；候选独立库 36 项集成测试通过且已删除；
+- 部署前后 Agenda 与 Reminder 各 13 条，完整行摘要完全一致；迁移头仍为
+  `0028_summary_contract`；
+- 新华三笔试和蔚来笔试均为 `COMPLETED / version 2`，南瑞继保测评仍为 ACTIVE；
+- 两条旧版 `MissingAgentNotificationSource` QQ 恢复死信已精确更新为 COMPLETE，未重放旧答复。
+- 以下为上一版 `0029-0912` 的回滚与邮箱恢复证据：
 - 回滚点：`.deploy-backups/20260912-233000-pre0029`，数据库与旧源码快照哈希校验通过；
 - Web/Worker/QQ 均运行 `0029-0912 / ee5012e`，容器 restart count 为零；
 - readiness 的 database/embeddings 为 true；
@@ -130,8 +151,8 @@ git diff --check: passed（仅 Windows 换行提示）
 
 本次问题修复、验证、部署和历史异常清理已经完成。以下动作依赖真实 owner 行为或新的明确决定：
 
-1. 所有者可用“同一消息创建两条日程 → 查询当前日程”做一次真实验收；不要使用已有业务日程作为
-   删除或修改测试目标。
+1. 所有者可直接查询“当前有哪些日程”做真实验收；预期只列 ACTIVE，不应列出已完成的新华三和
+   蔚来笔试。不要使用已有业务日程作为删除或修改测试目标。
 2. 只读比较旧路径与 timeline 的聚合事件数、sequence 和稳定 identity hash。
 3. 经单独决定后获取脱敏历史并在本地专用库复验，再决定是否生产回填。
 4. 观察窗口稳定后才移除旧 fallback。

@@ -1,9 +1,9 @@
 # Agent 连续会话上下文最终验证与部署报告
 
-- 日期：2026-09-11
+- 日期：2026-09-13
 - 分支：`feat/conversation-context-hardening`
 - 本地目标迁移：`0028_summary_contract`
-- 生产当前版本：发布 `0028-0911`、提交 `dc4427b`、数据库 `0028_summary_contract`
+- 生产当前版本：发布 `0030-0913`、提交 `0975e4c`、数据库 `0028_summary_contract`
 
 ## 1. 已完成能力
 
@@ -87,3 +87,19 @@ replay 命令在专用临时数据库执行两次：
 
 当前结论：生产部署和迁移完成；等待真实 owner 会话样本完成双写比较后，再决定历史回填和
 fallback 移除。
+
+## 7. 后续生产修复验证
+
+2026-09-12 的 `0029-0912 / ee5012e` 增加多日程覆盖门禁、Agenda ACTIVE 权威查询、短确认
+确定性回复、空 embedding 门禁以及 DeepSeek 非法结构化输出有限重试，并恢复 QQ 邮箱连接。
+
+2026-09-13 的 `0030-0913 / 0975e4c` 进一步完成：
+
+- `COMPLETED` 日程继续保留审计行，但当前日程只读取 `ACTIVE`，不得再把完成行列为待办；
+- `list_agenda` 成功而模型最终输出无效时，直接从本轮权威观察生成清单；
+- QQ 直接请求的 Worker 恢复结果使用独立、按 Run ID 幂等的通知，不再误用邮件来源策略；
+- 本地 576 项非 integration/sandbox 测试通过；候选隔离 PostgreSQL 36 项集成测试通过；
+- 回滚点 `.deploy-backups/20260913-001525-pre0030` 校验通过，部署前后 Agenda/Reminder 各
+  13 条且完整摘要一致；Web/Worker/QQ 均为零重启，readiness 通过；
+- 两条旧版 `MissingAgentNotificationSource` 死信在确认对应 Run 已完成后改为 COMPLETE，未重放
+  已经答复过的 QQ 消息。

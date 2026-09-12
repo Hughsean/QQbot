@@ -215,6 +215,13 @@ ACTIVE，18:00 Reminder 已为 SENT。随后使用本地 `.env` 中更新后的 
 远端配置至 `.deploy-backups/20260912-234500-qqmail-env`，原子替换配置并仅重建 Worker。QQ 邮箱
 bootstrap 完成，数据库连接状态恢复为 ACTIVE，Worker 运行且 restart count 为零。授权码值未被
 读取到日志、文档或 Git。
+2026-09-13 经所有者授权完成生产修复发布：版本 `0030-0913`、提交 `0975e4c`，迁移头保持
+`0028_summary_contract`。候选镜像先在独立 `qq_time_agent_test_0030_0913_0975e4c` 数据库完成
+全量迁移与 36 项 PostgreSQL 集成测试，随后删除测试库。部署前回滚点为
+`.deploy-backups/20260913-001525-pre0030`，数据库与旧源码校验通过；Web/Worker/QQ readiness 正常、
+restart count 均为零。切换前后 Agenda 与 Reminder 各 13 条且完整行摘要一致。新华三笔试和蔚来
+笔试保持 `COMPLETED / version 2` 审计状态，不属于当前 ACTIVE 清单；两条由旧版恢复策略误产生的
+`MissingAgentNotificationSource` 死信经精确核对后改为 COMPLETE，未重放已答复的 QQ 消息。
 
 ## 5. 当前生产主机容量
 
