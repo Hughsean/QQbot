@@ -101,7 +101,8 @@ QQ Time Agent 是一个仅供项目所有者本人使用、以 QQ 为主要交�
   QQ 邮箱只读 IMAP，仍复用统一 Inbox/Understanding/RAG 与删除门禁。阶段 10 已按 ADR-0013
   启动统一内容资产与多连接基础实施；Gmail 保持关闭。当前生产环境为 Ubuntu Server Docker
   Compose，Ollama 与应用同栈运行。2026-08-26 已完成首个目标主机部署，数据库迁移至
-  `0018_agent_run_delivery`，Web readiness 与 Ollama GPU 模型探针均通过。2026-09-11 已在备份和
-  校验后将生产发布升级为 `0028-0911`（提交 `dc4427b`），数据库迁移至
-  `0028_summary_contract`；Web readiness 的数据库与嵌入检查均通过。统一时间线已上线但尚无
-  升级后的真实 QQ 会话事件，旧读取 fallback 继续保留。
+  `0018_agent_run_delivery`，Web readiness 与 Ollama GPU 模型探针均通过。2026-09-12 已在隔离库
+  集成验证、生产备份和日程数据摘要校验后将生产发布升级为 `0029-0912`（提交 `ee5012e`），
+  数据库仍为 `0028_summary_contract`；Web readiness 的数据库与嵌入检查均通过。该发布修复了
+  多日程请求只执行一条却汇报全部成功、当前日程清单未读取事实源、纯标点检索触发空 embedding、
+  DeepSeek 非法结构化输出缺少重试、上下文失败遗留 PENDING 运行以及 QQ 暴露内部异常的问题。

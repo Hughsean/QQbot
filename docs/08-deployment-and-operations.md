@@ -203,6 +203,14 @@ custom-format 备份及 SHA-256 校验；未修改生产 Caddy、SSHD 或 system
 合成 DeepSeek 冒烟调用通过，Web/Worker/QQ/PostgreSQL/Ollama 均为零重启运行状态。升级时统一
 时间线事件数为零，因此旧读取 fallback 尚不能移除。QQ 邮箱连接处于 `REAUTH_REQUIRED`，需要
 所有者重新生成 IMAP 授权码后通过本机入口恢复，系统不得复用或猜测旧凭据。
+2026-09-12 经所有者授权完成生产修复发布：版本 `0029-0912`、提交 `ee5012e`，数据库迁移头保持
+`0028_summary_contract`。候选镜像先在独立 `qq_time_agent_test_0029_0912_ee5012e` 数据库完成
+全量迁移和 36 项 PostgreSQL 集成测试，随后删除测试库。部署前回滚点
+`.deploy-backups/20260912-233000-pre0029` 的数据库与旧源码 SHA-256 校验通过；Web/Worker/QQ
+均运行新版本且 restart count 为零，readiness 的 database/embeddings 均为 true。切换前后
+Agenda 与 Reminder 各 13 条，完整行摘要一致。历史纯标点请求遗留的 PENDING AgentRun 已修正为
+`FAILED / InvalidAgentContext`，对应 DEAD_LETTER Job 的错误分类也已纠正；南瑞继保测评日程保持
+ACTIVE，18:00 Reminder 已为 SENT。QQ 邮箱仍因旧授权码失效处于认证失败状态，与本次发布无关。
 
 ## 5. 当前生产主机容量
 
