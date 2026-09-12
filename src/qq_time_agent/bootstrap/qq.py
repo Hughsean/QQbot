@@ -108,7 +108,7 @@ async def run_qq() -> None:
     interaction_dispatcher = ReminderInteractionDispatcher(
         token_service,
         {
-            "reminder.complete": CompleteReminderHandler(agenda, agenda, reminders),
+            "reminder.complete": CompleteReminderHandler(actions, "owner"),
             "reminder.defer": DeferReminderHandler(reminders, agenda, clock),
         },
         clock,

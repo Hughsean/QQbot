@@ -4,7 +4,8 @@ from datetime import timedelta
 from typing import ClassVar
 
 from qq_time_agent.contracts.clock import Clock
-from qq_time_agent.modules.agenda.contracts import AgendaCommandPort, AgendaQueryPort
+from qq_time_agent.modules.actions.contracts import CalendarActionPort
+from qq_time_agent.modules.agenda.contracts import AgendaQueryPort
 from qq_time_agent.modules.notifications.contracts import (
     InteractionDispatcher,
     ReminderActionHandler,
@@ -50,29 +51,24 @@ class ReminderInteractionDispatcher(InteractionDispatcher):
 
 
 class CompleteReminderHandler(ReminderActionHandler):
-    def __init__(
-        self,
-        agenda: AgendaCommandPort,
-        agenda_query: AgendaQueryPort,
-        reminders: ReminderCommandPort,
-    ) -> None:
-        self._agenda = agenda
-        self._agenda_query = agenda_query
-        self._reminders = reminders
+    def __init__(self, actions: CalendarActionPort, action_user_id: str) -> None:
+        if not action_user_id.strip():
+            raise ValueError("Action user is required")
+        self._actions = actions
+        self._action_user_id = action_user_id
 
     async def handle(self, action: ReminderActionToken) -> ReminderActionResult:
-        entry = await self._agenda_query.get_entry(action.agenda_entry_id)
-        if entry is None or entry.version != action.agenda_entry_version:
-            raise ValueError("日程版本已变化, 请使用最新提醒")
-        if entry.status != "ACTIVE":
-            return ReminderActionResult("该日程已经完成或取消。", idempotent=True)
-        await self._agenda.complete_entry(
-            action.agenda_entry_id,
-            action.agenda_entry_version,
-            f"qq:reminder:{action.reminder_id}:occurrence:{action.occurrence}:complete",
-        )
-        await self._reminders.cancel_for_entry(
-            action.agenda_entry_id, action.agenda_entry_version
+        await self._actions.execute_calendar_operation(
+            self._action_user_id,
+            "COMPLETE_AGENDA",
+            {
+                "agenda_entry_id": str(action.agenda_entry_id),
+                "expected_version": action.agenda_entry_version,
+            },
+            (
+                f"qq:reminder:{action.reminder_id}:"
+                f"occurrence:{action.occurrence}:complete"
+            ),
         )
         return ReminderActionResult("日程已完成。")
 

@@ -19,16 +19,13 @@ def render_reminder(
     title: str,
     starts_at: str,
     lead: timedelta,
-    agenda_entry_id: object,
-    reminder_id: object,
 ) -> str:
     separator = "\N{FULLWIDTH COLON}"
     return (
         "[日程提醒]\n"
         f"日程{separator}{escape_origin_markers(title)}\n"
         f"时间{separator}{starts_at} (北京时间)\n"
-        f"{_lead_text(lead)}\n"
-        f"回复“完成 {agenda_entry_id}”或“推迟 {reminder_id} 10”。"
+        f"{_lead_text(lead)}"
     )
 
 

@@ -184,6 +184,9 @@ SCHEDULED → LEASED → SENT
                  └→ CANCELLED
 ```
 
+AgendaEntry 到达 `ends_at` 不会自动转为 `COMPLETED`。经过计划结束时间只表示时间窗口已结束，
+不能证明 Event 已实际参加或 Task 已完成；条目必须由所有者通过按钮或直接命令明确完成/取消。
+
 ## 3. 领域不变量
 
 1. Event 必须有明确的 `starts_at`、`ends_at` 和时区，且结束晚于开始。
@@ -200,6 +203,8 @@ SCHEDULED → LEASED → SENT
 12. AgendaEntry 是日程事实源；RAG chunk、向量和 LangGraph checkpoint 都不得推导性覆盖它。
 13. Reminder 必须绑定 AgendaEntry 的具体版本；条目修改或取消后旧提醒不得发送。
 14. 同一向量索引版本内的 embedding 模型、模型摘要和维度必须一致。
+15. Reminder 卡片正文不得暴露内部 Agenda/Reminder UUID 或要求用户回复内部命令；交互操作只通过
+    所有者绑定、短期有效、单次使用的按钮令牌提交。
 
 ## 4. 领域事件
 

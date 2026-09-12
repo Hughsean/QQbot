@@ -231,6 +231,16 @@ Notifications 保存稳定投递键和 QQ 回执；相同 Proposal 版本、Acti
 回复。因此“Provider 已接收但本地回执事务尚未提交时进程崩溃”仍是一个极窄重复窗口，必须通过
 重复发送监控与用户可见的 Reminder 标识审计，不能声称 Provider 提供 exactly-once。
 
+Reminder 主动消息正文只展示标题、本地时间和提前量，不展示 Agenda/Reminder UUID，也不再包含
+“回复完成/推迟”的旧文本命令。完成与推迟由 QQ 交互式按钮承载；按钮数据只携带随机令牌。令牌
+绑定所有者、动作类型、Agenda 版本和 Reminder occurrence，24 小时内有效，同一 occurrence 的
+完成/推迟按钮只有第一个有效领取，重复、串改、过期或状态已变化的点击不能再次执行副作用。
+完成按钮必须经 Actions 的幂等 `COMPLETE_AGENDA` 操作写入审计并取消旧版本提醒；推迟按钮只能经
+Reminders 门禁把已发送的当前 occurrence 增加为下一轮。到达 Agenda `ends_at` 本身不改变状态，
+未点击按钮或未发直接命令时条目继续保持 ACTIVE，不得把时间经过推断成用户已完成。
+QQ 回调确认、业务动作与结果消息是三个独立阶段；动作异常时必须返回不推断最终状态的安全提示，
+不得在回调已确认后只记录日志而让用户无反馈，也不得暴露内部异常。
+
 QQ 直接消息的同步执行会直接回复当前消息，其 30 秒延迟 Job 只用于崩溃或 Provider 失败恢复。
 同步路径已完成的 Job 必须无副作用结束；只有 Worker 实际完成的 `QQ_DIRECT` Run 才冻结
 `NOTIFY` 恢复标记并创建 `QQ_DIRECT_AGENT_RESULT` intent。该 intent 按 Run ID 幂等，不依赖邮件

@@ -83,6 +83,13 @@ connection notifications receive an immutable deterministic heading at send time
 also name Outlook or QQ Mail. Reminder delivery has its own deterministic heading. Untrusted
 message bodies cannot create a competing heading because square brackets are escaped before
 delivery.
+The reminder body contains only its title, owner-local start time and lead-time text. It never
+prints internal Agenda or Reminder UUIDs or legacy text commands. Complete and defer are opaque,
+owner-bound interactive buttons whose tokens are action-bound, version-bound, occurrence-bound,
+single-use and valid for 24 hours. The first claimed action for an occurrence excludes its sibling.
+Complete executes through an idempotent Actions-owned `COMPLETE_AGENDA` request; defer executes only
+through the Reminders command gate. Provider callback acknowledgement is separate from the explicit
+result message returned to the owner.
 
 ## Calendar System
 
@@ -130,6 +137,8 @@ Completing an Agenda entry is a versioned state transition from `ACTIVE` to `COM
 physical delete. The retained row supports audit, idempotency and stale-interaction rejection, while
 all current-agenda reads exclude it. User-facing responses must not describe a completed row as a
 current Agenda item or claim that it was deleted or archived.
+Passing `ends_at` never implies successful attendance or task completion and does not automatically
+change the entry state. Without an explicit owner complete/cancel action, the entry remains ACTIVE.
 
 Authorization is supplied explicitly through a Calendar-owned authorization port during Bootstrap.
 The principal comes from the authenticated AgentRun; Calendar System has no default or caller-

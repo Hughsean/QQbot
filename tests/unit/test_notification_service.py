@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 
@@ -8,6 +8,7 @@ from qq_time_agent.modules.agenda.contracts import AgendaEntryView
 from qq_time_agent.modules.notifications.application.ports import StoredDelivery
 from qq_time_agent.modules.notifications.application.rendering import render_outbound
 from qq_time_agent.modules.notifications.application.service import NotificationService
+from qq_time_agent.modules.notifications.contracts import NotificationMessage
 from qq_time_agent.modules.notifications.domain.models import NotificationKind
 from qq_time_agent.modules.reminders.contracts import ReminderLease
 
@@ -40,6 +41,51 @@ class Repository:
         return self.values.setdefault(value.idempotency_key, value)
 
 
+@dataclass
+class InteractiveSender:
+    messages: list[NotificationMessage] = field(default_factory=list)
+
+    async def send_message(self, message: NotificationMessage) -> str:
+        self.messages.append(message)
+        return "interactive-delivery-1"
+
+    async def send_active(self, content: str) -> str:
+        raise AssertionError(f"interactive reminder used plain delivery: {content}")
+
+
+@dataclass
+class ActionTokens:
+    issued: list[tuple[UUID, UUID, int, int, str, str | None, datetime]] = field(
+        default_factory=list
+    )
+
+    async def issue(
+        self,
+        *,
+        owner_id: str,
+        reminder_id: UUID,
+        agenda_entry_id: UUID,
+        agenda_entry_version: int,
+        occurrence: int,
+        action_type: str,
+        action_value: str | None,
+        expires_at: datetime,
+    ) -> str:
+        assert owner_id == "owner"
+        self.issued.append(
+            (
+                reminder_id,
+                agenda_entry_id,
+                agenda_entry_version,
+                occurrence,
+                action_type,
+                action_value,
+                expires_at,
+            )
+        )
+        return f"opaque-token-{len(self.issued)}"
+
+
 @pytest.mark.asyncio
 async def test_reminder_delivery_is_idempotent_and_source_labelled() -> None:
     start = datetime(2026, 8, 20, 7, tzinfo=UTC)
@@ -64,9 +110,50 @@ async def test_reminder_delivery_is_idempotent_and_source_labelled() -> None:
         "owner", lease, entry
     )
     assert sender.calls == 1
-    assert sender.contents[0].startswith("[日程提醒]\n")
-    assert "2026-08-20T15:00+08:00" in sender.contents[0]
-    assert "距离开始还有 30 分钟。" in sender.contents[0]
+    assert sender.contents[0] == (
+        "[日程提醒]\n"
+        "日程\N{FULLWIDTH COLON}评审\n"
+        "时间\N{FULLWIDTH COLON}2026-08-20T15:00+08:00 (北京时间)\n"
+        "距离开始还有 30 分钟。"
+    )
+    assert "回复“完成" not in sender.contents[0]
+    assert str(entry.agenda_entry_id) not in sender.contents[0]
+    assert str(lease.reminder_id) not in sender.contents[0]
+
+
+@pytest.mark.asyncio
+async def test_reminder_card_uses_opaque_complete_and_defer_buttons() -> None:
+    start = datetime(2026, 8, 20, 7, tzinfo=UTC)
+    entry = AgendaEntryView(
+        uuid4(),
+        "TASK_BLOCK",
+        "完成测评",
+        start,
+        start + timedelta(hours=1),
+        "Asia/Shanghai",
+        "ACTIVE",
+        ("inbox:test",),
+        uuid4(),
+        3,
+    )
+    lease = ReminderLease(
+        uuid4(), entry.agenda_entry_id, 3, start, "key", "worker", 1, 5, occurrence=2
+    )
+    sender = InteractiveSender()
+    tokens = ActionTokens()
+    service = NotificationService(sender, Repository(), Clock(), action_tokens=tokens)
+
+    await service.send_reminder("owner", lease, entry)
+
+    message = sender.messages[0]
+    assert [(action.action_type, action.label, action.token) for action in message.actions] == [
+        ("reminder.complete", "完成", "opaque-token-1"),
+        ("reminder.defer", "推迟 15 分钟", "opaque-token-2"),
+    ]
+    assert str(entry.agenda_entry_id) not in message.content
+    assert str(lease.reminder_id) not in message.content
+    assert all(value[2:4] == (3, 2) for value in tokens.issued)
+    assert all(value[6] == Clock().now() + timedelta(hours=24) for value in tokens.issued)
 
 
 @pytest.mark.asyncio

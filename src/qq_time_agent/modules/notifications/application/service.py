@@ -47,8 +47,6 @@ class NotificationService:
             entry.title,
             _time(entry.starts_at, self._owner_timezone),
             entry.starts_at - lease.due_at,
-            entry.agenda_entry_id,
-            lease.reminder_id,
         )
         return await self._send_with_actions(
             f"reminder:{lease.idempotency_key}:delivery", body, lease

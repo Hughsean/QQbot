@@ -360,15 +360,38 @@ class _BotpyClient(botpy.Client):  # type: ignore[misc]
             return
         try:
             await self.api.on_interaction_result(interaction_id, code=0)
+        except Exception:
+            LOGGER.exception(
+                "QQ interaction acknowledgement failed",
+                extra={"failure_class": "InteractionAcknowledgementError"},
+            )
+            return
+        content = await self._dispatch_interaction(
+            interaction_id, user_openid, button_id, button_data
+        )
+        try:
+            await self.api.post_c2c_message(openid=user_openid, content=content)
+        except Exception:
+            LOGGER.exception(
+                "QQ interaction result delivery failed",
+                extra={"failure_class": "InteractionResultDeliveryError"},
+            )
+
+    async def _dispatch_interaction(
+        self, interaction_id: str, user_openid: str, button_id: str, button_data: str
+    ) -> str:
+        assert self._interaction_dispatcher is not None
+        try:
             result = await self._interaction_dispatcher.dispatch(
                 interaction_id, user_openid, button_id, button_data
             )
-            await self.api.post_c2c_message(openid=user_openid, content=result.message)
+            return result.message
         except Exception:
             LOGGER.exception(
-                "QQ interaction callback failed",
-                extra={"failure_class": "InteractionCallbackError"},
+                "QQ interaction action failed",
+                extra={"failure_class": "InteractionActionError"},
             )
+            return "按钮操作结果暂时无法确认, 请通过聊天查询当前日程。"
 
     async def wait_ready(self, timeout_seconds: float) -> None:
         await asyncio.wait_for(self._ready.wait(), timeout_seconds)

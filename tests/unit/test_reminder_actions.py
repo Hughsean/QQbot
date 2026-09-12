@@ -1,9 +1,11 @@
+from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 import pytest
 
 from qq_time_agent.modules.notifications.application.reminder_actions import (
+    CompleteReminderHandler,
     DeferReminderHandler,
     ReminderInteractionDispatcher,
 )
@@ -67,6 +69,40 @@ class Agenda:
     async def get_entry(self, entry_id: UUID) -> object:
         del entry_id
         return type("Entry", (), {"version": 1, "status": "ACTIVE"})()
+
+
+class Actions:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, str, Mapping[str, object], str]] = []
+
+    async def execute_calendar_operation(
+        self,
+        user_id: str,
+        operation: str,
+        payload: Mapping[str, object],
+        idempotency_key: str,
+    ) -> object:
+        self.calls.append((user_id, operation, payload, idempotency_key))
+        return object()
+
+
+@pytest.mark.asyncio
+async def test_complete_handler_uses_idempotent_actions_gate() -> None:
+    actions = Actions()
+
+    result = await CompleteReminderHandler(actions, "owner").handle(
+        token("reminder.complete", None)
+    )
+
+    assert result == ReminderActionResult("日程已完成。")
+    assert actions.calls == [
+        (
+            "owner",
+            "COMPLETE_AGENDA",
+            {"agenda_entry_id": str(UUID(int=2)), "expected_version": 1},
+            f"qq:reminder:{UUID(int=1)}:occurrence:1:complete",
+        )
+    ]
 
 
 @pytest.mark.asyncio

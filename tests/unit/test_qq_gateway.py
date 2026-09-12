@@ -12,6 +12,7 @@ from qq_time_agent.adapters.inbound.qq.gateway import (
     OfficialQqGateway,
     QqMessageProcessor,
     _BotpyClient,
+    _button,
     _delivery_id,
     _parse_timestamp,
     _qq_assets,
@@ -20,6 +21,10 @@ from qq_time_agent.adapters.inbound.qq.gateway import (
 from qq_time_agent.bootstrap.config_models import OwnerConfig, QqConfig
 from qq_time_agent.contracts.source import SourceAssetDescriptor, SourceEnvelope, TrustLevel
 from qq_time_agent.modules.agent.contracts import AgentResponseProtocolError
+from qq_time_agent.modules.notifications.contracts import (
+    NotificationAction,
+    ReminderActionResult,
+)
 
 
 @dataclass
@@ -527,6 +532,121 @@ def test_qq_provider_response_mapping_is_contained() -> None:
     assert _delivery_id({"msg_id": "two"}) == "two"
     with pytest.raises(RuntimeError, match="omitted"):
         _delivery_id({})
+
+
+def test_reminder_button_exposes_only_opaque_action_token() -> None:
+    payload = _button(
+        NotificationAction("reminder.complete", "完成", token="synthetic-token")
+    )
+
+    assert payload["id"] == "reminder.complete"
+    assert payload["action"] == {
+        "type": 1,
+        "permission": {"type": 2, "specify_role_ids": [], "specify_user_ids": []},
+        "click_limit": 1,
+        "data": "synthetic-token",
+        "at_bot_show_channel_list": False,
+    }
+
+
+@pytest.mark.asyncio
+async def test_owner_interaction_is_acknowledged_then_dispatches_and_reports_result() -> None:
+    events: list[tuple[object, ...]] = []
+
+    class Dispatcher:
+        async def dispatch(
+            self,
+            interaction_id: str,
+            owner_id: str,
+            button_id: str,
+            button_data: str,
+        ) -> ReminderActionResult:
+            events.append(("dispatch", interaction_id, owner_id, button_id, button_data))
+            return ReminderActionResult("日程已完成。")
+
+    class Api:
+        async def on_interaction_result(self, interaction_id: str, code: int) -> None:
+            events.append(("ack", interaction_id, code))
+
+        async def post_c2c_message(self, *, openid: str, content: str) -> dict[str, str]:
+            events.append(("result", openid, content))
+            return {"id": "result-message"}
+
+    processor = QqMessageProcessor(
+        OwnerConfig(SecretStr("owner")),
+        RecordingIngress(),
+        FixedClock(datetime(2026, 8, 13, tzinfo=UTC)),
+    )
+    client = _BotpyClient(processor, True, interaction_dispatcher=Dispatcher())
+    client.api = Api()  # type: ignore[assignment]
+    interaction = SimpleNamespace(
+        id="interaction-1",
+        user_openid="owner",
+        data=SimpleNamespace(
+            resolved=SimpleNamespace(
+                button_id="reminder.complete",
+                button_data="synthetic-token",
+            )
+        ),
+    )
+
+    await client.on_interaction_create(interaction)
+
+    assert events == [
+        ("ack", "interaction-1", 0),
+        ("dispatch", "interaction-1", "owner", "reminder.complete", "synthetic-token"),
+        ("result", "owner", "日程已完成。"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_interaction_action_failure_returns_state_neutral_safe_result() -> None:
+    events: list[tuple[object, ...]] = []
+
+    class Dispatcher:
+        async def dispatch(
+            self,
+            interaction_id: str,
+            owner_id: str,
+            button_id: str,
+            button_data: str,
+        ) -> ReminderActionResult:
+            del interaction_id, owner_id, button_id, button_data
+            raise RuntimeError("synthetic interaction failure")
+
+    class Api:
+        async def on_interaction_result(self, interaction_id: str, code: int) -> None:
+            events.append(("ack", interaction_id, code))
+
+        async def post_c2c_message(self, *, openid: str, content: str) -> dict[str, str]:
+            events.append(("result", openid, content))
+            return {"id": "result-message"}
+
+    processor = QqMessageProcessor(
+        OwnerConfig(SecretStr("owner")),
+        RecordingIngress(),
+        FixedClock(datetime(2026, 8, 13, tzinfo=UTC)),
+    )
+    client = _BotpyClient(processor, True, interaction_dispatcher=Dispatcher())
+    client.api = Api()  # type: ignore[assignment]
+
+    await client.on_interaction_create(
+        SimpleNamespace(
+            id="interaction-2",
+            user_openid="owner",
+            data=SimpleNamespace(
+                resolved=SimpleNamespace(
+                    button_id="reminder.complete",
+                    button_data="synthetic-token",
+                )
+            ),
+        )
+    )
+
+    assert events == [
+        ("ack", "interaction-2", 0),
+        ("result", "owner", "按钮操作结果暂时无法确认, 请通过聊天查询当前日程。"),
+    ]
 
 
 def test_qq_timestamp_parser_requires_rfc3339_timezone() -> None:
