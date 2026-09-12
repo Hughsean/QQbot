@@ -11,6 +11,7 @@ from qq_time_agent.contracts.jobs import JobLease, JobQueue, JobRequest
 from qq_time_agent.modules.agent.application.run_service import AgentRunService
 from qq_time_agent.modules.agent.contracts import (
     AgentContextAssemblyPort,
+    AgentContextResult,
     AgentDelivery,
     AgentFinal,
     AgentResponseProtocolError,
@@ -22,6 +23,7 @@ from qq_time_agent.modules.agent.contracts import (
     ConversationSnapshot,
 )
 from qq_time_agent.modules.ai_gateway.contracts import ModelFailure
+from qq_time_agent.modules.embeddings.contracts import EmbeddingError
 from qq_time_agent.modules.inbox.contracts import (
     InboxContentPort,
     InboxContentView,
@@ -70,16 +72,7 @@ class AgentRunJobHandler:
             return
 
         item = await self._require_content(item_id)
-        assembled = await self._context.assemble(
-            "owner",
-            item.body_text,
-            before=item.occurred_at,
-            exclude_id=item.inbox_item_id,
-            conversation_id=run.conversation_id,
-            event_case_id=run.event_case_id,
-            run_id=run.run_id,
-            snapshot=_run_snapshot(run),
-        )
+        assembled = await self._assemble_context(run, item)
         try:
             raw_outcome = await self._runs.execute(
                 run_id, item.body_text, assembled.context, assembled.messages, assembled.snapshot
@@ -104,9 +97,37 @@ class AgentRunJobHandler:
         if effective_delivery is AgentDelivery.NOTIFY:
             await self._schedule_notification(run, item, outcome.final)
 
-    async def _freeze_effective_delivery(
-        self, run: AgentRun, result: AgentFinal
-    ) -> AgentDelivery:
+    async def _assemble_context(self, run: AgentRun, item: InboxContentView) -> AgentContextResult:
+        try:
+            return await self._context.assemble(
+                "owner",
+                item.body_text,
+                before=item.occurred_at,
+                exclude_id=item.inbox_item_id,
+                conversation_id=run.conversation_id,
+                event_case_id=run.event_case_id,
+                run_id=run.run_id,
+                snapshot=_run_snapshot(run),
+            )
+        except EmbeddingError as exc:
+            await self._fail_context(run.run_id, exc.failure_class)
+            if exc.failure_class == "TransientProvider":
+                raise RetryableJobError(exc.failure_class) from exc
+            raise PermanentJobError(exc.failure_class) from exc
+        except ValueError as exc:
+            await self._fail_context(run.run_id, "InvalidAgentContext")
+            raise PermanentJobError("InvalidAgentContext") from exc
+        except Exception as exc:
+            await self._fail_context(run.run_id, "AgentContextUnavailable")
+            raise RetryableJobError("AgentContextUnavailable") from exc
+
+    async def _fail_context(self, run_id: UUID, failure_class: str) -> None:
+        try:
+            await self._runs.fail_before_execution(run_id, failure_class)
+        except Exception as exc:
+            raise RetryableJobError("AgentRunFailurePersistenceFailed") from exc
+
+    async def _freeze_effective_delivery(self, run: AgentRun, result: AgentFinal) -> AgentDelivery:
         if run.effective_delivery is not None:
             return run.effective_delivery
         proposed = await self._effective_delivery(run, result)
@@ -115,9 +136,7 @@ class AgentRunJobHandler:
         except Exception as exc:
             raise RetryableJobError("AgentDeliveryPersistenceFailed") from exc
 
-    async def _effective_delivery(
-        self, run: AgentRun, result: AgentFinal
-    ) -> AgentDelivery:
+    async def _effective_delivery(self, run: AgentRun, result: AgentFinal) -> AgentDelivery:
         if self._delivery_policy is None or self._delivery_source is None:
             return result.delivery
         source = await self._delivery_source.get_mail_delivery_source(
@@ -224,6 +243,7 @@ def _run_snapshot(run: AgentRun) -> ConversationSnapshot | None:
         max_sequence=run.context_max_sequence,
         context_hash=run.context_hash,
     )
+
 
 def _payload_ids(job: JobLease) -> tuple[UUID, UUID]:
     raw_run = job.payload.get("run_id")

@@ -55,27 +55,15 @@ class DeepSeekStructuredAdapter:
         }
         serialized = _serialize_payload(payload)
         _preflight(request, serialized)
-        response = await self._post(serialized, timeout)
-        try:
-            body = response.json()
-            choice = _mapping(_sequence(body, "choices")[0])
-            if choice.get("finish_reason") != "stop":
-                raise ValueError("model output did not finish normally")
-            content = _mapping(choice, "message").get("content")
-            if not isinstance(content, str) or not content.strip():
-                raise ValueError("model returned empty JSON content")
-            output = json.loads(content)
-            if not isinstance(output, dict):
-                raise TypeError("model JSON output must be an object")
-            usage = _mapping(body, "usage")
-            return StructuredResponse(
-                output,
-                _string(body, "model"),
-                _integer(usage, "prompt_tokens"),
-                _integer(usage, "completion_tokens"),
-            )
-        except (KeyError, IndexError, TypeError, ValueError, json.JSONDecodeError) as exc:
-            raise ModelFailure("InvalidOutput") from exc
+        attempts = self._config.max_retries + 1
+        for attempt in range(attempts):
+            response = await self._post(serialized, timeout)
+            try:
+                return _structured_response(response)
+            except ModelFailure as exc:
+                if exc.failure_class != "InvalidOutput" or attempt + 1 == attempts:
+                    raise
+        raise AssertionError("unreachable")
 
     async def close(self) -> None:
         if self._owns_client:
@@ -113,6 +101,29 @@ class DeepSeekStructuredAdapter:
                 continue
             raise ModelFailure(failure)
         raise AssertionError("unreachable")
+
+
+def _structured_response(response: httpx.Response) -> StructuredResponse:
+    try:
+        body = response.json()
+        choice = _mapping(_sequence(body, "choices")[0])
+        if choice.get("finish_reason") != "stop":
+            raise ValueError("model output did not finish normally")
+        content = _mapping(choice, "message").get("content")
+        if not isinstance(content, str) or not content.strip():
+            raise ValueError("model returned empty JSON content")
+        output = json.loads(content)
+        if not isinstance(output, dict):
+            raise TypeError("model JSON output must be an object")
+        usage = _mapping(body, "usage")
+        return StructuredResponse(
+            output,
+            _string(body, "model"),
+            _integer(usage, "prompt_tokens"),
+            _integer(usage, "completion_tokens"),
+        )
+    except (KeyError, IndexError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise ModelFailure("InvalidOutput") from exc
 
 
 def _serialize_payload(payload: Mapping[str, object]) -> bytes:

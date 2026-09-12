@@ -92,8 +92,9 @@ Calendar operations are exposed through a single Calendar System facade. The fac
 - reminder consistency;
 - audit records and result rendering.
 
-The Agent can request `find_agenda_candidates`, `get_agenda`, `create_agenda`, `update_agenda`,
-`complete_agenda`, `cancel_agenda`, and `update_reminder`. Calendar mutations (`create_agenda`,
+The Agent can request `list_agenda`, `find_agenda_candidates`, `get_agenda`, `create_agenda`,
+`update_agenda`, `complete_agenda`, `cancel_agenda`, and `update_reminder`. `list_agenda` is the
+authoritative bounded-range read used whenever the owner asks for the current agenda. Calendar mutations (`create_agenda`,
 `update_agenda`, `complete_agenda`, `cancel_agenda`, `update_reminder`) are authorized only for
 `QQ_DIRECT`-sourced runs; mail-sourced runs are read-only on the calendar and receive a permission
 observation instead. `create_agenda` accepts an optional `reminder_due_at` (offset-bearing
@@ -102,6 +103,13 @@ must state the effective reminder time. The Agent cannot call `AgendaCommandPort
 `ReminderCommandPort`, repositories or Actions directly. A request such as “刚才那个任务改到明天” is valid only when the facade can
 resolve exactly one active target and a complete timezone-aware patch. Otherwise the system
 rejects the operation and the Agent asks a focused question.
+
+Successful create receipts include the title, normalized interval, timezone and effective reminder
+time in addition to persistent identifiers. For an explicit multi-entry request, the loop counts
+successful `create_agenda` receipts and rejects an early final response until the requested count is
+covered. If the bounded loop cannot complete every entry, it reports the exact confirmed fraction
+instead of claiming that the whole request succeeded. Short acknowledgement-only QQ turns are
+completed deterministically with a short acknowledgement and do not replay agenda context.
 
 The facade performs no Agenda or Reminder write itself. Every mutation creates or reuses a
 persistent Actions-owned `ActionRequest`; Actions is the only component allowed to call Agenda and
@@ -123,6 +131,11 @@ into the Agent turn. LLM query rewriting has a strict schema, timeout and determ
 fallback. Recent conversation, open clarification state, relevant active Agenda entries and pending
 Proposals are labelled separately from T2 RAG evidence. RAG evidence can inform a decision but
 cannot become calendar truth.
+If normalization or query rewriting removes every searchable token, retrieval returns no chunks and
+does not call the embedding provider. Context-assembly failures are persisted on the AgentRun before
+the immediate or recovery path returns; permanent input failures are not retried as transient
+provider failures. Provider JSON output that is malformed receives one bounded retry before the
+stable protocol-error response is used, and internal exception text is never returned over QQ.
 
 Understanding is optional structured extraction, not an AgentRun gate. QQ direct messages and
 eligible mail create/queue AgentRuns after deterministic normalization. Batch extraction may produce

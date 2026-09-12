@@ -81,6 +81,74 @@ class Tools:
         del context
         assert owner_id == "owner" and name == "ping" and arguments == {}
         return {"ok": True}
+
+
+@dataclass
+class CalendarTools:
+    calls: list[Mapping[str, object]]
+
+    def definitions(self) -> tuple[ToolDefinition, ...]:
+        return (
+            ToolDefinition(
+                "create_agenda",
+                "create",
+                {
+                    "type": "object",
+                    "properties": {"title": {"type": "string"}},
+                    "required": ["title"],
+                },
+            ),
+        )
+
+    async def call(
+        self,
+        owner_id: str,
+        name: str,
+        arguments: Mapping[str, object],
+        context: object,
+    ) -> object:
+        del context
+        assert owner_id == "owner" and name == "create_agenda"
+        self.calls.append(arguments)
+        return {"status": "SUCCEEDED", "title": arguments["title"]}
+
+
+@pytest.mark.asyncio
+async def test_short_acknowledgement_does_not_repeat_context_or_call_model() -> None:
+    model = Model([])
+    loop = AgentLoop(model, Tools())
+
+    result = await loop.run("owner", "行\N{FULLWIDTH COMMA}了解", "[agenda-fact] 不应重复")
+
+    assert result.content == "好的。"
+
+
+@pytest.mark.asyncio
+async def test_explicit_multi_create_cannot_finalize_after_only_one_receipt() -> None:
+    model = RecordingModel(
+        [
+            AgentResponse(tool_call=AgentToolCall("c1", "create_agenda", {"title": "蔚来笔试"})),
+            AgentResponse(final=AgentFinal("两个都创建好了")),
+            AgentResponse(
+                tool_call=AgentToolCall("c2", "create_agenda", {"title": "南瑞继保测评"})
+            ),
+            AgentResponse(final=AgentFinal("两个日程均已创建")),
+        ],
+        [],
+    )
+    tools = CalendarTools([])
+    loop = AgentLoop(model, tools)
+
+    result = await loop.run(
+        "owner",
+        "提醒我周六进行两个测评\N{FULLWIDTH COMMA}分别在下午3点和5点提醒我",
+    )
+
+    assert result.content == "两个日程均已创建"
+    assert [call["title"] for call in tools.calls] == ["蔚来笔试", "南瑞继保测评"]
+    assert model.requests[2].observations[-1].name == "creation_coverage_guard"
+
+
 async def test_agent_loop_observes_tool_then_reports_final() -> None:
     loop = AgentLoop(
         Model(

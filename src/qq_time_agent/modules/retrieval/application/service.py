@@ -53,6 +53,8 @@ class HybridRetrievalService:
     ) -> tuple[RetrievedChunk, ...]:
         _validate(query, filters, limit)
         optimized_query = await self._rewrite(query)
+        if not optimized_query.strip():
+            return ()
         batch = await self._embeddings.embed((optimized_query,), self._model_id, self._dimensions)
         if batch.model_id != self._model_id or batch.dimensions != self._dimensions:
             raise ValueError("Embedding result does not match active Retrieval index")

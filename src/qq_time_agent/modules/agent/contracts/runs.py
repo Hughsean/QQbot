@@ -211,6 +211,8 @@ class AgentRunRepository(Protocol):
         now: datetime,
     ) -> AgentRun: ...
 
+    async def fail_unclaimed(self, run_id: UUID, failure_class: str, now: datetime) -> AgentRun: ...
+
     async def checkpoint_tool_call(
         self,
         run_id: UUID,

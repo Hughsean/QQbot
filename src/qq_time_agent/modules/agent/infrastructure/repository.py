@@ -267,6 +267,28 @@ class SqlAgentRunRepository(SqlAgentContextScopes):
             await session.flush()
             return _to_run(row)
 
+    async def fail_unclaimed(self, run_id: UUID, failure_class: str, now: datetime) -> AgentRun:
+        async with self._sessions.begin() as session:
+            row = await session.get(AgentRunRow, run_id, with_for_update=True)
+            if row is None:
+                raise LookupError("AgentRun does not exist")
+            if row.status == AgentRunStatus.COMPLETED.value:
+                return _to_run(row)
+            if (
+                row.status == AgentRunStatus.RUNNING.value
+                and row.execution_lease_until is not None
+                and row.execution_lease_until >= now
+            ):
+                raise AgentRunClaimError("AgentRun is already claimed")
+            row.status = AgentRunStatus.FAILED.value
+            row.failure_class = failure_class[:120]
+            row.execution_owner = None
+            row.execution_lease_until = None
+            row.updated_at = now
+            row.version += 1
+            await session.flush()
+            return _to_run(row)
+
     async def checkpoint_tool_call(
         self,
         run_id: UUID,

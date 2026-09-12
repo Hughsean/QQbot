@@ -33,6 +33,13 @@ class AgendaService:
             for value in values
         )
 
+    async def list_active(
+        self, range_start: datetime, range_end: datetime
+    ) -> tuple[AgendaEntryView, ...]:
+        _validate_range(range_start, range_end)
+        values = await self._repository.busy_between(range_start, range_end)
+        return tuple(_view(value) for value in values)
+
     async def get_entry(self, entry_id: UUID) -> AgendaEntryView | None:
         value = await self._repository.get(entry_id)
         return None if value is None else _view(value)

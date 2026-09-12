@@ -15,7 +15,10 @@ from qq_time_agent.modules.retrieval.contracts import RetrievalFilters
 
 @dataclass
 class Embeddings:
+    calls: int = 0
+
     async def embed(self, texts: tuple[str, ...], model_id: str, dimensions: int) -> EmbeddingBatch:
+        self.calls += 1
         return EmbeddingBatch(model_id, "digest", dimensions, ((1.0, 0.0),))
 
     async def health(self) -> EmbeddingProviderHealth:
@@ -55,6 +58,15 @@ def _candidate(name: str, vector: float | None, lexical: float | None) -> Knowle
 def test_query_optimization_removes_duplicate_terms_and_bounds_length() -> None:
     assert optimize_query('  星河   报价 星河 "截止 周五"  ') == '星河 报价 "截止 周五"'
     assert len(optimize_query("x" * 100, 20)) <= 20
+
+
+@pytest.mark.asyncio
+async def test_punctuation_only_query_skips_embedding_and_search() -> None:
+    embeddings = Embeddings()
+    service = HybridRetrievalService(Knowledge((), ()), embeddings, "model", 2, "v1", 0.5, 0.5, 10)
+
+    assert await service.retrieve("\N{FULLWIDTH QUESTION MARK}", RetrievalFilters(), 10) == ()
+    assert embeddings.calls == 0
 
 
 @pytest.mark.asyncio

@@ -159,6 +159,8 @@ class AgentRunExecutionPort(Protocol):
         self, run_id: UUID, delivery: AgentDelivery
     ) -> AgentDelivery: ...
 
+    async def fail_before_execution(self, run_id: UUID, failure_class: str) -> None: ...
+
     async def execute(
         self,
         run_id: UUID,

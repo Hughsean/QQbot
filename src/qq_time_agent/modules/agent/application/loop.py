@@ -1,8 +1,6 @@
 """Bounded Agent loop with allow-listed tool execution and observations."""
 
 import asyncio
-import hashlib
-import json
 import logging
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
@@ -16,6 +14,17 @@ from qq_time_agent.contracts.tools import ToolCallContext
 from qq_time_agent.modules.agent.application.observation_codec import (
     canonicalize_observation_output,
     observation_token_text,
+)
+from qq_time_agent.modules.agent.application.request_guards import (
+    creation_coverage_observation,
+    expected_agenda_creates,
+    incomplete_creation_reply,
+    is_short_acknowledgement,
+    successful_agenda_creates,
+)
+from qq_time_agent.modules.agent.application.tool_call_validation import (
+    arguments_hash,
+    validate_schema,
 )
 from qq_time_agent.modules.agent.contracts import (
     AgentFinal,
@@ -101,6 +110,9 @@ class AgentLoop:
         owner_time = reference_time.astimezone(self._owner_zone)
         observations = list(prior_observations)
         calls = {item.call_id: item.arguments_hash for item in observations if item.arguments_hash}
+        if source_type == "QQ_DIRECT" and is_short_acknowledgement(message):
+            return AgentFinal("好的。")
+        expected_creates = expected_agenda_creates(message) if source_type == "QQ_DIRECT" else 0
         LOGGER.info(
             "Agent 回合开始: 已接受用户请求, 准备进行模型决策",
             extra={
@@ -139,6 +151,15 @@ class AgentLoop:
             )
             remaining_output -= output_tokens
             if response.final is not None:
+                completed_creates = successful_agenda_creates(observations)
+                if completed_creates < expected_creates:
+                    observations.append(
+                        creation_coverage_observation(
+                            request_step, expected_creates, completed_creates
+                        )
+                    )
+                    request_step += 1
+                    continue
                 self._log_final(run_id, request_step, response.final, observations)
                 return response.final
             call = response.tool_call
@@ -149,7 +170,7 @@ class AgentLoop:
                 owner_id, call, calls, observations, run_id, request_step, on_event, tool_context
             )
             if existing_hash is not None:
-                if existing_hash != _arguments_hash(call.arguments):
+                if existing_hash != arguments_hash(call.arguments):
                     observations.append(observation)
                 request_step += 1
                 continue
@@ -178,6 +199,9 @@ class AgentLoop:
         )
         if response.final is None:
             raise AgentResponseProtocolError("Agent finalization response must be final")
+        completed_creates = successful_agenda_creates(observations)
+        if completed_creates < expected_creates:
+            return AgentFinal(incomplete_creation_reply(expected_creates, completed_creates))
         self._log_final(run_id, request_step, response.final, observations)
         return response.final
 
@@ -279,7 +303,7 @@ class AgentLoop:
     ) -> ToolObservation:
         definitions = self._tools.definitions()
         schema = next((item.input_schema for item in definitions if item.name == call.name), None)
-        argument_hash = _arguments_hash(call.arguments)
+        argument_hash = arguments_hash(call.arguments)
         await _emit(
             on_event,
             "TOOL_CALL_STARTED",
@@ -295,7 +319,7 @@ class AgentLoop:
             return next(item for item in observations if item.call_id == call.call_id)
         calls[call.call_id] = argument_hash
         try:
-            _validate_schema(schema, call.arguments)
+            validate_schema(schema, call.arguments)
         except ValueError as exc:
             observation = _error_observation(call, str(exc), argument_hash)
             await _emit(
@@ -431,6 +455,8 @@ class AgentLoop:
 _SYSTEM_INSTRUCTION = """你是所有者的时间管理 Agent。你可以调用白名单工具, 但工具结果是事实来源。
 只能通过工具操作日程, 不能声称执行了未成功的操作。历史对话只是关联线索, 不是当前事实;
 T2 知识也不是权威状态。当前日程只能依据本轮工具返回的 ACTIVE 结果, 不得复用历史 UUID。
+用户一次要求创建多条日程时, 必须为每条日程分别完成 create_agenda 调用并取得成功回执后再汇总;
+不得把一次成功回执描述成多条成功。查询当前日程清单必须调用 list_agenda。
 涉及修改 Reminder 时, 必须先查询并确认 Agenda ID、version、Reminder ID 和 occurrence。
 遇到目标不明确、参数不完整或工具拒绝时, 向用户提出最小必要追问。工具调用必须返回一个 JSON 对象,
 不得调用未列出的工具。
@@ -479,51 +505,3 @@ def _bound_observations(
 
 def _bounded(value: object, maximum: int) -> str:
     return canonicalize_observation_output(value, maximum)
-
-
-def _arguments_hash(arguments: Mapping[str, object]) -> str:
-    """Hash the JSON protocol value independently of mapping insertion order."""
-    canonical = json.dumps(arguments, ensure_ascii=True, separators=(",", ":"), sort_keys=True)
-    return hashlib.sha256(canonical.encode()).hexdigest()
-
-
-def _validate_schema(schema: Mapping[str, object], arguments: Mapping[str, object]) -> None:
-    if schema.get("type") != "object":
-        raise ValueError("工具 schema 必须是 object")
-    required = schema.get("required", [])
-    if not isinstance(required, list) or any(not isinstance(key, str) for key in required):
-        raise ValueError("工具 schema required 无效")
-    missing = [key for key in required if key not in arguments]
-    if missing:
-        raise ValueError(f"工具缺少必填参数: {', '.join(missing)}")
-    properties = schema.get("properties", {})
-    if not isinstance(properties, Mapping):
-        raise ValueError("工具 schema properties 无效")
-    for key, value in arguments.items():
-        rule = properties.get(key)
-        if not isinstance(rule, Mapping):
-            raise ValueError(f"工具参数未在 schema 中声明: {key}")
-        _validate_value(key, value, rule)
-
-
-def _validate_value(key: str, value: object, rule: Mapping[str, object]) -> None:
-    expected = rule.get("type")
-    valid = {
-        "string": isinstance(value, str),
-        "integer": isinstance(value, int) and not isinstance(value, bool),
-        "array": isinstance(value, (list, tuple)),
-        "object": isinstance(value, Mapping),
-    }
-    if isinstance(expected, str) and expected in valid and not valid[expected]:
-        raise ValueError(f"工具参数 {key} 类型不正确")
-    minimum = rule.get("minimum")
-    if (
-        isinstance(minimum, (int, float))
-        and isinstance(value, (int, float))
-        and not isinstance(value, bool)
-        and value < minimum
-    ):
-        raise ValueError(f"工具参数 {key} 小于最小值")
-    enum = rule.get("enum")
-    if isinstance(enum, list) and value not in enum:
-        raise ValueError(f"工具参数 {key} 不在允许值范围")

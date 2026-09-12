@@ -255,6 +255,7 @@ retrieve(query, filters, limit) -> RetrievedChunk[]
 ```
 
 每个 `RetrievedChunk` 必须包含 `chunk_id`、`source_ref`、来源时间、片段内容和各阶段得分。调用方不能把检索排序分数解释为事实置信度。
+查询改写后若不含任何可检索词元，必须直接返回空集合，不得向 EmbeddingPort 发送空文本。
 
 ### ReminderPort
 

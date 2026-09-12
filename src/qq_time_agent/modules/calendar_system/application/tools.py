@@ -1,7 +1,7 @@
 """Safe tool facade for the independent calendar system."""
 
 from collections.abc import Mapping
-from datetime import datetime
+from datetime import datetime, timedelta
 from uuid import UUID
 
 from qq_time_agent.contracts.time import local_iso, resolve_timezone
@@ -31,6 +31,20 @@ class CalendarToolRegistry:
         self._authorization = authorization
         self._owner_timezone = owner_timezone
         self._definitions = (
+            ToolDefinition(
+                "list_agenda",
+                "List active agenda entries in a bounded time range. "
+                "Use this for current agenda queries.",
+                {
+                    "type": "object",
+                    "properties": {
+                        "range_start": {"type": "string", "format": "date-time"},
+                        "range_end": {"type": "string", "format": "date-time"},
+                        "timezone": {"type": "string"},
+                    },
+                    "required": ["range_start", "range_end", "timezone"],
+                },
+            ),
             ToolDefinition(
                 "find_agenda_candidates",
                 "Find active agenda entries by exact title for target resolution.",
@@ -141,19 +155,8 @@ class CalendarToolRegistry:
         context = context or ToolCallContext("QQ_DIRECT")
         if not await self._authorization.authorize(owner_id, name, context):
             raise PermissionError("calendar operation is not authorized")
-        if name == "find_agenda_candidates":
-            _only(arguments, {"title"})
-            title = _text(arguments, "title")
-            return tuple(
-                _render(entry, self._owner_timezone)
-                for entry in await self._agenda_query.find_active_by_title(title)
-            )
-        if name == "get_agenda":
-            _only(arguments, {"agenda_entry_id"})
-            entry = await self._agenda_query.get_entry(_uuid(arguments, "agenda_entry_id"))
-            if entry is None or entry.status != "ACTIVE":
-                raise LookupError("active agenda entry does not exist")
-            return _render(entry, self._owner_timezone)
+        if name in {"list_agenda", "find_agenda_candidates", "get_agenda"}:
+            return await self._read(name, arguments)
         if name == "create_agenda":
             _only(
                 arguments,
@@ -185,6 +188,30 @@ class CalendarToolRegistry:
             )
             return await self._update_reminder(owner_id, arguments)
         raise ValueError("unknown calendar tool")
+
+    async def _read(self, name: str, arguments: Mapping[str, object]) -> object:
+        if name == "list_agenda":
+            _only(arguments, {"range_start", "range_end", "timezone"})
+            timezone = _text(arguments, "timezone")
+            start = _calendar_moment(arguments.get("range_start"), timezone)
+            end = _calendar_moment(arguments.get("range_end"), timezone)
+            if end <= start or end - start > timedelta(days=366):
+                raise ValueError("agenda query range is invalid")
+            entries = await self._agenda_query.list_active(start, end)
+            items = tuple(_render(entry, self._owner_timezone) for entry in entries[:50])
+            return {"status": "SUCCEEDED", "count": len(items), "items": items}
+        if name == "find_agenda_candidates":
+            _only(arguments, {"title"})
+            title = _text(arguments, "title")
+            return tuple(
+                _render(entry, self._owner_timezone)
+                for entry in await self._agenda_query.find_active_by_title(title)
+            )
+        _only(arguments, {"agenda_entry_id"})
+        entry = await self._agenda_query.get_entry(_uuid(arguments, "agenda_entry_id"))
+        if entry is None or entry.status != "ACTIVE":
+            raise LookupError("active agenda entry does not exist")
+        return _render(entry, self._owner_timezone)
 
     async def _create_agenda(
         self,
@@ -218,7 +245,7 @@ class CalendarToolRegistry:
                 "reminder_lead_minutes": 30,
             }
         )
-        return _render_result(
+        result = _render_result(
             await self._actions.execute_calendar_operation(
                 owner_id,
                 "CREATE_AGENDA",
@@ -226,6 +253,20 @@ class CalendarToolRegistry:
                 f"agent:agenda:create:{starts.isoformat()}:{title}",
             )
         )
+        result.update(
+            {
+                "title": title,
+                "starts_at": starts.isoformat(),
+                "ends_at": ends.isoformat(),
+                "timezone": self._owner_timezone,
+                "reminder_due_at": (
+                    payload.get("reminder_due_at")
+                    if reminder_due_at is not None
+                    else (starts - timedelta(minutes=30)).isoformat()
+                ),
+            }
+        )
+        return result
 
     async def _update_agenda(self, owner_id: str, arguments: Mapping[str, object]) -> object:
         entry_id = _uuid(arguments, "agenda_entry_id")

@@ -119,6 +119,9 @@ class AgentRunService:
     ) -> AgentDelivery:
         return await self._repository.freeze_effective_delivery(run_id, delivery)
 
+    async def fail_before_execution(self, run_id: UUID, failure_class: str) -> None:
+        await self._repository.fail_unclaimed(run_id, failure_class, self._clock.now())
+
     async def execute(  # noqa: C901
         self,
         run_id: UUID,

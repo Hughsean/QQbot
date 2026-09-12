@@ -36,6 +36,7 @@ class Runs:
     result: AgentFinal
     failure: Exception | None = None
     snapshots: list[ConversationSnapshot | None] = field(default_factory=list)
+    context_failures: list[str] = field(default_factory=list)
 
     async def get(self, run_id: UUID) -> AgentRun | None:
         return self.run if run_id == self.run.run_id else None
@@ -66,6 +67,12 @@ class Runs:
             self.run.effective_delivery = delivery
         return self.run.effective_delivery
 
+    async def fail_before_execution(self, run_id: UUID, failure_class: str) -> None:
+        assert run_id == self.run.run_id
+        self.run.status = AgentRunStatus.FAILED
+        self.run.failure_class = failure_class
+        self.context_failures.append(failure_class)
+
 
 @dataclass
 class Content:
@@ -83,6 +90,15 @@ class Context:
     async def assemble(self, *args: object, **kwargs: object) -> AgentContextResult:
         del args
         return AgentContextResult("事件上下文", snapshot=kwargs.get("snapshot"))
+
+
+@dataclass
+class FailingContext(Context):
+    error: Exception
+
+    async def assemble(self, *args: object, **kwargs: object) -> AgentContextResult:
+        del args, kwargs
+        raise self.error
 
 
 @dataclass
@@ -237,6 +253,20 @@ async def test_invalid_agent_response_is_permanently_classified_without_notifica
     with pytest.raises(PermanentJobError, match="InvalidAgentResponse"):
         await handler(job)
     assert notifications.requests == []
+
+
+@pytest.mark.asyncio
+async def test_invalid_context_marks_run_failed_and_is_not_retried() -> None:
+    handler, job, _ = _handler(AgentDelivery.HOLD)
+    handler._context = FailingContext(ValueError("empty optimized query"))
+    runs = handler._runs
+    assert isinstance(runs, Runs)
+
+    with pytest.raises(PermanentJobError, match="InvalidAgentContext"):
+        await handler(job)
+
+    assert runs.run.status is AgentRunStatus.FAILED
+    assert runs.context_failures == ["InvalidAgentContext"]
 
 
 @pytest.mark.asyncio

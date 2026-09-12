@@ -407,7 +407,7 @@ async def test_owner_command_errors_are_safe_and_provider_details_are_hidden() -
         OwnerConfig(SecretStr("owner")), FailingIngress(ValueError("bad command")), FixedClock(now)
     )
     assert await expected.process("owner", "m1", "bad", now) == (
-        "小智\N{FULLWIDTH COLON}无法执行: bad command"
+        "小智\N{FULLWIDTH COLON}请求内容无法处理, 请补充或调整后重试。"
     )
     unexpected = QqMessageProcessor(
         OwnerConfig(SecretStr("owner")),

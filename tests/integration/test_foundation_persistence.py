@@ -334,6 +334,45 @@ async def test_agent_run_claim_reclaims_expiry_and_fences_stale_owner(
 
 
 @pytest.mark.asyncio
+async def test_agent_run_can_fail_before_execution_without_leaving_pending_row(
+    engine: AsyncEngine,
+) -> None:
+    sessions = async_sessionmaker(engine, expire_on_commit=False)
+    repository = SqlAgentRunRepository(sessions)
+    now = datetime(2026, 9, 12, tzinfo=UTC)
+    run_id = uuid4()
+    inbox_item_id = uuid4()
+    row = AgentRunRow(
+        run_id=run_id,
+        inbox_item_id=inbox_item_id,
+        user_id="owner",
+        source_type="QQ_DIRECT",
+        status=AgentRunStatus.PENDING.value,
+        step=0,
+        observations=[],
+        created_at=now,
+        updated_at=now,
+        version=1,
+        execution_epoch=0,
+    )
+    async with sessions.begin() as session:
+        session.add(row)
+    try:
+        failed = await repository.fail_unclaimed(
+            run_id,
+            "InvalidAgentContext",
+            now + timedelta(seconds=1),
+        )
+        assert failed.status is AgentRunStatus.FAILED
+        assert failed.failure_class == "InvalidAgentContext"
+        assert failed.execution_owner is None
+        assert failed.execution_lease_until is None
+    finally:
+        async with sessions.begin() as session:
+            await session.execute(delete(AgentRunRow).where(AgentRunRow.run_id == run_id))
+
+
+@pytest.mark.asyncio
 async def test_stale_job_attempt_cannot_settle_newer_lease(engine: AsyncEngine) -> None:
     sessions = async_sessionmaker(engine, expire_on_commit=False)
     queue = SqlJobQueue(sessions)

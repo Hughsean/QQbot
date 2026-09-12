@@ -141,6 +141,7 @@ class Runs:
     ensured: list[UUID] = field(default_factory=list)
     executed: list[tuple[UUID, str, str]] = field(default_factory=list)
     snapshot: ConversationSnapshot | None = None
+    failures: list[str] = field(default_factory=list)
 
     async def ensure_run(
         self,
@@ -180,6 +181,10 @@ class Runs:
         self.executed.append((run_id, message, context))
         return AgentFinal("Agent已处理", AgentDelivery.HOLD)
 
+    async def fail_before_execution(self, run_id: UUID, failure_class: str) -> None:
+        assert run_id == self.run_id
+        self.failures.append(failure_class)
+
 
 class Context:
     async def build(self, *args: object, **kwargs: object) -> str:
@@ -189,6 +194,12 @@ class Context:
     async def assemble(self, *args: object, **kwargs: object) -> AgentContextResult:
         del args
         return AgentContextResult("历史上下文", snapshot=kwargs.get("snapshot"))
+
+
+class FailingContext(Context):
+    async def assemble(self, *args: object, **kwargs: object) -> AgentContextResult:
+        del args, kwargs
+        raise ValueError("invalid context")
 
 
 def _router(
@@ -235,6 +246,19 @@ async def test_direct_message_uses_one_persistent_agent_run() -> None:
     assert reply == "小智\N{FULLWIDTH COLON}Agent已处理"
     assert len(inbox.envelopes) == len(runs.ensured) == len(runs.executed) == 1
     assert queue.values[0].kind == "agent-run"
+
+
+@pytest.mark.asyncio
+async def test_direct_context_failure_marks_pending_run_failed() -> None:
+    inbox, queue, runs = Inbox(), Queue(), Runs()
+    router = _router(inbox, queue, runs)
+    router._agent_context = FailingContext()
+
+    with pytest.raises(ValueError, match="invalid context"):
+        await router.receive(_envelope("?"), "?")
+
+    assert runs.failures == ["ValueError"]
+    assert runs.executed == []
 
 
 @pytest.mark.asyncio

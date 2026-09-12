@@ -1,6 +1,7 @@
 """Owner-only QQ ingress routing with persistent AgentRun execution."""
 
 import logging
+from contextlib import suppress
 from datetime import timedelta
 
 from qq_time_agent.adapters.inbound.qq.message_syntax import (
@@ -117,16 +118,21 @@ class QqCommandRouter:
                 "QQ Agent 恢复任务入队失败: 继续当前安全执行",
                 extra={"role": "qq", "path": "agent", "run_id": str(run.run_id)},
             )
-        assembled = await self._agent_context.assemble(
-            "owner",
-            content,
-            before=envelope.occurred_at,
-            exclude_id=ingested.inbox_item_id,
-            conversation_id=run.conversation_id,
-            event_case_id=run.event_case_id,
-            run_id=run.run_id,
-            snapshot=_run_snapshot(run),
-        )
+        try:
+            assembled = await self._agent_context.assemble(
+                "owner",
+                content,
+                before=envelope.occurred_at,
+                exclude_id=ingested.inbox_item_id,
+                conversation_id=run.conversation_id,
+                event_case_id=run.event_case_id,
+                run_id=run.run_id,
+                snapshot=_run_snapshot(run),
+            )
+        except Exception as exc:
+            with suppress(Exception):
+                await self._agent_runs.fail_before_execution(run.run_id, type(exc).__name__)
+            raise
         raw_outcome = await self._agent_runs.execute(
             run.run_id, content, assembled.context, assembled.messages, assembled.snapshot
         )

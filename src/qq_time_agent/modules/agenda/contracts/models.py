@@ -78,6 +78,10 @@ class AgendaNotificationQueryPort(Protocol):
 
 
 class AgendaQueryPort(Protocol):
+    async def list_active(
+        self, range_start: datetime, range_end: datetime
+    ) -> tuple[AgendaEntryView, ...]: ...
+
     async def get_busy_intervals(
         self, range_start: datetime, range_end: datetime
     ) -> tuple[BusyInterval, ...]: ...

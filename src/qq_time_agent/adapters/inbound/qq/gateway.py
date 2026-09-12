@@ -235,8 +235,12 @@ class QqMessageProcessor:
                 "QQ Agent 模型响应格式异常", extra={"failure_class": "InvalidAgentResponse"}
             )
             return self._direct_reply("模型回复格式异常, 请稍后重试.")
-        except (LookupError, PermissionError, ValueError) as exc:
-            return self._direct_reply(f"无法执行: {exc}")
+        except PermissionError:
+            return self._direct_reply("当前操作未获授权。")
+        except LookupError:
+            return self._direct_reply("没有找到可操作的目标, 请确认名称或条件。")
+        except ValueError:
+            return self._direct_reply("请求内容无法处理, 请补充或调整后重试。")
         except Exception as exc:
             LOGGER.exception(
                 "QQ command processing failed",
@@ -333,9 +337,7 @@ class _BotpyClient(botpy.Client):  # type: ignore[misc]
         return _delivery_id(result)
 
     async def send_message(self, openid: str, message: NotificationMessage) -> str:
-        keyboard = {
-            "content": {"rows": [{"buttons": [_button(a) for a in message.actions]}]}
-        }
+        keyboard = {"content": {"rows": [{"buttons": [_button(a) for a in message.actions]}]}}
         result = await self.api.post_c2c_message(
             openid=openid,
             msg_type=2,

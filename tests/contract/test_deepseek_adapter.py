@@ -146,7 +146,34 @@ async def test_deepseek_retries_transient_and_rejects_invalid_output() -> None:
     )
     with pytest.raises(ModelFailure, match="InvalidOutput"):
         await adapter.invoke(_request(ModelRoute.REASONING))
-    assert calls == 2 and delays == [1.0]
+    assert calls == 3 and delays == [1.0]
+
+
+@pytest.mark.asyncio
+async def test_deepseek_retries_one_invalid_json_response() -> None:
+    calls = 0
+
+    async def handler(_: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        content = "not-json" if calls == 1 else '{"kind":"TASK"}'
+        return httpx.Response(
+            200,
+            json={
+                "model": "deepseek-v4-flash",
+                "choices": [{"finish_reason": "stop", "message": {"content": content}}],
+                "usage": {"prompt_tokens": 1, "completion_tokens": 1},
+            },
+        )
+
+    adapter = DeepSeekStructuredAdapter(
+        _config(), httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    )
+
+    response = await adapter.invoke(_request())
+
+    assert calls == 2
+    assert response.output == {"kind": "TASK"}
 
 
 @pytest.mark.asyncio
