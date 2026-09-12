@@ -95,3 +95,16 @@ async def test_deleted_agenda_entry_invalidates_pending_digest() -> None:
     )
     service = NotificationSourceEligibilityService(Preferences(), Agenda(()), Connections(True))
     assert not await service.eligible_at(value, NOW)
+
+
+@pytest.mark.asyncio
+async def test_direct_agent_recovery_result_is_delivery_eligible() -> None:
+    value = _intent(
+        NotificationKind.QQ_DIRECT_AGENT_RESULT,
+        "agent-run:direct-recovery",
+        "agent-run:direct-recovery:v1",
+        "恢复结果",
+    )
+    service = NotificationSourceEligibilityService(Preferences(), Agenda(()), Connections(True))
+
+    assert await service.eligible_at(value, NOW) == NOW

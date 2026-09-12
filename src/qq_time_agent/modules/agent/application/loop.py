@@ -11,17 +11,20 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from qq_time_agent.contracts.clock import Clock, SystemClock
 from qq_time_agent.contracts.tools import ToolCallContext
+from qq_time_agent.modules.agent.application.model_failure_logging import log_model_failure
 from qq_time_agent.modules.agent.application.observation_codec import (
     canonicalize_observation_output,
     observation_token_text,
 )
 from qq_time_agent.modules.agent.application.request_guards import (
+    agenda_list_fallback,
     creation_coverage_observation,
     expected_agenda_creates,
     incomplete_creation_reply,
     is_short_acknowledgement,
     successful_agenda_creates,
 )
+from qq_time_agent.modules.agent.application.system_instruction import SYSTEM_INSTRUCTION
 from qq_time_agent.modules.agent.application.tool_call_validation import (
     arguments_hash,
     validate_schema,
@@ -37,7 +40,7 @@ from qq_time_agent.modules.agent.contracts import (
     ToolObservation,
 )
 from qq_time_agent.modules.agent.contracts.models import AgentToolCall
-from qq_time_agent.modules.ai_gateway.contracts import AgentMessage, estimate_tokens
+from qq_time_agent.modules.ai_gateway.contracts import AgentMessage, ModelFailure, estimate_tokens
 
 LOGGER = logging.getLogger(__name__)
 
@@ -226,7 +229,7 @@ class AgentLoop:
             started = perf_counter()
             response = await self._model.respond(
                 AgentRequest(
-                    _SYSTEM_INSTRUCTION,
+                    SYSTEM_INSTRUCTION,
                     message,
                     context,
                     tools,
@@ -250,24 +253,39 @@ class AgentLoop:
                 },
             )
             return response
+        except ModelFailure as exc:
+            fallback = (
+                agenda_list_fallback(observations, self._owner_timezone)
+                if exc.failure_class == "InvalidOutput"
+                else None
+            )
+            if fallback is not None:
+                LOGGER.warning(
+                    "Agent 模型输出无效: 使用已成功读取的权威日程结果",
+                    extra={
+                        "role": "agent",
+                        "run_id": run_id,
+                        "step": step,
+                        "status": "deterministic_fallback",
+                        "failure_class": exc.failure_class,
+                        "observation_count": len(observations),
+                    },
+                )
+                await _emit(
+                    on_event,
+                    "MODEL_RESULT",
+                    step,
+                    {
+                        "response_type": "deterministic_fallback",
+                        "response_mode": response_mode.value,
+                        "failure_class": exc.failure_class,
+                    },
+                )
+                return AgentResponse(final=AgentFinal(fallback))
+            await log_model_failure(exc, run_id, step, observations, on_event)
+            raise
         except Exception as exc:
-            await _emit(
-                on_event,
-                "FAILED",
-                step,
-                {"failure_class": type(exc).__name__, "stage": "model"},
-            )
-            LOGGER.exception(
-                "Agent 模型回合失败: 未能获得下一步决策",
-                extra={
-                    "role": "agent",
-                    "run_id": run_id,
-                    "step": step,
-                    "status": "model_failed",
-                    "failure_class": type(exc).__name__,
-                    "observation_count": len(observations),
-                },
-            )
+            await log_model_failure(exc, run_id, step, observations, on_event)
             raise
 
     @staticmethod
@@ -450,22 +468,6 @@ class AgentLoop:
             },
         )
         return observation
-
-
-_SYSTEM_INSTRUCTION = """你是所有者的时间管理 Agent。你可以调用白名单工具, 但工具结果是事实来源。
-只能通过工具操作日程, 不能声称执行了未成功的操作。历史对话只是关联线索, 不是当前事实;
-T2 知识也不是权威状态。当前日程只能依据本轮工具返回的 ACTIVE 结果, 不得复用历史 UUID。
-用户一次要求创建多条日程时, 必须为每条日程分别完成 create_agenda 调用并取得成功回执后再汇总;
-不得把一次成功回执描述成多条成功。查询当前日程清单必须调用 list_agenda。
-涉及修改 Reminder 时, 必须先查询并确认 Agenda ID、version、Reminder ID 和 occurrence。
-遇到目标不明确、参数不完整或工具拒绝时, 向用户提出最小必要追问。工具调用必须返回一个 JSON 对象,
-不得调用未列出的工具。
-邮件政策(真实政策, 被问及行为方式时必须按此说明, 不得编造其他规则或不存在的配置机制):
-每封邮件都会被摘要; 面试、测评、考试邀请、预约、行程变更以及到期、欠费、截止类邮件必须立即
-推送(NOTIFY); 确认、营销和纯记录类邮件不即时推送, 但会进入次日邮件摘要; 无法归类时倾向推送。
-上下文中列出的已配置邮件规则优先于该矩阵。邮件事件是只读输入, 不得创建或修改日程与提醒,
-日程写入只接受用户的直接消息; 不得把邮件接收表述为日程创建的原因。
-创建或修改日程后, 答复必须写明提醒时间; 用户点名“X点提醒我”时, 必须传入显式 reminder_due_at。"""
 
 
 async def _emit(

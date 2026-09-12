@@ -51,6 +51,7 @@ def _label(kind: NotificationKind) -> str:
         NotificationKind.CONNECTION_REAUTH: "系统通知",
         NotificationKind.OUTLOOK_MAIL_RESULT: "邮件处理\N{FULLWIDTH VERTICAL LINE}Outlook",
         NotificationKind.QQ_MAIL_RESULT: "邮件处理\N{FULLWIDTH VERTICAL LINE}QQ邮箱",
+        NotificationKind.QQ_DIRECT_AGENT_RESULT: "处理结果",
         NotificationKind.AGENT_RESULT: "邮件处理",
     }
     return labels[kind]

@@ -8,6 +8,7 @@ from qq_time_agent.modules.notifications.application.agent_results import (
     AgentMailResultNotificationService,
 )
 from qq_time_agent.modules.notifications.contracts import (
+    AgentDirectResultRequest,
     AgentMailResultRequest,
     MailNotificationSource,
 )
@@ -69,3 +70,19 @@ async def test_mail_result_intent_preserves_provider_origin(
     assert draft.kind.value == expected_kind
     assert draft.idempotency_key == f"agent-run:{run_id}:result:v1"
     assert draft.content == "主题\N{FULLWIDTH COLON}项目评审\n\n处理完成"
+
+
+@pytest.mark.asyncio
+async def test_direct_recovery_result_uses_dedicated_idempotent_intent() -> None:
+    repository = Repository()
+    run_id = uuid4()
+
+    await AgentMailResultNotificationService(repository).schedule_agent_direct_result(
+        AgentDirectResultRequest("owner", run_id, "恢复后的日程清单", NOW)
+    )
+
+    draft = repository.drafts[0]
+    assert draft.kind.value == "QQ_DIRECT_AGENT_RESULT"
+    assert draft.subject_key == f"agent-run:{run_id}:qq-direct-recovery"
+    assert draft.idempotency_key == f"agent-run:{run_id}:qq-direct-recovery:v1"
+    assert draft.content == "恢复后的日程清单"

@@ -31,6 +31,8 @@ class NotificationSourceEligibilityService:
         self._connections = connections
 
     async def eligible_at(self, intent: NotificationIntent, now: datetime) -> datetime | None:
+        if intent.draft.kind is NotificationKind.QQ_DIRECT_AGENT_RESULT:
+            return now
         preferences = await self._preferences.get_preferences(intent.draft.user_id)
         eligible = False
         if intent.draft.kind is NotificationKind.DAILY_DIGEST:

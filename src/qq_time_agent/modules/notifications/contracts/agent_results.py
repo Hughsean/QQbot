@@ -28,5 +28,21 @@ class AgentMailResultRequest:
             raise ValueError("agent mail notification time must be timezone-aware")
 
 
+@dataclass(frozen=True, slots=True)
+class AgentDirectResultRequest:
+    user_id: str
+    run_id: UUID
+    content: str
+    available_at: datetime
+
+    def __post_init__(self) -> None:
+        if not self.user_id.strip() or not self.content.strip():
+            raise ValueError("agent direct notification fields are required")
+        if self.available_at.tzinfo is None or self.available_at.utcoffset() is None:
+            raise ValueError("agent direct notification time must be timezone-aware")
+
+
 class NotificationIntentCommandPort(Protocol):
     async def schedule_agent_mail_result(self, request: AgentMailResultRequest) -> None: ...
+
+    async def schedule_agent_direct_result(self, request: AgentDirectResultRequest) -> None: ...

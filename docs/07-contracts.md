@@ -231,6 +231,12 @@ Notifications 保存稳定投递键和 QQ 回执；相同 Proposal 版本、Acti
 回复。因此“Provider 已接收但本地回执事务尚未提交时进程崩溃”仍是一个极窄重复窗口，必须通过
 重复发送监控与用户可见的 Reminder 标识审计，不能声称 Provider 提供 exactly-once。
 
+QQ 直接消息的同步执行会直接回复当前消息，其 30 秒延迟 Job 只用于崩溃或 Provider 失败恢复。
+同步路径已完成的 Job 必须无副作用结束；只有 Worker 实际完成的 `QQ_DIRECT` Run 才冻结
+`NOTIFY` 恢复标记并创建 `QQ_DIRECT_AGENT_RESULT` intent。该 intent 按 Run ID 幂等，不依赖邮件
+来源，也不受邮件静默时段影响。若 `list_agenda` 已成功而最终模型 JSON 无效，Agent Harness 必须
+直接使用该权威观察结果生成清单，不得返回通用失败或复用历史日程文本。
+
 ### EmbeddingPort
 
 ```text

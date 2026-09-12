@@ -13,6 +13,7 @@ class NotificationKind(StrEnum):
     CONNECTION_REAUTH = "CONNECTION_REAUTH"
     OUTLOOK_MAIL_RESULT = "OUTLOOK_MAIL_RESULT"
     QQ_MAIL_RESULT = "QQ_MAIL_RESULT"
+    QQ_DIRECT_AGENT_RESULT = "QQ_DIRECT_AGENT_RESULT"
     # Only retained so historical persisted intents can still be read and settled.
     AGENT_RESULT = "AGENT_RESULT"
 

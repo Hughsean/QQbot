@@ -2,6 +2,7 @@
 
 from qq_time_agent.modules.notifications.application.ports import NotificationIntentRepository
 from qq_time_agent.modules.notifications.contracts.agent_results import (
+    AgentDirectResultRequest,
     AgentMailResultRequest,
     MailNotificationSource,
 )
@@ -24,6 +25,20 @@ class AgentMailResultNotificationService:
                 f"agent-run:{request.run_id}:result:v1",
                 "agent-result-v2",
                 _mail_result_body(request.subject, request.content),
+                request.available_at,
+            ),
+            request.available_at,
+        )
+
+    async def schedule_agent_direct_result(self, request: AgentDirectResultRequest) -> None:
+        await self._repository.add_or_get(
+            NotificationIntentDraft(
+                request.user_id,
+                NotificationKind.QQ_DIRECT_AGENT_RESULT,
+                f"agent-run:{request.run_id}:qq-direct-recovery",
+                f"agent-run:{request.run_id}:qq-direct-recovery:v1",
+                "agent-direct-result-v1",
+                request.content.strip()[:4000],
                 request.available_at,
             ),
             request.available_at,

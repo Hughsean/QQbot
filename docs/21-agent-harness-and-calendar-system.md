@@ -33,6 +33,11 @@ the QQ process may execute a newly queued run immediately, while the queued job 
 recovery path. A repeated provider message reuses the same run and cannot repeat a completed tool
 call. Transient model, retrieval and infrastructure failures are retried; policy rejection, stale
 version and ambiguity are observations; unexpected programming failures terminate the attempt.
+For `QQ_DIRECT`, a queued recovery job does nothing when the synchronous path already completed the
+run. If the Worker itself completes a previously failed run, it freezes a dedicated recovery
+delivery marker and creates one idempotent `QQ_DIRECT_AGENT_RESULT` intent; a retry after a crash
+replays that intent without repeating Agent execution. This path never asks for a mail notification
+source and does not apply mail quiet-hour policy to the delayed answer of an active user request.
 
 `AgentRun` is not a logical conversation. QQ direct messages attach to a durable `Conversation`
 identified by the owner channel/thread. Eligible mail attaches to an `EventCase` identified by the
@@ -110,6 +115,10 @@ successful `create_agenda` receipts and rejects an early final response until th
 covered. If the bounded loop cannot complete every entry, it reports the exact confirmed fraction
 instead of claiming that the whole request succeeded. Short acknowledgement-only QQ turns are
 completed deterministically with a short acknowledgement and do not replay agenda context.
+If `list_agenda` has already returned a valid successful observation but DeepSeek exhausts its
+bounded retries with an empty or otherwise invalid JSON response, the harness renders the ACTIVE
+items directly from that observation. It never falls back to conversation history and never turns a
+successful authoritative read into a generic processing failure.
 
 The facade performs no Agenda or Reminder write itself. Every mutation creates or reuses a
 persistent Actions-owned `ActionRequest`; Actions is the only component allowed to call Agenda and
@@ -117,6 +126,10 @@ Reminder command ports. Action execution records authorization, operation type, 
 target version, outcome and audit event. Agenda changes cancel reminders for the previous version
 and create idempotent reminders for the new version. Create and update both reject overlapping
 active entries, excluding the update target itself.
+Completing an Agenda entry is a versioned state transition from `ACTIVE` to `COMPLETED`, not a
+physical delete. The retained row supports audit, idempotency and stale-interaction rejection, while
+all current-agenda reads exclude it. User-facing responses must not describe a completed row as a
+current Agenda item or claim that it was deleted or archived.
 
 Authorization is supplied explicitly through a Calendar-owned authorization port during Bootstrap.
 The principal comes from the authenticated AgentRun; Calendar System has no default or caller-
@@ -134,8 +147,9 @@ cannot become calendar truth.
 If normalization or query rewriting removes every searchable token, retrieval returns no chunks and
 does not call the embedding provider. Context-assembly failures are persisted on the AgentRun before
 the immediate or recovery path returns; permanent input failures are not retried as transient
-provider failures. Provider JSON output that is malformed receives one bounded retry before the
-stable protocol-error response is used, and internal exception text is never returned over QQ.
+provider failures. Provider JSON output that is malformed receives bounded retries; `InvalidOutput`
+remains retryable at the durable AgentRun boundary because a later provider response may be valid.
+Internal exception text is never returned over QQ.
 
 Understanding is optional structured extraction, not an AgentRun gate. QQ direct messages and
 eligible mail create/queue AgentRuns after deterministic normalization. Batch extraction may produce

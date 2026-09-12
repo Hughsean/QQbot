@@ -10,6 +10,7 @@ from qq_time_agent.modules.notifications.contracts.actions import (
     ReminderActionTokenPort,
 )
 from qq_time_agent.modules.notifications.contracts.agent_results import (
+    AgentDirectResultRequest,
     AgentMailResultRequest,
     MailNotificationSource,
     NotificationIntentCommandPort,
@@ -25,6 +26,7 @@ from qq_time_agent.modules.notifications.contracts.models import (
 )
 
 __all__ = [
+    "AgentDirectResultRequest",
     "AgentMailResultRequest",
     "DeliveryRef",
     "InteractionDispatcher",

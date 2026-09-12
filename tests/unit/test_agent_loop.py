@@ -29,6 +29,7 @@ from qq_time_agent.modules.agent.contracts import (
     AgentToolCall,
     ToolObservation,
 )
+from qq_time_agent.modules.ai_gateway.contracts import ModelFailure
 
 
 @dataclass
@@ -113,6 +114,61 @@ class CalendarTools:
         return {"status": "SUCCEEDED", "title": arguments["title"]}
 
 
+class AgendaListTools:
+    def definitions(self) -> tuple[ToolDefinition, ...]:
+        return (
+            ToolDefinition(
+                "list_agenda",
+                "list",
+                {
+                    "type": "object",
+                    "properties": {
+                        "range_start": {"type": "string"},
+                        "range_end": {"type": "string"},
+                        "timezone": {"type": "string"},
+                    },
+                    "required": ["range_start", "range_end", "timezone"],
+                },
+            ),
+        )
+
+    async def call(
+        self,
+        owner_id: str,
+        name: str,
+        arguments: Mapping[str, object],
+        context: object,
+    ) -> object:
+        del arguments, context
+        assert owner_id == "owner" and name == "list_agenda"
+        return {
+            "status": "SUCCEEDED",
+            "count": 2,
+            "items": [
+                {
+                    "agenda_entry_id": "473176a9-beec-4d02-962d-e2b4fa9dc91f",
+                    "title": "南瑞继保测评",
+                    "starts_at": "2026-09-12T18:00:00+08:00",
+                    "ends_at": "2026-09-12T19:00:00+08:00",
+                    "timezone": "Asia/Shanghai",
+                    "calendar_timezone": "Asia/Shanghai",
+                    "version": 1,
+                    "status": "ACTIVE",
+                },
+                {
+                    "agenda_entry_id": "93af930d-5ad1-49a6-91f3-bc609e81b02b",
+                    "title": "面试开手机录音",
+                    "starts_at": "2026-09-13T10:00:00+08:00",
+                    "ends_at": "2026-09-13T10:30:00+08:00",
+                    "timezone": "Asia/Shanghai",
+                    "calendar_timezone": "Asia/Shanghai",
+                    "version": 1,
+                    "status": "ACTIVE",
+                },
+            ],
+        }
+
+
 @pytest.mark.asyncio
 async def test_short_acknowledgement_does_not_repeat_context_or_call_model() -> None:
     model = Model([])
@@ -147,6 +203,38 @@ async def test_explicit_multi_create_cannot_finalize_after_only_one_receipt() ->
     assert result.content == "两个日程均已创建"
     assert [call["title"] for call in tools.calls] == ["蔚来笔试", "南瑞继保测评"]
     assert model.requests[2].observations[-1].name == "creation_coverage_guard"
+
+
+@pytest.mark.asyncio
+async def test_successful_agenda_list_survives_empty_model_final_output() -> None:
+    class ModelWithEmptyFinal:
+        calls = 0
+
+        async def respond(self, request: AgentRequest) -> AgentResponse:
+            self.calls += 1
+            if self.calls == 1:
+                return AgentResponse(
+                    tool_call=AgentToolCall(
+                        "list-1",
+                        "list_agenda",
+                        {
+                            "range_start": "2026-09-12T00:00:00+08:00",
+                            "range_end": "2026-09-14T00:00:00+08:00",
+                            "timezone": "Asia/Shanghai",
+                        },
+                    )
+                )
+            raise ModelFailure("InvalidOutput")
+
+    result = await AgentLoop(ModelWithEmptyFinal(), AgendaListTools()).run(
+        "owner", "当前日程系统有哪些"
+    )
+
+    assert result.content == (
+        "当前日程系统共有 2 条 ACTIVE 日程 (时区 Asia/Shanghai):\n\n"
+        "1. 南瑞继保测评 - 2026-09-12 18:00-19:00, version 1\n"
+        "2. 面试开手机录音 - 2026-09-13 10:00-10:30, version 1"
+    )
 
 
 async def test_agent_loop_observes_tool_then_reports_final() -> None:
@@ -413,3 +501,15 @@ def test_agent_instruction_declares_owner_timezone_and_reference_time() -> None:
     assert "所有者本地时区" in instruction
     assert "owner_timezone" in instruction
     assert "reference_time" in instruction
+
+
+@pytest.mark.asyncio
+async def test_agent_instruction_distinguishes_completed_records_from_active_agenda() -> None:
+    model = CapturingModel()
+
+    await AgentLoop(model, Tools()).run("owner", "已完成的日程为什么还在库里")
+
+    assert model.request is not None
+    assert "COMPLETED" in model.request.system_instruction
+    assert "不会物理删除" in model.request.system_instruction
+    assert "不再属于当前 ACTIVE 日程" in model.request.system_instruction

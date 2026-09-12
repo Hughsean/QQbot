@@ -32,6 +32,7 @@ from qq_time_agent.modules.inbox.contracts import (
 )
 from qq_time_agent.modules.notifications.application.mail_delivery import MailDeliveryPolicy
 from qq_time_agent.modules.notifications.contracts import (
+    AgentDirectResultRequest,
     AgentMailResultRequest,
     MailNotificationSource,
     NotificationIntentCommandPort,
@@ -64,11 +65,7 @@ class AgentRunJobHandler:
             raise PermanentJobError("MissingAgentRun")
         persisted = _persisted_final(run)
         if persisted is not None:
-            effective = await self._freeze_effective_delivery(run, persisted)
-            if effective is AgentDelivery.HOLD:
-                return
-            item = await self._require_content(item_id)
-            await self._schedule_notification(run, item, persisted)
+            await self._deliver_persisted(run, item_id, persisted)
             return
 
         item = await self._require_content(item_id)
@@ -86,6 +83,7 @@ class AgentRunJobHandler:
                 "RateLimit",
                 "ProviderUnavailable",
                 "UnexpectedProvider",
+                "InvalidOutput",
             }:
                 raise RetryableJobError(exc.failure_class) from exc
             raise PermanentJobError(exc.failure_class) from exc
@@ -93,9 +91,31 @@ class AgentRunJobHandler:
             raise RetryableJobError("AgentRunInProgress")
         if outcome.final is None:
             raise PermanentJobError("MalformedAgentRunResult")
-        effective_delivery = await self._freeze_effective_delivery(run, outcome.final)
+        await self._deliver_executed(run, item, outcome.final)
+
+    async def _deliver_persisted(
+        self, run: AgentRun, item_id: UUID, result: AgentFinal
+    ) -> None:
+        if run.source_type == "QQ_DIRECT":
+            if run.effective_delivery is AgentDelivery.NOTIFY:
+                await self._schedule_direct_notification(run, result)
+            return
+        effective_delivery = await self._freeze_effective_delivery(run, result)
+        if effective_delivery is AgentDelivery.HOLD:
+            return
+        item = await self._require_content(item_id)
+        await self._schedule_notification(run, item, result)
+
+    async def _deliver_executed(
+        self, run: AgentRun, item: InboxContentView, result: AgentFinal
+    ) -> None:
+        if run.source_type == "QQ_DIRECT":
+            await self._freeze_direct_recovery(run)
+            await self._schedule_direct_notification(run, result)
+            return
+        effective_delivery = await self._freeze_effective_delivery(run, result)
         if effective_delivery is AgentDelivery.NOTIFY:
-            await self._schedule_notification(run, item, outcome.final)
+            await self._schedule_notification(run, item, result)
 
     async def _assemble_context(self, run: AgentRun, item: InboxContentView) -> AgentContextResult:
         try:
@@ -133,6 +153,14 @@ class AgentRunJobHandler:
         proposed = await self._effective_delivery(run, result)
         try:
             return await self._runs.freeze_effective_delivery(run.run_id, proposed)
+        except Exception as exc:
+            raise RetryableJobError("AgentDeliveryPersistenceFailed") from exc
+
+    async def _freeze_direct_recovery(self, run: AgentRun) -> None:
+        if run.effective_delivery is AgentDelivery.NOTIFY:
+            return
+        try:
+            await self._runs.freeze_effective_delivery(run.run_id, AgentDelivery.NOTIFY)
         except Exception as exc:
             raise RetryableJobError("AgentDeliveryPersistenceFailed") from exc
 
@@ -177,6 +205,21 @@ class AgentRunJobHandler:
                     run.run_id,
                     notification_source,
                     item.subject,
+                    result.content,
+                    self._clock.now(),
+                )
+            )
+        except Exception as exc:
+            raise RetryableJobError("AgentNotificationPersistenceFailed") from exc
+
+    async def _schedule_direct_notification(self, run: AgentRun, result: AgentFinal) -> None:
+        if self._notifications is None or self._clock is None:
+            raise PermanentJobError("AgentNotificationUnavailable")
+        try:
+            await self._notifications.schedule_agent_direct_result(
+                AgentDirectResultRequest(
+                    run.user_id,
+                    run.run_id,
                     result.content,
                     self._clock.now(),
                 )

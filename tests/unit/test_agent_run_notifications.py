@@ -25,7 +25,10 @@ from qq_time_agent.modules.inbox.contracts import (
     InboxSourceView,
     MailDeliverySourceView,
 )
-from qq_time_agent.modules.notifications.contracts import AgentMailResultRequest
+from qq_time_agent.modules.notifications.contracts import (
+    AgentDirectResultRequest,
+    AgentMailResultRequest,
+)
 
 NOW = datetime(2026, 8, 26, tzinfo=UTC)
 
@@ -138,9 +141,13 @@ class FailingSource(Source):
 @dataclass
 class Notifications:
     requests: list[AgentMailResultRequest] = field(default_factory=list)
+    direct_requests: list[AgentDirectResultRequest] = field(default_factory=list)
 
     async def schedule_agent_mail_result(self, request: AgentMailResultRequest) -> None:
         self.requests.append(request)
+
+    async def schedule_agent_direct_result(self, request: AgentDirectResultRequest) -> None:
+        self.direct_requests.append(request)
 
 
 class Clock:
@@ -220,11 +227,45 @@ async def test_mail_agent_notification_is_anchored_to_its_subject() -> None:
 
 
 @pytest.mark.asyncio
-async def test_non_mail_agent_notification_is_permanently_rejected() -> None:
-    handler, job, notifications = _handler(AgentDelivery.NOTIFY, "QQ_DIRECT")
-    with pytest.raises(PermanentJobError, match="UnsupportedAgentNotificationSource"):
-        await handler(job)
+async def test_qq_direct_recovery_schedules_dedicated_notification() -> None:
+    handler, job, notifications = _handler(AgentDelivery.HOLD, "QQ_DIRECT")
+
+    await handler(job)
+
+    runs = handler._runs
+    assert isinstance(runs, Runs)
+    assert runs.run.effective_delivery is AgentDelivery.NOTIFY
     assert notifications.requests == []
+    assert notifications.direct_requests[0].content == "已识别到时间变更"
+
+
+@pytest.mark.asyncio
+async def test_completed_qq_direct_run_without_recovery_marker_does_not_duplicate_reply() -> None:
+    handler, job, notifications = _handler(AgentDelivery.HOLD, "QQ_DIRECT")
+    runs = handler._runs
+    assert isinstance(runs, Runs)
+    runs.run.status = AgentRunStatus.COMPLETED
+    runs.run.final_content = "已同步返回"
+    runs.run.final_delivery = AgentDelivery.HOLD
+
+    await handler(job)
+
+    assert notifications.direct_requests == []
+
+
+@pytest.mark.asyncio
+async def test_completed_qq_direct_recovery_replays_persisted_notification() -> None:
+    handler, job, notifications = _handler(AgentDelivery.HOLD, "QQ_DIRECT")
+    runs = handler._runs
+    assert isinstance(runs, Runs)
+    runs.run.status = AgentRunStatus.COMPLETED
+    runs.run.final_content = "持久化恢复结果"
+    runs.run.final_delivery = AgentDelivery.HOLD
+    runs.run.effective_delivery = AgentDelivery.NOTIFY
+
+    await handler(job)
+
+    assert notifications.direct_requests[0].content == "持久化恢复结果"
 
 
 @pytest.mark.asyncio
@@ -306,7 +347,7 @@ async def test_completed_notify_replays_notification_without_agent_execution() -
         ("TimeoutOrNetwork", RetryableJobError),
         ("RateLimit", RetryableJobError),
         ("ProviderUnavailable", RetryableJobError),
-        ("InvalidOutput", PermanentJobError),
+        ("InvalidOutput", RetryableJobError),
         ("ContextBudgetExceeded", PermanentJobError),
     ],
 )
@@ -326,6 +367,10 @@ async def test_notification_persistence_failure_is_retryable() -> None:
 
     class FailingNotifications:
         async def schedule_agent_mail_result(self, request: AgentMailResultRequest) -> None:
+            del request
+            raise RuntimeError("database unavailable")
+
+        async def schedule_agent_direct_result(self, request: AgentDirectResultRequest) -> None:
             del request
             raise RuntimeError("database unavailable")
 

@@ -2,6 +2,7 @@
 
 import json
 import re
+from datetime import datetime
 
 from qq_time_agent.modules.agent.application.observation_codec import (
     canonicalize_observation_output,
@@ -106,3 +107,56 @@ def incomplete_creation_reply(expected: int, succeeded: int) -> str:
         f"本次仅确认成功创建 {succeeded}/{expected} 条日程; "
         "其余条目未确认成功, 请重新发送未完成项。"
     )
+
+
+def agenda_list_fallback(
+    observations: list[ToolObservation], owner_timezone: str
+) -> str | None:
+    """Render a successful authoritative list when final model output is unusable."""
+    for observation in reversed(observations):
+        if observation.name != "list_agenda" or observation.is_error:
+            continue
+        output = _json_object(observation.output)
+        if output is None or output.get("status") != "SUCCEEDED":
+            continue
+        items = output.get("items")
+        if not isinstance(items, list):
+            continue
+        lines = [_agenda_line(index, item) for index, item in enumerate(items, 1)]
+        if any(line is None for line in lines):
+            continue
+        if not lines:
+            return f"当前查询范围内没有 ACTIVE 日程 (时区 {owner_timezone})。"
+        header = f"当前日程系统共有 {len(lines)} 条 ACTIVE 日程 (时区 {owner_timezone}):"
+        return "\n".join((header, "", *(line for line in lines if line is not None)))
+    return None
+
+
+def _json_object(value: object) -> dict[str, object] | None:
+    try:
+        decoded = json.loads(str(value))
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return None
+    return decoded if isinstance(decoded, dict) else None
+
+
+def _agenda_line(index: int, value: object) -> str | None:
+    if not isinstance(value, dict) or value.get("status") != "ACTIVE":
+        return None
+    title = value.get("title")
+    version = value.get("version")
+    try:
+        starts = datetime.fromisoformat(str(value["starts_at"]))
+        ends = datetime.fromisoformat(str(value["ends_at"]))
+    except (KeyError, ValueError):
+        return None
+    if not isinstance(title, str) or not title.strip() or not isinstance(version, int):
+        return None
+    safe_title = " ".join(title.split())[:300]
+    start_text = starts.strftime("%Y-%m-%d %H:%M")
+    end_text = (
+        ends.strftime("%H:%M")
+        if ends.date() == starts.date()
+        else ends.strftime("%Y-%m-%d %H:%M")
+    )
+    return f"{index}. {safe_title} - {start_text}-{end_text}, version {version}"

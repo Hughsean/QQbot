@@ -118,3 +118,7 @@ async def test_reminder_version_gate_and_outbound_source_labels() -> None:
         render_outbound(NotificationKind.QQ_MAIL_RESULT, "主题\N{FULLWIDTH COLON}账单")
         == "[邮件处理\N{FULLWIDTH VERTICAL LINE}QQ邮箱]\n主题\N{FULLWIDTH COLON}账单"
     )
+    assert (
+        render_outbound(NotificationKind.QQ_DIRECT_AGENT_RESULT, "恢复后的日程清单")
+        == "[处理结果]\n恢复后的日程清单"
+    )
