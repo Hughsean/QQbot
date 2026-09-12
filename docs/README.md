@@ -106,3 +106,5 @@ QQ Time Agent 是一个仅供项目所有者本人使用、以 QQ 为主要交�
   数据库仍为 `0028_summary_contract`；Web readiness 的数据库与嵌入检查均通过。该发布修复了
   多日程请求只执行一条却汇报全部成功、当前日程清单未读取事实源、纯标点检索触发空 embedding、
   DeepSeek 非法结构化输出缺少重试、上下文失败遗留 PENDING 运行以及 QQ 暴露内部异常的问题。
+  同日使用本地 `.env` 中更新后的 `QQ_MAIL_BOOTSTRAP_AUTH_CODE` 完成真实 IMAP 校验和生产凭据更新，
+  QQ 邮箱连接已恢复为 ACTIVE；授权码值未进入日志、文档或 Git。

@@ -17,6 +17,7 @@
 - Agenda 与 Reminder 各 13 条，切换前后完整行摘要一致；
 - 南瑞继保测评日程为 ACTIVE，2026-09-12 18:00 Reminder 已为 SENT；
 - 纯标点请求遗留的 PENDING AgentRun 已修正为 `FAILED / InvalidAgentContext`。
+- QQ 邮箱已使用更新后的 bootstrap 授权码恢复为 ACTIVE，Worker bootstrap 成功。
 
 未经新一轮明确决定，不回填生产历史、不伪造观察样本、不移除 fallback。
 
@@ -112,7 +113,9 @@ git diff --check: passed（仅 Windows 换行提示）
 - 部署前后 Agenda 与 Reminder 各 13 条，完整行摘要完全一致；
 - 历史运行 `13d14d76-3344-4aa7-ad02-c1f96076bbf6` 已从 PENDING 修正为
   `FAILED / InvalidAgentContext`，对应死信错误类型同步纠正；
-- QQ 邮箱为 `REAUTH_REQUIRED`，旧授权码认证失败，需要所有者重新授权。
+- QQ 邮箱候选授权码真实 IMAP 登录通过；确认本地与远端配置只有授权码字段变化后完成原子替换，
+  连接状态为 ACTIVE，Worker bootstrap 成功且 restart count 为零；旧配置备份位于
+  `.deploy-backups/20260912-234500-qqmail-env`。
 
 ## 5. 生产历史与 fallback 记录
 
@@ -127,11 +130,10 @@ git diff --check: passed（仅 Windows 换行提示）
 
 本次问题修复、验证、部署和历史异常清理已经完成。以下动作依赖真实 owner 行为或新的明确决定：
 
-1. 所有者通过本机入口为 QQ 邮箱提供新 IMAP 授权码。
-2. 所有者可用“同一消息创建两条日程 → 查询当前日程”做一次真实验收；不要使用已有业务日程作为
+1. 所有者可用“同一消息创建两条日程 → 查询当前日程”做一次真实验收；不要使用已有业务日程作为
    删除或修改测试目标。
-3. 只读比较旧路径与 timeline 的聚合事件数、sequence 和稳定 identity hash。
-4. 经单独决定后获取脱敏历史并在本地专用库复验，再决定是否生产回填。
-5. 观察窗口稳定后才移除旧 fallback。
+2. 只读比较旧路径与 timeline 的聚合事件数、sequence 和稳定 identity hash。
+3. 经单独决定后获取脱敏历史并在本地专用库复验，再决定是否生产回填。
+4. 观察窗口稳定后才移除旧 fallback。
 
 详细证据见 `docs/24-agent-conversation-context-verification-report.md`。

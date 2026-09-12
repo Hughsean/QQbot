@@ -210,7 +210,11 @@ custom-format 备份及 SHA-256 校验；未修改生产 Caddy、SSHD 或 system
 均运行新版本且 restart count 为零，readiness 的 database/embeddings 均为 true。切换前后
 Agenda 与 Reminder 各 13 条，完整行摘要一致。历史纯标点请求遗留的 PENDING AgentRun 已修正为
 `FAILED / InvalidAgentContext`，对应 DEAD_LETTER Job 的错误分类也已纠正；南瑞继保测评日程保持
-ACTIVE，18:00 Reminder 已为 SENT。QQ 邮箱仍因旧授权码失效处于认证失败状态，与本次发布无关。
+ACTIVE，18:00 Reminder 已为 SENT。随后使用本地 `.env` 中更新后的 QQ Mail bootstrap 授权码做
+候选配置差异检查、生产数据库连接检查和真实 IMAP 登录验证；确认只有授权码字段变化后，备份旧
+远端配置至 `.deploy-backups/20260912-234500-qqmail-env`，原子替换配置并仅重建 Worker。QQ 邮箱
+bootstrap 完成，数据库连接状态恢复为 ACTIVE，Worker 运行且 restart count 为零。授权码值未被
+读取到日志、文档或 Git。
 
 ## 5. 当前生产主机容量
 
