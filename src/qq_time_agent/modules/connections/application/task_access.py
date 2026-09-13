@@ -9,7 +9,7 @@ from qq_time_agent.modules.connections.application.ports import (
     OAuthProviderError,
 )
 from qq_time_agent.modules.connections.contracts import (
-    ConnectionUnavailableError,
+    TaskAccessError,
     TaskAccessGrant,
 )
 from qq_time_agent.modules.connections.domain.models import (
@@ -46,9 +46,9 @@ class MicrosoftTaskAccessService:
             ConnectionStatus.ACTIVE,
             ConnectionStatus.DEGRADED,
         }:
-            raise ConnectionUnavailableError("connection is not available for task access")
+            raise TaskAccessError("ConnectionUnavailable")
         if "Tasks.ReadWrite" not in connection.capabilities:
-            raise ConnectionUnavailableError("connection lacks task capability")
+            raise TaskAccessError("Authorization")
         if connection.credential_ref is None or connection.provider_account_id is None:
             raise ValueError("connection task access is incomplete")
         credential = await self._refresh_access(connection)
@@ -69,7 +69,7 @@ class MicrosoftTaskAccessService:
             tokens = await self._provider.refresh_tasks(refresh_handle.reveal(self._clock.now()))
         except OAuthProviderError as exc:
             await self._record_failure(connection, exc.failure_class)
-            raise
+            raise TaskAccessError(exc.failure_class) from exc
         if tokens.refresh_token is not None:
             await self._vault.replace(reference, tokens.refresh_token.get_secret_value())
         return CredentialHandle(

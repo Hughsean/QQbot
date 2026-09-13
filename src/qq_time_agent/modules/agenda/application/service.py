@@ -50,6 +50,14 @@ class AgendaService:
         values = await self._repository.find_active_by_title(title.strip())
         return tuple(_view(value) for value in values)
 
+    async def list_active_page(
+        self, after_entry_id: UUID | None, limit: int
+    ) -> tuple[AgendaEntryView, ...]:
+        if limit < 1 or limit > 500:
+            raise ValueError("Agenda projection page limit must be between 1 and 500")
+        values = await self._repository.list_active_page(after_entry_id, limit)
+        return tuple(_view(value) for value in values)
+
     async def create_entry(
         self, action_id: UUID, draft: AgendaDraft, idempotency_key: str
     ) -> AgendaEntryRef:

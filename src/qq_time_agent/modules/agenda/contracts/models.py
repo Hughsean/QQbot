@@ -5,6 +5,8 @@ from datetime import datetime
 from typing import Protocol
 from uuid import UUID
 
+AGENDA_CHANGED_EVENT = "agenda.entry.changed"
+
 
 @dataclass(frozen=True, slots=True)
 class BusyInterval:
@@ -89,6 +91,12 @@ class AgendaQueryPort(Protocol):
     async def get_entry(self, entry_id: UUID) -> AgendaEntryView | None: ...
 
     async def find_active_by_title(self, title: str) -> tuple[AgendaEntryView, ...]: ...
+
+
+class AgendaProjectionQueryPort(Protocol):
+    async def list_active_page(
+        self, after_entry_id: UUID | None, limit: int
+    ) -> tuple[AgendaEntryView, ...]: ...
 
 
 class AgendaSourceLookupPort(Protocol):

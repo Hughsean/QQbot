@@ -40,6 +40,25 @@ class SqlOutbox:
             )
             return [_to_envelope(row) for row in rows]
 
+    async def unpublished_for_types(
+        self, event_types: tuple[str, ...], limit: int = 100
+    ) -> list[EventEnvelope]:
+        if not event_types or any(not value.strip() for value in event_types):
+            raise ValueError("at least one event type is required")
+        async with self._sessions() as session:
+            rows = list(
+                await session.scalars(
+                    select(OutboxEventRow)
+                    .where(
+                        OutboxEventRow.published_at.is_(None),
+                        OutboxEventRow.event_type.in_(event_types),
+                    )
+                    .order_by(OutboxEventRow.occurred_at, OutboxEventRow.event_id)
+                    .limit(limit)
+                )
+            )
+            return [_to_envelope(row) for row in rows]
+
     async def mark_published(self, event_id: UUID, published_at: datetime) -> None:
         async with self._sessions.begin() as session:
             await session.execute(

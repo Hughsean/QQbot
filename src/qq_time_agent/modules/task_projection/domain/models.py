@@ -123,15 +123,37 @@ class TaskProjectionMapping:
         )
 
     def activate(
-        self, provider_task_ref: str, provider_revision: str | None, projected_at: datetime
+        self,
+        agenda_entry_version: int,
+        provider_task_ref: str,
+        provider_revision: str | None,
+        projected_at: datetime,
     ) -> None:
-        if not provider_task_ref.strip():
-            raise ValueError("provider task reference is required")
+        if not provider_task_ref.strip() or agenda_entry_version < 1:
+            raise ValueError("provider task reference and Agenda version are required")
         _aware(projected_at)
+        self.agenda_entry_version = agenda_entry_version
         self.provider_task_ref = provider_task_ref
         self.provider_revision = provider_revision
         self.last_projected_at = projected_at
         self.status = TaskProjectionStatus.ACTIVE
+        self.version += 1
+
+    def mark_retry(self, agenda_entry_version: int) -> None:
+        if agenda_entry_version < 1:
+            raise ValueError("Agenda version is required")
+        self.agenda_entry_version = agenda_entry_version
+        self.status = TaskProjectionStatus.RETRY_WAIT
+        self.version += 1
+
+    def retarget(self, provider_list_ref: str, agenda_entry_version: int) -> None:
+        if not provider_list_ref.strip() or agenda_entry_version < 1:
+            raise ValueError("projection target and Agenda version are required")
+        self.provider_list_ref = provider_list_ref
+        self.provider_task_ref = None
+        self.provider_revision = None
+        self.agenda_entry_version = agenda_entry_version
+        self.status = TaskProjectionStatus.PENDING
         self.version += 1
 
     def detach(self) -> None:
@@ -140,8 +162,13 @@ class TaskProjectionMapping:
         self.status = TaskProjectionStatus.DETACHED
         self.version += 1
 
-    def close(self) -> None:
+    def close(self, agenda_entry_version: int, projected_at: datetime) -> None:
+        if agenda_entry_version < 1:
+            raise ValueError("Agenda version is required")
+        _aware(projected_at)
         if self.status is not TaskProjectionStatus.CLOSED:
+            self.agenda_entry_version = agenda_entry_version
+            self.last_projected_at = projected_at
             self.status = TaskProjectionStatus.CLOSED
             self.version += 1
 

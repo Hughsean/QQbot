@@ -28,6 +28,12 @@ class ConnectionUnavailableError(RuntimeError):
     pass
 
 
+class TaskAccessError(RuntimeError):
+    def __init__(self, failure_class: str) -> None:
+        super().__init__(failure_class)
+        self.failure_class = failure_class
+
+
 class ConnectionSyncPort(Protocol):
     async def acquire_mail_access(self, connection_id: UUID) -> MailAccessGrant: ...
 

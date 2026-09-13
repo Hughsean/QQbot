@@ -41,6 +41,7 @@ from qq_time_agent.bootstrap.worker_connections import (
 )
 from qq_time_agent.bootstrap.worker_notifications import build_notification_planner
 from qq_time_agent.bootstrap.worker_runtime import build_scheduled_runner
+from qq_time_agent.bootstrap.worker_task_projection import build_worker_task_projection
 from qq_time_agent.contracts.clock import SystemClock
 from qq_time_agent.contracts.jobs import JobLease
 from qq_time_agent.contracts.source import SourceType
@@ -270,8 +271,16 @@ def build_worker() -> tuple[JobRunner, AsyncEngine, tuple[AsyncClosable, ...]]:
     )
     owner_aliases = OwnerGroupAliasService(SqlOwnerGroupAliasRepository(sessions), clock)
     mail_rules = MailRuleService(SqlMailRuleRepository(sessions), clock)
-    agenda_repository = SqlAgendaRepository(sessions)
+    agenda_repository = SqlAgendaRepository(sessions, clock)
     agenda = AgendaService(agenda_repository)
+    task_projection = build_worker_task_projection(
+        sessions,
+        queue,
+        agenda,
+        graph_connection,
+        config.credential_encryption_key,
+        clock,
+    )
     reminders = ReminderService(SqlReminderRepository(sessions))
     actions = ActionService(
         SqlActionRepository(sessions),
@@ -370,6 +379,7 @@ def build_worker() -> tuple[JobRunner, AsyncEngine, tuple[AsyncClosable, ...]]:
             clock,
         ),
     }
+    handlers.update(task_projection.handlers())
 
     async def before_start() -> None:
         await bootstrap_qq_mail(config.qq_mail_bootstrap, qq_connections)
@@ -389,6 +399,7 @@ def build_worker() -> tuple[JobRunner, AsyncEngine, tuple[AsyncClosable, ...]]:
         build_notification_planner(sessions, preferences, agenda_repository),
         conversation_events,
         before_start=before_start,
+        additional_before_poll=task_projection.schedule_due,
     )
 
     return (
@@ -397,6 +408,7 @@ def build_worker() -> tuple[JobRunner, AsyncEngine, tuple[AsyncClosable, ...]]:
         (
             graph_connection,
             graph_mail,
+            task_projection.graph,
             qq_mail,
             deepseek,
             ollama,

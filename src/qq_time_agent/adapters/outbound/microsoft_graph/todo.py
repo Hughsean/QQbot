@@ -6,25 +6,30 @@ from collections.abc import Awaitable, Callable
 from urllib.parse import urlparse
 
 import httpx
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from qq_time_agent.adapters.outbound.microsoft_graph.todo_models import (
+    GraphTaskRecord,
+    map_list_page,
+    map_task_page,
+    map_task_response,
+)
+from qq_time_agent.adapters.outbound.microsoft_graph.todo_values import (
+    task_path,
+    task_payload,
+    tasks_path,
+)
 from qq_time_agent.contracts.clock import Clock
 from qq_time_agent.modules.connections.contracts import TaskAccessGrant
-from qq_time_agent.modules.task_projection.contracts import ExternalTaskList, TaskProviderError
+from qq_time_agent.modules.task_projection.contracts import (
+    ExternalTaskDraft,
+    ExternalTaskList,
+    ExternalTaskView,
+    TaskProviderError,
+)
 
 GRAPH_ORIGIN = "https://graph.microsoft.com"
 LISTS_PATH = "/v1.0/me/todo/lists"
 LIST_SELECT = "id,displayName,isOwner,isShared,wellknownListName"
-
-
-class _GraphTaskList(BaseModel):
-    model_config = ConfigDict(extra="ignore", populate_by_name=True)
-
-    list_id: str = Field(alias="id", min_length=1, max_length=1024)
-    display_name: str = Field(alias="displayName", min_length=1, max_length=120)
-    is_owner: bool = Field(alias="isOwner")
-    is_shared: bool = Field(alias="isShared")
-    well_known_name: str = Field(alias="wellknownListName", max_length=80)
 
 
 class MicrosoftGraphTodoAdapter:
@@ -54,8 +59,8 @@ class MicrosoftGraphTodoAdapter:
         params: dict[str, str] | None = {"$select": LIST_SELECT, "$top": "100"}
         values: list[ExternalTaskList] = []
         for _ in range(self._max_pages):
-            response = await self._get(url, token, params)
-            page, next_link = _map_page(response)
+            response = await self._request("GET", url, token, params=params)
+            page, next_link = map_list_page(response)
             values.extend(page)
             if next_link is None:
                 return tuple(values)
@@ -63,60 +68,151 @@ class MicrosoftGraphTodoAdapter:
             url, params = next_link, None
         raise TaskProviderError("PermanentProvider")
 
+    async def upsert_task(
+        self,
+        access_grant: TaskAccessGrant,
+        list_ref: str,
+        draft: ExternalTaskDraft,
+        task_ref: str | None,
+    ) -> ExternalTaskView:
+        token = access_grant.task_credential.reveal(self._clock.now())
+        found = (
+            None
+            if task_ref is not None
+            else await self._find_task(token, list_ref, draft.stable_marker)
+        )
+        current_ref = task_ref or (None if found is None else found.task_id)
+        payload = task_payload(draft)
+        if current_ref is not None:
+            response = await self._request(
+                "PATCH",
+                task_path(list_ref, current_ref),
+                token,
+                json=payload,
+                allow_not_found=True,
+            )
+            if response.status_code != 404:
+                return map_task_response(response)
+            recovered = await self._find_task(token, list_ref, draft.stable_marker)
+            if recovered is not None:
+                response = await self._request(
+                    "PATCH", task_path(list_ref, recovered.task_id), token, json=payload
+                )
+                return map_task_response(response)
+        try:
+            response = await self._request(
+                "POST",
+                tasks_path(list_ref),
+                token,
+                json=payload,
+                retry_transient=False,
+            )
+        except TaskProviderError as exc:
+            if exc.failure_class not in {"RateLimit", "TransientProvider"}:
+                raise
+            recovered = await self._find_task(token, list_ref, draft.stable_marker)
+            if recovered is None:
+                raise
+            response = await self._request(
+                "PATCH", task_path(list_ref, recovered.task_id), token, json=payload
+            )
+        return map_task_response(response)
+
+    async def find_task(
+        self,
+        access_grant: TaskAccessGrant,
+        list_ref: str,
+        stable_marker: str,
+    ) -> ExternalTaskView | None:
+        token = access_grant.task_credential.reveal(self._clock.now())
+        task = await self._find_task(token, list_ref, stable_marker)
+        if task is None:
+            return None
+        return ExternalTaskView(task.task_id, task.revision, task.status == "completed")
+
+    async def close_task(
+        self,
+        access_grant: TaskAccessGrant,
+        list_ref: str,
+        task_ref: str,
+        completed: bool,
+    ) -> None:
+        token = access_grant.task_credential.reveal(self._clock.now())
+        method = "PATCH" if completed else "DELETE"
+        payload: dict[str, object] | None = {"status": "completed"} if completed else None
+        await self._request(
+            method,
+            task_path(list_ref, task_ref),
+            token,
+            json=payload,
+            allow_not_found=True,
+        )
+
     async def close(self) -> None:
         if self._owns_client:
             await self._client.aclose()
 
-    async def _get(self, url: str, token: str, params: dict[str, str] | None) -> httpx.Response:
+    async def _find_task(self, token: str, list_ref: str, marker: str) -> GraphTaskRecord | None:
+        url = tasks_path(list_ref)
+        params: dict[str, str] | None = {"$select": "id,status,body", "$top": "100"}
+        for _ in range(self._max_pages):
+            response = await self._request("GET", url, token, params=params)
+            tasks, next_link = map_task_page(response)
+            matches = tuple(
+                task for task in tasks if task.body is not None and marker in task.body.content
+            )
+            if len(matches) > 1:
+                raise TaskProviderError("ProviderConflict")
+            if matches:
+                return matches[0]
+            if next_link is None:
+                return None
+            _validate_task_next_link(next_link, list_ref)
+            url, params = next_link, None
+        raise TaskProviderError("PermanentProvider")
+
+    async def _request(
+        self,
+        method: str,
+        url: str,
+        token: str,
+        *,
+        params: dict[str, str] | None = None,
+        json: dict[str, object] | None = None,
+        allow_not_found: bool = False,
+        retry_transient: bool = True,
+    ) -> httpx.Response:
         for attempt in range(self._max_attempts):
             try:
-                response = await self._client.get(
+                response = await self._client.request(
+                    method,
                     url,
                     params=params,
+                    json=json,
                     headers={
                         "Authorization": f"Bearer {token}",
                         "Accept": "application/json",
                     },
                 )
             except (httpx.NetworkError, httpx.TimeoutException) as exc:
-                if attempt + 1 == self._max_attempts:
+                if attempt + 1 == self._max_attempts or not retry_transient:
                     raise TaskProviderError("TransientProvider") from exc
                 await self._sleep(_retry_delay(attempt, None, self._jitter()))
                 continue
+            if allow_not_found and response.status_code == 404:
+                return response
             failure = _status_failure(response.status_code)
             if failure is None:
                 return response
-            if failure in {"RateLimit", "TransientProvider"} and attempt + 1 < self._max_attempts:
+            if (
+                retry_transient
+                and failure in {"RateLimit", "TransientProvider"}
+                and attempt + 1 < self._max_attempts
+            ):
                 await self._sleep(_retry_delay(attempt, response, self._jitter()))
                 continue
             raise TaskProviderError(failure)
         raise AssertionError("unreachable")
-
-
-def _map_page(response: httpx.Response) -> tuple[tuple[ExternalTaskList, ...], str | None]:
-    try:
-        payload = response.json()
-        raw_values = payload["value"]
-        if not isinstance(raw_values, list):
-            raise TypeError
-        values = tuple(_map_list(item) for item in raw_values)
-        next_link = payload.get("@odata.nextLink")
-        if next_link is not None and not isinstance(next_link, str):
-            raise TypeError
-        return values, next_link
-    except (KeyError, TypeError, ValueError, ValidationError, AttributeError) as exc:
-        raise TaskProviderError("PermanentProvider") from exc
-
-
-def _map_list(value: object) -> ExternalTaskList:
-    item = _GraphTaskList.model_validate(value)
-    return ExternalTaskList(
-        item.list_id,
-        item.display_name,
-        item.is_owner,
-        item.is_shared,
-        item.well_known_name,
-    )
 
 
 def _validate_next_link(value: str) -> None:
@@ -124,6 +220,14 @@ def _validate_next_link(value: str) -> None:
     if parsed.scheme != "https" or parsed.hostname != "graph.microsoft.com":
         raise TaskProviderError("SecurityPolicy")
     if parsed.path != LISTS_PATH:
+        raise TaskProviderError("SecurityPolicy")
+
+
+def _validate_task_next_link(value: str, list_ref: str) -> None:
+    parsed = urlparse(value)
+    if parsed.scheme != "https" or parsed.hostname != "graph.microsoft.com":
+        raise TaskProviderError("SecurityPolicy")
+    if parsed.path != tasks_path(list_ref):
         raise TaskProviderError("SecurityPolicy")
 
 

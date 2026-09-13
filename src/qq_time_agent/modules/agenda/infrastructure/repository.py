@@ -2,35 +2,43 @@
 
 from datetime import datetime
 from typing import cast
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from qq_time_agent.modules.agenda.contracts import AgendaDraft
+from qq_time_agent.adapters.outbound.persistence.outbox import SqlOutbox
+from qq_time_agent.contracts.clock import Clock
+from qq_time_agent.contracts.events import EventEnvelope
+from qq_time_agent.modules.agenda.contracts import AGENDA_CHANGED_EVENT, AgendaDraft
 from qq_time_agent.modules.agenda.domain.models import AgendaEntry, AgendaStatus
 from qq_time_agent.modules.agenda.infrastructure.tables import AgendaEntryRow
 
 
 class SqlAgendaRepository:
-    def __init__(self, sessions: async_sessionmaker[AsyncSession]) -> None:
+    def __init__(self, sessions: async_sessionmaker[AsyncSession], clock: Clock) -> None:
         self._sessions = sessions
+        self._clock = clock
 
     async def create(self, entry: AgendaEntry, idempotency_key: str) -> AgendaEntry:
         values = _values(entry, idempotency_key)
         async with self._sessions.begin() as session:
-            await session.execute(
+            result = await session.execute(
                 insert(AgendaEntryRow)
                 .values(**values)
                 .on_conflict_do_nothing(constraint="uq_agenda_idempotency")
+                .returning(AgendaEntryRow.agenda_entry_id)
             )
+            inserted = result.scalar_one_or_none()
             row = await session.scalar(
                 select(AgendaEntryRow).where(AgendaEntryRow.idempotency_key == idempotency_key)
             )
             if row is None:
                 raise RuntimeError("idempotent Agenda create lost stored entry")
+            if inserted is not None:
+                SqlOutbox.append(session, _changed_event(_to_entry(row), self._clock.now()))
             return _to_entry(row)
 
     async def get(self, entry_id: UUID) -> AgendaEntry | None:
@@ -65,6 +73,20 @@ class SqlAgendaRepository:
             )
             return tuple(_to_entry(row) for row in rows)
 
+    async def list_active_page(
+        self, after_entry_id: UUID | None, limit: int
+    ) -> tuple[AgendaEntry, ...]:
+        async with self._sessions() as session:
+            statement = select(AgendaEntryRow).where(
+                AgendaEntryRow.status == AgendaStatus.ACTIVE.value
+            )
+            if after_entry_id is not None:
+                statement = statement.where(AgendaEntryRow.agenda_entry_id > after_entry_id)
+            rows = await session.scalars(
+                statement.order_by(AgendaEntryRow.agenda_entry_id).limit(limit)
+            )
+            return tuple(_to_entry(row) for row in rows)
+
     async def find_by_source_ref(self, source_ref: str) -> AgendaEntry | None:
         async with self._sessions() as session:
             row = await session.scalar(
@@ -96,6 +118,7 @@ class SqlAgendaRepository:
             )
             if cast("CursorResult[tuple[()]]", result).rowcount != 1:
                 raise RuntimeError("Agenda entry version conflict")
+            SqlOutbox.append(session, _changed_event(entry, self._clock.now()))
             return entry
 
 
@@ -132,4 +155,19 @@ def _to_entry(row: AgendaEntryRow) -> AgendaEntry:
         ),
         AgendaStatus(row.status),
         row.version,
+    )
+
+
+def _changed_event(entry: AgendaEntry, occurred_at: datetime) -> EventEnvelope:
+    return EventEnvelope(
+        uuid4(),
+        AGENDA_CHANGED_EVENT,
+        1,
+        f"agenda:{entry.agenda_entry_id}",
+        {
+            "agenda_entry_id": str(entry.agenda_entry_id),
+            "agenda_entry_version": entry.version,
+            "status": entry.status.value,
+        },
+        occurred_at,
     )

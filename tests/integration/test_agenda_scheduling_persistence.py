@@ -1,4 +1,5 @@
 from collections.abc import AsyncIterator
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
@@ -8,6 +9,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker
 
 from qq_time_agent.adapters.outbound.persistence.database import create_database_engine
+from qq_time_agent.adapters.outbound.persistence.operations_tables import OutboxEventRow
 from qq_time_agent.bootstrap.settings import load_runtime_config
 from qq_time_agent.modules.agenda.application.service import AgendaService
 from qq_time_agent.modules.agenda.application.source_lookup import AgendaSourceLookupService
@@ -22,6 +24,14 @@ from qq_time_agent.modules.scheduling.infrastructure.tables import ProposalRow
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 
 
+@dataclass
+class Clock:
+    value: datetime
+
+    def now(self) -> datetime:
+        return self.value
+
+
 @pytest_asyncio.fixture
 async def engine() -> AsyncIterator[AsyncEngine]:
     value = create_database_engine(load_runtime_config().database)
@@ -33,11 +43,11 @@ async def test_agenda_is_idempotent_fact_source_and_busy_query_is_overlap_safe(
     engine: AsyncEngine,
 ) -> None:
     sessions = async_sessionmaker(engine, expire_on_commit=False)
-    repository = SqlAgendaRepository(sessions)
-    service = AgendaService(repository)
     proposal_id = uuid4()
     action_id = uuid4()
     start = datetime(2026, 8, 20, 7, tzinfo=UTC)
+    repository = SqlAgendaRepository(sessions, Clock(start))
+    service = AgendaService(repository)
     draft = AgendaDraft(
         "EVENT",
         "Stage 5 integration",
@@ -62,6 +72,20 @@ async def test_agenda_is_idempotent_fact_source_and_busy_query_is_overlap_safe(
     )
 
     async with sessions.begin() as session:
+        events = tuple(
+            await session.scalars(
+                select(OutboxEventRow).where(
+                    OutboxEventRow.aggregate_ref == f"agenda:{first.agenda_entry_id}"
+                )
+            )
+        )
+        assert len(events) == 1
+        assert events[0].payload["agenda_entry_version"] == 1
+        await session.execute(
+            delete(OutboxEventRow).where(
+                OutboxEventRow.aggregate_ref == f"agenda:{first.agenda_entry_id}"
+            )
+        )
         await session.execute(
             delete(AgendaEntryRow).where(AgendaEntryRow.agenda_entry_id == first.agenda_entry_id)
         )

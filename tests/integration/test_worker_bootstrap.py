@@ -9,7 +9,7 @@ async def test_worker_composition_builds_and_closes_without_polling_external_ser
     runner, engine, resources = build_worker()
     try:
         assert runner is not None
-        assert len(resources) == 6
+        assert len(resources) == 7
     finally:
         for resource in resources:
             await resource.close()

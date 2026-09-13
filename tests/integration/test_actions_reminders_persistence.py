@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 from sqlalchemy.sql.elements import ColumnElement
 
 from qq_time_agent.adapters.outbound.persistence.database import create_database_engine
+from qq_time_agent.adapters.outbound.persistence.operations_tables import OutboxEventRow
 from qq_time_agent.bootstrap.settings import load_runtime_config
 from qq_time_agent.modules.actions.application.service import ActionService
 from qq_time_agent.modules.actions.infrastructure.repository import SqlActionRepository
@@ -50,7 +51,7 @@ async def test_action_agenda_reminder_are_idempotent_and_lease_recovers(
     reminders = ReminderService(SqlReminderRepository(sessions))
     service = ActionService(
         SqlActionRepository(sessions),
-        AgendaService(SqlAgendaRepository(sessions)),
+        AgendaService(SqlAgendaRepository(sessions, Clock(now))),
         reminders,
         Clock(now),
     )
@@ -58,7 +59,9 @@ async def test_action_agenda_reminder_are_idempotent_and_lease_recovers(
     second = await service.execute_confirmed(proposal, 15)
     assert first == second
     assert first.agenda_entry_id is not None and first.reminder_id is not None
-    task_entry = await AgendaService(SqlAgendaRepository(sessions)).get_entry(first.agenda_entry_id)
+    task_entry = await AgendaService(SqlAgendaRepository(sessions, Clock(now))).get_entry(
+        first.agenda_entry_id
+    )
     assert task_entry is not None and task_entry.kind == "TASK_BLOCK"
 
     async with sessions() as session:
@@ -98,7 +101,7 @@ async def test_fixed_event_undo_cancels_agenda_and_old_reminder(engine: AsyncEng
     await _clean_synthetic(sessions)
     now = datetime(2026, 8, 20, 6, tzinfo=UTC)
     reminders = ReminderService(SqlReminderRepository(sessions))
-    agenda = AgendaService(SqlAgendaRepository(sessions))
+    agenda = AgendaService(SqlAgendaRepository(sessions, Clock(now)))
     service = ActionService(SqlActionRepository(sessions), agenda, reminders, Clock(now))
     event = _proposal(now, kind="EVENT")
     result = await service.execute_confirmed(event, 15)
@@ -160,6 +163,10 @@ async def _clean_synthetic(sessions: async_sessionmaker[AsyncSession]) -> None:
         entry_ids = [row.agenda_entry_id for row in rows]
         action_ids = [row.action_id for row in rows]
         if entry_ids:
+            aggregate_refs = [f"agenda:{entry_id}" for entry_id in entry_ids]
+            await session.execute(
+                delete(OutboxEventRow).where(OutboxEventRow.aggregate_ref.in_(aggregate_refs))
+            )
             await session.execute(
                 delete(ReminderRow).where(ReminderRow.agenda_entry_id.in_(entry_ids))
             )

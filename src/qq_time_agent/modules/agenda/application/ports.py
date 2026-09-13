@@ -14,6 +14,10 @@ class AgendaRepository(Protocol):
 
     async def find_active_by_title(self, title: str) -> tuple[AgendaEntry, ...]: ...
 
+    async def list_active_page(
+        self, after_entry_id: UUID | None, limit: int
+    ) -> tuple[AgendaEntry, ...]: ...
+
     async def busy_between(
         self, range_start: datetime, range_end: datetime
     ) -> tuple[AgendaEntry, ...]: ...

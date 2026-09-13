@@ -66,10 +66,12 @@ Microsoft 实现继续位于：
 
 ```text
 src/adapters/outbound/microsoft_graph/
-  todo_client.py    # TaskProviderPort 实现和 DTO 转换
+  todo.py           # TaskProviderPort 请求、重试和不确定写恢复
+  todo_models.py    # Graph DTO 校验与 Provider-neutral 映射
+  todo_values.py    # Graph 路径和写入载荷
 ```
 
-不得把 `todo_client.py`、Graph DTO 或 Microsoft 枚举放进 `task_projection/domain` 或跨模块契约。
+不得把 Graph adapter、DTO 或 Microsoft 枚举放进 `task_projection/domain` 或跨模块契约。
 
 ## 5. 数据所有权
 
@@ -237,6 +239,10 @@ Agenda 事务提交 + Outbox
 ```
 
 任何外部失败只更新投影状态并安排有限重试，不回滚 Agenda。
+
+投影正文包含由 Agenda UUID 单向摘要得到的稳定标记，不包含 Agenda UUID、Provider ID、token 或来源
+正文。新建 POST 出现超时或 5xx 等不确定结果时，Adapter 不直接重发 POST，而是先在受管列表中按
+该标记查找并更新既有任务；找到多个相同标记时按冲突终止，不猜选。
 
 ### 7.2 To Do 完成后台对账
 

@@ -126,7 +126,7 @@ async def test_resolve_rejects_missing_ambiguous_or_non_private_list(
 
 def test_projection_mapping_state_does_not_treat_detach_as_completion() -> None:
     mapping = TaskProjectionMapping.pending("owner", uuid4(), 1, uuid4(), "managed-list")
-    mapping.activate("task-one", "revision-one", NOW)
+    mapping.activate(1, "task-one", "revision-one", NOW)
     assert mapping.status is TaskProjectionStatus.ACTIVE
     assert mapping.last_observed_completion is None
 
@@ -134,7 +134,7 @@ def test_projection_mapping_state_does_not_treat_detach_as_completion() -> None:
     assert mapping.status is TaskProjectionStatus.DETACHED
     assert mapping.last_observed_completion is None
 
-    mapping.close()
+    mapping.close(2, NOW)
     assert mapping.status is TaskProjectionStatus.CLOSED
     with pytest.raises(ValueError, match="terminal"):
         mapping.detach()

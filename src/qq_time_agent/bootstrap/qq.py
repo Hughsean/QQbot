@@ -93,7 +93,7 @@ async def run_qq() -> None:
     ollama = OllamaEmbeddingAdapter(config.ollama)
     inbox = InboxService(SqlInboxRepository(sessions))
     knowledge_repository = SqlKnowledgeRepository(sessions)
-    agenda_repository = SqlAgendaRepository(sessions)
+    agenda_repository = SqlAgendaRepository(sessions, clock)
     agenda = AgendaService(agenda_repository)
     reminders = ReminderService(SqlReminderRepository(sessions))
     actions = ActionService(

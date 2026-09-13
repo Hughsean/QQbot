@@ -7,6 +7,10 @@ from qq_time_agent.modules.task_projection.application.managed_list import (
     ManagedTaskListOwnershipError,
     ManagedTaskListService,
 )
+from qq_time_agent.modules.task_projection.application.projection import (
+    ProjectionOperationError,
+    TaskProjectionService,
+)
 
 __all__ = [
     "MANAGED_LIST_NAME",
@@ -14,4 +18,6 @@ __all__ = [
     "ManagedTaskListNotFoundError",
     "ManagedTaskListOwnershipError",
     "ManagedTaskListService",
+    "ProjectionOperationError",
+    "TaskProjectionService",
 ]

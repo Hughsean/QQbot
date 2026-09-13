@@ -45,6 +45,7 @@ def build_scheduled_runner(
     notification_planner: NotificationPlanner,
     summary_query: ConversationSummaryCandidateQueryPort,
     before_start: Callable[[], Awaitable[None]] | None = None,
+    additional_before_poll: Callable[[], Awaitable[None]] | None = None,
 ) -> JobRunner:
     schedulers = (
         PeriodicMailSyncScheduler(microsoft_connections, queue, clock, mail_interval_seconds),
@@ -58,6 +59,8 @@ def build_scheduled_runner(
     )
 
     async def schedule_due() -> None:
+        if additional_before_poll is not None:
+            await additional_before_poll()
         for scheduler in schedulers:
             await scheduler.enqueue_due()
 

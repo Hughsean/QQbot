@@ -1,5 +1,6 @@
+import json
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import httpx
@@ -8,7 +9,7 @@ import pytest
 from qq_time_agent.adapters.outbound.microsoft_graph.todo import MicrosoftGraphTodoAdapter
 from qq_time_agent.modules.connections.contracts import TaskAccessGrant
 from qq_time_agent.modules.credentials.contracts import CredentialHandle, CredentialKind
-from qq_time_agent.modules.task_projection.contracts import TaskProviderError
+from qq_time_agent.modules.task_projection.contracts import ExternalTaskDraft, TaskProviderError
 
 
 @dataclass
@@ -109,3 +110,140 @@ async def test_untrusted_pagination_link_and_provider_errors_are_classified() ->
     with pytest.raises(TaskProviderError, match="Authorization"):
         await adapter.list_task_lists(_grant())
     await forbidden.aclose()
+
+
+def _draft() -> ExternalTaskDraft:
+    start = datetime(2026, 9, 13, 7, tzinfo=UTC)
+    return ExternalTaskDraft(
+        "qq-time-agent:stable",
+        "南瑞继保测评",
+        start,
+        start + timedelta(hours=1),
+        "Asia/Shanghai",
+    )
+
+
+@pytest.mark.asyncio
+async def test_upsert_creates_task_with_reminder_disabled() -> None:
+    calls: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        if request.method == "GET":
+            return httpx.Response(200, json={"value": []})
+        assert request.method == "POST"
+        return httpx.Response(
+            201,
+            json={"id": "task-one", "status": "notStarted", "@odata.etag": "rev-one"},
+        )
+
+    client = httpx.AsyncClient(
+        transport=httpx.MockTransport(handler), base_url="https://graph.microsoft.com"
+    )
+    result = await MicrosoftGraphTodoAdapter(FixedClock(), client=client).upsert_task(
+        _grant(), "managed", _draft(), None
+    )
+    await client.aclose()
+
+    assert result.task_ref == "task-one" and result.revision == "rev-one"
+    payload = json.loads(calls[-1].content)
+    assert payload["isReminderOn"] is False
+    assert "qq-time-agent:stable" in payload["body"]["content"]
+    assert payload["startDateTime"]["timeZone"] == "UTC"
+
+
+@pytest.mark.asyncio
+async def test_upsert_recovers_existing_marker_instead_of_creating_duplicate() -> None:
+    methods: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        methods.append(request.method)
+        if request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "value": [
+                        {
+                            "id": "recovered",
+                            "status": "notStarted",
+                            "body": {"content": "同步标记: qq-time-agent:stable"},
+                        }
+                    ]
+                },
+            )
+        return httpx.Response(
+            200,
+            json={"id": "recovered", "status": "notStarted", "@odata.etag": "rev-two"},
+        )
+
+    client = httpx.AsyncClient(
+        transport=httpx.MockTransport(handler), base_url="https://graph.microsoft.com"
+    )
+    result = await MicrosoftGraphTodoAdapter(FixedClock(), client=client).upsert_task(
+        _grant(), "managed", _draft(), None
+    )
+    await client.aclose()
+
+    assert result.task_ref == "recovered"
+    assert methods == ["GET", "PATCH"]
+
+
+@pytest.mark.asyncio
+async def test_ambiguous_create_recovers_by_marker_without_second_post() -> None:
+    methods: list[str] = []
+    task_visible = False
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal task_visible
+        methods.append(request.method)
+        if request.method == "POST":
+            task_visible = True
+            raise httpx.ReadTimeout("ambiguous", request=request)
+        if request.method == "GET":
+            values = (
+                [
+                    {
+                        "id": "committed-before-timeout",
+                        "status": "notStarted",
+                        "body": {"content": "qq-time-agent:stable"},
+                    }
+                ]
+                if task_visible
+                else []
+            )
+            return httpx.Response(200, json={"value": values})
+        return httpx.Response(
+            200,
+            json={"id": "committed-before-timeout", "status": "notStarted"},
+        )
+
+    client = httpx.AsyncClient(
+        transport=httpx.MockTransport(handler), base_url="https://graph.microsoft.com"
+    )
+    result = await MicrosoftGraphTodoAdapter(FixedClock(), client=client).upsert_task(
+        _grant(), "managed", _draft(), None
+    )
+    await client.aclose()
+
+    assert result.task_ref == "committed-before-timeout"
+    assert methods == ["GET", "POST", "GET", "PATCH"]
+
+
+@pytest.mark.asyncio
+async def test_close_completes_or_deletes_and_missing_task_is_idempotent() -> None:
+    calls: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        return httpx.Response(404 if len(calls) == 2 else 200)
+
+    client = httpx.AsyncClient(
+        transport=httpx.MockTransport(handler), base_url="https://graph.microsoft.com"
+    )
+    adapter = MicrosoftGraphTodoAdapter(FixedClock(), client=client)
+    await adapter.close_task(_grant(), "managed", "complete-me", completed=True)
+    await adapter.close_task(_grant(), "managed", "cancel-me", completed=False)
+    await client.aclose()
+
+    assert [call.method for call in calls] == ["PATCH", "DELETE"]
+    assert json.loads(calls[0].content) == {"status": "completed"}
