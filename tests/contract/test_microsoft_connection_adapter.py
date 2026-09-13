@@ -9,6 +9,7 @@ from pydantic import SecretStr
 from qq_time_agent.adapters.outbound.microsoft_graph import connection as connection_module
 from qq_time_agent.adapters.outbound.microsoft_graph.connection import (
     SCOPES,
+    TASK_REFRESH_SCOPES,
     MicrosoftGraphConnectionAdapter,
 )
 from qq_time_agent.bootstrap.config_models import MicrosoftConfig
@@ -87,6 +88,7 @@ async def test_adapter_keeps_pkce_nonce_and_provider_dto_inside_boundary() -> No
             "email",
         ]
     )
+
     assert app.begin_calls[0][1]["redirect_uri"] == (
         "http://localhost:8000/oauth/microsoft/callback"
     )
@@ -97,6 +99,24 @@ async def test_adapter_keeps_pkce_nonce_and_provider_dto_inside_boundary() -> No
     )
     assert tokens.refresh_token is not None
     assert "synthetic-refresh" not in repr(tokens)
+
+
+@pytest.mark.asyncio
+async def test_task_access_refresh_requests_only_task_capabilities() -> None:
+    app = FakeMsalApplication(
+        {
+            "access_token": "synthetic-task-access",
+            "refresh_token": "synthetic-task-refresh",
+            "expires_in": 3600,
+        }
+    )
+    adapter = MicrosoftGraphConnectionAdapter(
+        _config(), FixedClock(), application_factory=lambda: app
+    )
+    tokens = await adapter.refresh_tasks("synthetic-refresh")
+
+    assert tokens.access_token.get_secret_value() == "synthetic-task-access"
+    assert app.refresh_calls == [("synthetic-refresh", TASK_REFRESH_SCOPES)]
 
 
 @pytest.mark.asyncio

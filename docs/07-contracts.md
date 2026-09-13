@@ -24,6 +24,7 @@ GET  /oauth/microsoft/callback
 POST /api/v1/oauth/microsoft/disconnect
 GET  /api/v1/connections/microsoft
 GET  /api/v1/connections/microsoft/status
+POST /api/v1/connections/microsoft/todo/resolve
 ```
 
 约束：
@@ -42,6 +43,9 @@ GET  /api/v1/connections/microsoft/status
 - `disconnect` 使用 CSRF 防护和明确确认。
 - 列表/状态接口只返回 Connection ID、所有者 label、默认/同步开关、能力、账号掩码、同步时间
   和健康状态。无 `connection_id` 的旧 status 接口只返回显式默认连接；新操作必须携带 Connection ID。
+- OAuth 成功后自动尝试解析“小智建议”列表；列表解析失败不得回滚已成功的连接授权。`todo/resolve`
+  提供本机所有者显式重试，要求同源 CSRF，只返回内部 target ID、连接 ID、列表显示名、状态和版本，
+  不返回 Microsoft list ID。零个或多个同名列表均返回安全冲突提示。
 
 ### 同步
 

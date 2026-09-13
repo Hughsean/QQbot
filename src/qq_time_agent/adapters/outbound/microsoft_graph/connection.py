@@ -23,6 +23,7 @@ __all__ = ["MicrosoftGraphConnectionAdapter", "msal"]
 
 SCOPES = ["User.Read", "Mail.Read", "Tasks.ReadWrite", "email"]
 MAIL_REFRESH_SCOPES = ["User.Read", "Mail.Read", "email"]
+TASK_REFRESH_SCOPES = ["User.Read", "Tasks.ReadWrite"]
 
 
 class _SyncHttpClient:
@@ -119,13 +120,17 @@ class MicrosoftGraphConnectionAdapter:
         return self._tokens(await self._run_sync(complete))
 
     async def refresh(self, refresh_token: str) -> ProviderTokens:
+        return await self._refresh_for_scopes(refresh_token, MAIL_REFRESH_SCOPES)
+
+    async def refresh_tasks(self, refresh_token: str) -> ProviderTokens:
+        return await self._refresh_for_scopes(refresh_token, TASK_REFRESH_SCOPES)
+
+    async def _refresh_for_scopes(self, refresh_token: str, scopes: list[str]) -> ProviderTokens:
         if not refresh_token:
             raise ValueError("refresh token is required")
 
         def refresh_token_call() -> dict[str, object]:
-            return self._application_factory().acquire_token_by_refresh_token(
-                refresh_token, MAIL_REFRESH_SCOPES
-            )
+            return self._application_factory().acquire_token_by_refresh_token(refresh_token, scopes)
 
         return self._tokens(await self._run_sync(refresh_token_call))
 

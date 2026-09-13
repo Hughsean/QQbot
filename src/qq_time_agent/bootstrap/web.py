@@ -18,6 +18,7 @@ from qq_time_agent.adapters.inbound.http.qq_mail import qq_mail_router
 from qq_time_agent.adapters.outbound.microsoft_graph.connection import (
     MicrosoftGraphConnectionAdapter,
 )
+from qq_time_agent.adapters.outbound.microsoft_graph.todo import MicrosoftGraphTodoAdapter
 from qq_time_agent.adapters.outbound.ollama.embedding import OllamaEmbeddingAdapter
 from qq_time_agent.adapters.outbound.persistence.database import create_database_engine
 from qq_time_agent.adapters.outbound.persistence.health import DatabaseReadinessProbe
@@ -32,6 +33,7 @@ from qq_time_agent.modules.audit.application.service import AuditService
 from qq_time_agent.modules.audit.infrastructure.repository import SqlAuditRepository
 from qq_time_agent.modules.connections.application.oauth import MicrosoftConnectionService
 from qq_time_agent.modules.connections.application.qq_mail import QqMailConnectionService
+from qq_time_agent.modules.connections.application.task_access import MicrosoftTaskAccessService
 from qq_time_agent.modules.connections.infrastructure.fingerprints import HmacAccountFingerprinter
 from qq_time_agent.modules.connections.infrastructure.repository import SqlConnectionRepository
 from qq_time_agent.modules.credentials.application.vault import VaultService
@@ -55,6 +57,10 @@ from qq_time_agent.modules.notifications.infrastructure.repository import (
     SqlNotificationIntentRepository,
 )
 from qq_time_agent.modules.scheduling.infrastructure.purge import SchedulingPurgeAdapter
+from qq_time_agent.modules.task_projection.application import ManagedTaskListService
+from qq_time_agent.modules.task_projection.infrastructure.repository import (
+    SqlTaskProjectionTargetRepository,
+)
 from qq_time_agent.modules.understanding.infrastructure.purge import UnderstandingPurgeAdapter
 from qq_time_agent.modules.workflow.infrastructure.purge import WorkflowPurgeAdapter
 
@@ -66,6 +72,7 @@ def build_app() -> tuple[FastAPI, AsyncEngine, tuple[object, ...]]:
     sessions = async_sessionmaker(engine, expire_on_commit=False)
     embeddings = OllamaEmbeddingAdapter(config.ollama)
     graph = MicrosoftGraphConnectionAdapter(config.microsoft, clock)
+    graph_todo = MicrosoftGraphTodoAdapter(clock)
     vault = VaultService(
         SqlCredentialRepository(sessions),
         AesGcmCredentialCipher(config.credential_encryption_key),
@@ -105,9 +112,16 @@ def build_app() -> tuple[FastAPI, AsyncEngine, tuple[object, ...]]:
         source_deletion,
         audit=audit,
     )
+    todo_setup = ManagedTaskListService(
+        SqlTaskProjectionTargetRepository(sessions),
+        MicrosoftTaskAccessService(connection_repository, vault, graph, clock),
+        graph_todo,
+        clock,
+    )
     oauth = microsoft_oauth_router(
         connections,
         OwnerSessionSigner(config.app.signing_key, clock),
+        todo_setup,
     )
     qq_imap = QqMailImapAdapter(config.qq_mail, clock)
     qq_connections = QqMailConnectionService(
@@ -137,6 +151,7 @@ def build_app() -> tuple[FastAPI, AsyncEngine, tuple[object, ...]]:
         finally:
             await embeddings.close()
             await graph.close()
+            await graph_todo.close()
             await qq_imap.close()
             await engine.dispose()
 
@@ -154,7 +169,7 @@ def build_app() -> tuple[FastAPI, AsyncEngine, tuple[object, ...]]:
             ),
         ),
     )
-    return app, engine, (embeddings, graph, qq_imap)
+    return app, engine, (embeddings, graph, graph_todo, qq_imap)
 
 
 def main() -> None:

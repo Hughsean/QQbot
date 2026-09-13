@@ -43,6 +43,7 @@ QQ Time Agent 是一个仅供项目所有者本人使用、以 QQ 为主要交�
 | [24-agent-conversation-context-verification-report.md](24-agent-conversation-context-verification-report.md) | 会话上下文改造最终验证证据与生产基线 |
 | [25-microsoft-todo-requirements.md](25-microsoft-todo-requirements.md) | Microsoft To Do 仅作日程视图、完成标记及 QQ 提醒门禁的需求与验收 |
 | [26-microsoft-todo-module-design.md](26-microsoft-todo-module-design.md) | Task Projection 模块拆分、契约、数据所有权、竞态与实施阶段 |
+| [27-microsoft-todo-17b-verification.md](27-microsoft-todo-17b-verification.md) | Microsoft To Do 授权接入、模块骨架和受管列表解析的本地验证证据 |
 | [adr/](adr/) | 已接受的关键架构决策（含 Microsoft To Do 外部投影） |
 
 ## 决策优先级
@@ -121,4 +122,6 @@ QQ Time Agent 是一个仅供项目所有者本人使用、以 QQ 为主要交�
   `localhost` 回调不同主机导致的 Cookie 丢失，并使默认入口对现有活动 Microsoft 连接做增量授权；
   OAuth 范围加入委托 `Tasks.ReadWrite`，为“小智建议”To Do 投影提供授权基础。To Do 投影与完成
   回写仍属于阶段 17 后续项，内部 Agenda 继续是唯一事实源。阶段 17 的产品需求、失败矩阵、
-  Task Projection 模块边界和实施拆分已在 `25`、`26` 文档冻结；未核验或不可用时继续发送 QQ。
+  Task Projection 模块边界和实施拆分已在 `25`、`26` 文档冻结；17B 已在 `dev` 完成模块骨架、
+  `0029_task_projection` 迁移、短期 task access grant、Graph 列表适配器和“小智建议”唯一列表
+  解析的本地门禁，真实账号投影与完成回写仍待 17C—17E；未核验或不可用时继续发送 QQ。

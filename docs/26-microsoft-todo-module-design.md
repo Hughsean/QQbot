@@ -75,6 +75,24 @@ src/adapters/outbound/microsoft_graph/
 
 Task Projection 独占以下逻辑数据；其他模块不得直接查询或 JOIN：
 
+### TaskProjectionTarget
+
+| 字段 | 含义 |
+|---|---|
+| `target_id` | 内部目标标识 |
+| `user_id` | 所有者引用 |
+| `connection_id` | Microsoft Connection 引用，每个连接唯一 |
+| `provider` | 当前为 `MICROSOFT_TODO` |
+| `provider_list_ref` | 受控保存的“小智建议”列表引用 |
+| `display_name` | 用户可见列表名 |
+| `status` | `READY` 或 `UNAVAILABLE` |
+| `resolved_at` | 最近成功解析时间 |
+| `updated_at` | 最近更新时间 |
+| `version` | 乐观锁版本 |
+
+OAuth 成功后自动尝试解析目标，失败不回滚 Connection；本机所有者可通过受 CSRF 保护的显式接口
+重试。公开视图不得返回 `provider_list_ref`。
+
 ### TaskProjectionMapping
 
 | 字段 | 含义 |

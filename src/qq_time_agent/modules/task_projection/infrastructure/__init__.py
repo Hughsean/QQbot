@@ -1,0 +1,1 @@
+"""Task projection persistence adapters."""

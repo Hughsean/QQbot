@@ -16,6 +16,14 @@ class MailAccessGrant:
     mail_credential: CredentialHandle
 
 
+@dataclass(frozen=True, slots=True)
+class TaskAccessGrant:
+    connection_id: UUID
+    user_id: str
+    account_id: str
+    task_credential: CredentialHandle
+
+
 class ConnectionUnavailableError(RuntimeError):
     pass
 
@@ -30,3 +38,7 @@ class ConnectionSyncPort(Protocol):
     async def mark_sync_reauth_required(self, connection_id: UUID) -> None: ...
 
     async def mark_sync_degraded(self, connection_id: UUID) -> None: ...
+
+
+class TaskConnectionAccessPort(Protocol):
+    async def acquire_task_access(self, user_id: str, connection_id: UUID) -> TaskAccessGrant: ...

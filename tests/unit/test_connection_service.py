@@ -17,6 +17,7 @@ from qq_time_agent.modules.connections.application.ports import (
     ProviderProfile,
     ProviderTokens,
 )
+from qq_time_agent.modules.connections.application.task_access import MicrosoftTaskAccessService
 from qq_time_agent.modules.connections.contracts import (
     ConnectionStatusView,
     ConnectionUnavailableError,
@@ -137,6 +138,7 @@ class MemoryConnectionRepository:
 @dataclass
 class FakeMicrosoftProvider:
     refresh_calls: list[str] = field(default_factory=list)
+    task_refresh_calls: list[str] = field(default_factory=list)
     refresh_failure_class: str | None = None
     completion_refresh_token: str | None = "refresh-one"
     rotated_refresh_token: str | None = "refresh-two"
@@ -168,6 +170,20 @@ class FakeMicrosoftProvider:
             raise OAuthProviderError(self.refresh_failure_class)
         return ProviderTokens(
             SecretStr("access-two"),
+            (
+                SecretStr(self.rotated_refresh_token)
+                if self.rotated_refresh_token is not None
+                else None
+            ),
+            datetime(2026, 8, 13, 2, tzinfo=UTC),
+        )
+
+    async def refresh_tasks(self, refresh_token: str) -> ProviderTokens:
+        self.task_refresh_calls.append(refresh_token)
+        if self.refresh_failure_class is not None:
+            raise OAuthProviderError(self.refresh_failure_class)
+        return ProviderTokens(
+            SecretStr("access-tasks"),
             (
                 SecretStr(self.rotated_refresh_token)
                 if self.rotated_refresh_token is not None
@@ -430,6 +446,30 @@ async def test_mail_access_guards_state_and_marks_auth_failure() -> None:
     with pytest.raises(OAuthProviderError, match="Authentication"):
         await service.acquire_mail_access(active.connection_id)
     assert connections.connections[active.connection_id].status.value == "REAUTH_REQUIRED"
+
+
+@pytest.mark.asyncio
+async def test_task_access_is_owner_bound_and_uses_task_scope_refresh() -> None:
+    service, connections, credentials, provider, clock = _service()
+    active = await _activate(service)
+    key = base64.urlsafe_b64encode(b"k" * 32).decode()
+    task_access = MicrosoftTaskAccessService(
+        connections,
+        VaultService(credentials, AesGcmCredentialCipher(SecretStr(key)), clock),
+        provider,
+        clock,
+    )
+    grant = await task_access.acquire_task_access("owner", active.connection_id)
+
+    assert grant.user_id == "owner"
+    assert grant.account_id == "account-id"
+    assert grant.task_credential.reveal(clock.now()) == "access-tasks"
+    assert provider.task_refresh_calls == ["refresh-one"]
+    assert provider.refresh_calls == []
+    assert len(credentials.records) == 1
+
+    with pytest.raises(LookupError, match="does not exist"):
+        await task_access.acquire_task_access("another-owner", active.connection_id)
 
 
 @pytest.mark.asyncio

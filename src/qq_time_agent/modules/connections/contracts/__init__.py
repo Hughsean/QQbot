@@ -4,6 +4,8 @@ from qq_time_agent.modules.connections.contracts.sync import (
     ConnectionSyncPort,
     ConnectionUnavailableError,
     MailAccessGrant,
+    TaskAccessGrant,
+    TaskConnectionAccessPort,
 )
 from qq_time_agent.modules.connections.contracts.views import (
     ConnectionNotificationQueryPort,
@@ -18,4 +20,6 @@ __all__ = [
     "ConnectionUnavailableError",
     "MailAccessGrant",
     "ReauthReminderCandidate",
+    "TaskAccessGrant",
+    "TaskConnectionAccessPort",
 ]

@@ -22,6 +22,16 @@ from qq_time_agent.modules.connections.application.oauth import (
 )
 from qq_time_agent.modules.connections.application.ports import OAuthProviderError
 from qq_time_agent.modules.connections.contracts import ConnectionStatusView
+from qq_time_agent.modules.task_projection.application import (
+    ManagedTaskListAmbiguousError,
+    ManagedTaskListNotFoundError,
+    ManagedTaskListOwnershipError,
+)
+from qq_time_agent.modules.task_projection.contracts import (
+    ManagedTaskListSetupPort,
+    ManagedTaskListView,
+    TaskProviderError,
+)
 
 OWNER_COOKIE = "qq_time_agent_owner"
 OAUTH_COOKIE = "qq_time_agent_oauth"
@@ -34,13 +44,21 @@ class DisconnectRequest(BaseModel):
     confirmed: bool
 
 
+class TodoSetupRequest(BaseModel):
+    connection_id: UUID
+
+
 def microsoft_oauth_router(
-    service: MicrosoftConnectionService, signer: OwnerSessionSigner
+    service: MicrosoftConnectionService,
+    signer: OwnerSessionSigner,
+    todo_setup: ManagedTaskListSetupPort | None = None,
 ) -> APIRouter:
     router = APIRouter()
     router.include_router(_owner_bootstrap_router(service, signer))
-    router.include_router(_oauth_flow_router(service, signer))
+    router.include_router(_oauth_flow_router(service, signer, todo_setup))
     router.include_router(_connection_api_router(service, signer))
+    if todo_setup is not None:
+        router.include_router(_todo_setup_router(todo_setup, signer))
     return router
 
 
@@ -88,7 +106,9 @@ def _owner_bootstrap_router(
 
 
 def _oauth_flow_router(
-    service: MicrosoftConnectionService, signer: OwnerSessionSigner
+    service: MicrosoftConnectionService,
+    signer: OwnerSessionSigner,
+    todo_setup: ManagedTaskListSetupPort | None,
 ) -> APIRouter:
     router = APIRouter()
 
@@ -134,9 +154,7 @@ def _oauth_flow_router(
             )
             response = _failed_callback_response()
         else:
-            response = HTMLResponse(
-                f"Microsoft connection is {view.status.lower()}. You may close this window."
-            )
+            response = await _successful_callback_response(view, todo_setup)
         response.delete_cookie(OAUTH_COOKIE, secure=False, httponly=True, samesite="lax")
         return response
 
@@ -144,7 +162,8 @@ def _oauth_flow_router(
 
 
 def _connection_api_router(
-    service: MicrosoftConnectionService, signer: OwnerSessionSigner
+    service: MicrosoftConnectionService,
+    signer: OwnerSessionSigner,
 ) -> APIRouter:
     router = APIRouter()
 
@@ -202,16 +221,69 @@ def _connection_api_router(
     return router
 
 
-def _owner_start_page(action: str, token: str, script_nonce: str, next_path: str) -> str:
-    return f"""<!doctype html>
-<html lang="zh-CN"><head><meta charset="utf-8"><title>连接 Microsoft</title>
-<style>body{{font-family:system-ui;max-width:36rem;margin:4rem auto;padding:1rem}}
-button{{font:inherit;padding:.7rem 1.2rem}}</style></head>
-<body><h1>连接 Microsoft 邮箱</h1><p>继续后将跳转到 Microsoft 登录与授权页面。</p>
-<form method="post" action="{action}"><input type="hidden" name="session" value="{token}">
-<input type="hidden" name="next" value="{next_path}">
-<button type="submit">继续连接</button></form>
-<script nonce="{script_nonce}">document.forms[0].submit()</script></body></html>"""
+def _todo_setup_router(
+    todo_setup: ManagedTaskListSetupPort, signer: OwnerSessionSigner
+) -> APIRouter:
+    router = APIRouter()
+
+    @router.post(
+        "/api/v1/connections/microsoft/todo/resolve",
+        response_model=ManagedTaskListView,
+    )
+    async def resolve_todo_list(
+        request: Request,
+        payload: TodoSetupRequest,
+        owner_cookie: Annotated[str | None, Cookie(alias=OWNER_COOKIE)] = None,
+        owner_header: Annotated[str | None, Header(alias="X-Owner-Session")] = None,
+        csrf_cookie: Annotated[str | None, Cookie(alias=CSRF_COOKIE)] = None,
+        csrf_header: Annotated[str | None, Header(alias="X-CSRF-Token")] = None,
+    ) -> ManagedTaskListView:
+        _require_loopback_request(request)
+        owner = _authenticate(signer, owner_header or owner_cookie or "")
+        try:
+            verify_csrf(csrf_cookie, csrf_header)
+        except OwnerAuthenticationError as exc:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "request verification failed") from exc
+        try:
+            return await todo_setup.resolve(owner.user_id, payload.connection_id)
+        except LookupError as exc:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "connection does not exist") from exc
+        except (
+            ManagedTaskListNotFoundError,
+            ManagedTaskListAmbiguousError,
+            ManagedTaskListOwnershipError,
+        ) as exc:
+            raise HTTPException(
+                status.HTTP_409_CONFLICT, "To Do list could not be verified"
+            ) from exc
+        except (OAuthProviderError, TaskProviderError) as exc:
+            _LOGGER.warning(
+                "Microsoft To Do list resolution failed",
+                extra={"failure_class": exc.failure_class},
+            )
+            raise HTTPException(
+                status.HTTP_503_SERVICE_UNAVAILABLE, "To Do list could not be verified"
+            ) from exc
+
+    return router
+
+
+async def _successful_callback_response(
+    view: ConnectionStatusView, todo_setup: ManagedTaskListSetupPort | None
+) -> HTMLResponse:
+    base = f"Microsoft connection is {view.status.lower()}."
+    if todo_setup is None:
+        return HTMLResponse(f"{base} You may close this window.")
+    try:
+        await todo_setup.resolve("owner", view.connection_id)
+    except Exception as exc:
+        failure_class = getattr(exc, "failure_class", type(exc).__name__)
+        _LOGGER.warning(
+            "Microsoft To Do list resolution failed",
+            extra={"failure_class": failure_class},
+        )
+        return HTMLResponse(f"{base} To Do list could not be verified. Return to QQ and try again.")
+    return HTMLResponse(f"{base} Microsoft To Do list is ready. You may close this window.")
 
 
 async def _default_authorization_path(service: MicrosoftConnectionService) -> str:

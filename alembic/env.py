@@ -23,6 +23,7 @@ from qq_time_agent.modules.normalization.infrastructure.tables import Normalizat
 from qq_time_agent.modules.notifications.infrastructure.tables import NotificationsBase
 from qq_time_agent.modules.reminders.infrastructure.tables import RemindersBase
 from qq_time_agent.modules.scheduling.infrastructure.tables import SchedulingBase
+from qq_time_agent.modules.task_projection.infrastructure.tables import TaskProjectionBase
 from qq_time_agent.modules.understanding.infrastructure.tables import UnderstandingBase
 from qq_time_agent.modules.workflow.infrastructure.tables import WorkflowBase
 
@@ -49,6 +50,7 @@ target_metadata = [
     RemindersBase.metadata,
     NotificationsBase.metadata,
     KnowledgeBase.metadata,
+    TaskProjectionBase.metadata,
 ]
 
 

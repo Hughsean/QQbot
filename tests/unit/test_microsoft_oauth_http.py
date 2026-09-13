@@ -10,6 +10,7 @@ from qq_time_agent.adapters.inbound.http.microsoft_oauth import microsoft_oauth_
 from qq_time_agent.adapters.inbound.http.owner_session import OwnerSessionSigner
 from qq_time_agent.modules.connections.application.oauth import AuthorizationStart
 from qq_time_agent.modules.connections.contracts import ConnectionStatusView
+from qq_time_agent.modules.task_projection.contracts import ManagedTaskListView
 
 
 @dataclass
@@ -58,12 +59,25 @@ class FakeConnectionService:
         )
 
 
-def _client() -> tuple[TestClient, FakeConnectionService, str]:
+class FakeTodoSetup:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, UUID]] = []
+
+    async def resolve(self, user_id: str, connection_id: UUID) -> ManagedTaskListView:
+        self.calls.append((user_id, connection_id))
+        return ManagedTaskListView(uuid4(), connection_id, "小智建议", "READY", 1)
+
+
+def _client(
+    todo_setup: FakeTodoSetup | None = None,
+) -> tuple[TestClient, FakeConnectionService, str]:
     signer = OwnerSessionSigner(SecretStr("k" * 32), FixedClock())
     token = signer.issue("owner")
     service = FakeConnectionService()
     app = FastAPI()
-    app.include_router(microsoft_oauth_router(service, signer))  # type: ignore[arg-type]
+    app.include_router(  # type: ignore[arg-type]
+        microsoft_oauth_router(service, signer, todo_setup)
+    )
     return TestClient(app, base_url="http://localhost:8000"), service, token
 
 
@@ -96,6 +110,21 @@ def test_callback_maps_safe_result_and_does_not_return_provider_parameters() -> 
     }
 
 
+def test_callback_resolves_managed_todo_list_after_authorization() -> None:
+    todo_setup = FakeTodoSetup()
+    client, service, token = _client(todo_setup)
+    client.post("/api/v1/owner/session", data={"session": token}, follow_redirects=False)
+    client.get("/oauth/microsoft/start", follow_redirects=False)
+    response = client.get(
+        "/oauth/microsoft/callback",
+        params={"state": "synthetic-state", "code": "synthetic-code"},
+    )
+
+    assert response.status_code == 200
+    assert "Microsoft To Do list is ready" in response.text
+    assert todo_setup.calls == [("owner", service.connection_id)]
+
+
 def test_disconnect_requires_owner_csrf_and_explicit_confirmation() -> None:
     client, service, token = _client()
     client.post("/api/v1/owner/session", data={"session": token}, follow_redirects=False)
@@ -110,6 +139,25 @@ def test_disconnect_requires_owner_csrf_and_explicit_confirmation() -> None:
     )
     assert response.status_code == 200
     assert response.json()["status"] == "DISCONNECTED"
+
+
+def test_explicit_todo_resolution_requires_owner_csrf() -> None:
+    todo_setup = FakeTodoSetup()
+    client, service, token = _client(todo_setup)
+    client.post("/api/v1/owner/session", data={"session": token}, follow_redirects=False)
+    start = client.get("/oauth/microsoft/start", follow_redirects=False)
+    payload = {"connection_id": str(service.connection_id)}
+    assert (
+        client.post("/api/v1/connections/microsoft/todo/resolve", json=payload).status_code == 403
+    )
+
+    response = client.post(
+        "/api/v1/connections/microsoft/todo/resolve",
+        json=payload,
+        headers={"X-CSRF-Token": start.cookies["qq_time_agent_csrf"]},
+    )
+    assert response.status_code == 200
+    assert response.json()["display_name"] == "小智建议"
 
 
 def test_owner_bootstrap_redirects_without_url_secret() -> None:
