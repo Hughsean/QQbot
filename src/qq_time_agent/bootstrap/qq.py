@@ -114,7 +114,11 @@ async def run_qq() -> None:
         },
         clock,
     )
-    task_completion = build_qq_task_completion(config, sessions, agenda, actions, clock)
+    task_completion = (
+        build_qq_task_completion(config, sessions, agenda, actions, clock)
+        if config.microsoft_todo_enabled
+        else None
+    )
     preferences = UserPreferencesService(
         SqlUserPreferencesRepository(sessions),
         UserPreferencesView(
@@ -223,7 +227,7 @@ async def run_qq() -> None:
         action_tokens=token_service,
         action_owner_id=config.owner.qq_openid.get_secret_value(),
         timeline=NotificationEventRecorder(conversation_events, clock),
-        completion_gate=task_completion.gate,
+        completion_gate=None if task_completion is None else task_completion.gate,
     )
     reminder_worker = ReminderWorker(
         reminders,
@@ -244,7 +248,8 @@ async def run_qq() -> None:
         await asyncio.gather(gateway_task, return_exceptions=True)
         await ollama.close()
         await deepseek.close()
-        await task_completion.close()
+        if task_completion is not None:
+            await task_completion.close()
         await engine.dispose()
 
 

@@ -1,5 +1,6 @@
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from typing import cast
 from uuid import UUID, uuid4
 
 import pytest
@@ -15,8 +16,11 @@ from qq_time_agent.adapters.inbound.workers.task_projection import (
     AgendaProjectionOutboxRelay,
     AgendaProjectionReconciliationScheduler,
     TaskCompletionDeltaScheduler,
+    TaskCompletionJobHandler,
     TaskProjectionJobHandler,
 )
+from qq_time_agent.adapters.outbound.microsoft_graph.todo import MicrosoftGraphTodoAdapter
+from qq_time_agent.bootstrap.worker_task_projection import WorkerTaskProjection
 from qq_time_agent.contracts.events import EventEnvelope
 from qq_time_agent.contracts.jobs import JobLease, JobRequest
 from qq_time_agent.modules.agenda.contracts import AgendaEntryView
@@ -86,6 +90,40 @@ class Targets:
 
     async def list_ready(self, user_id: str) -> tuple[TaskProjectionTarget, ...]:
         return (self.target,) if user_id == self.target.user_id else ()
+
+
+@dataclass
+class CounterScheduler:
+    calls: int = 0
+
+    async def enqueue_due(self) -> int:
+        self.calls += 1
+        return 1
+
+
+@dataclass
+class CounterHandler:
+    calls: list[JobLease] = field(default_factory=list)
+
+    async def __call__(self, lease: JobLease) -> None:
+        self.calls.append(lease)
+
+
+def _worker_projection(
+    enabled: bool,
+) -> tuple[WorkerTaskProjection, tuple[CounterScheduler, ...], CounterHandler, CounterHandler]:
+    relay, reconciliation, delta = CounterScheduler(), CounterScheduler(), CounterScheduler()
+    projection_handler, completion_handler = CounterHandler(), CounterHandler()
+    projection = WorkerTaskProjection(
+        cast("MicrosoftGraphTodoAdapter", object()),
+        cast("AgendaProjectionOutboxRelay", relay),
+        cast("AgendaProjectionReconciliationScheduler", reconciliation),
+        cast("TaskCompletionDeltaScheduler", delta),
+        cast("TaskProjectionJobHandler", projection_handler),
+        cast("TaskCompletionJobHandler", completion_handler),
+        enabled,
+    )
+    return projection, (relay, reconciliation, delta), projection_handler, completion_handler
 
 
 def _entry() -> AgendaEntryView:
@@ -172,3 +210,30 @@ async def test_job_handler_preserves_retry_classification(
     )
     with pytest.raises(error, match=failure_class):
         await TaskProjectionJobHandler(Projections(failure_class))(lease)
+
+
+@pytest.mark.asyncio
+async def test_disabled_projection_does_not_schedule_or_call_provider_handlers() -> None:
+    projection, schedulers, handler, completion = _worker_projection(False)
+    lease = JobLease(uuid4(), UPSERT_JOB, {}, "worker", 1, 5)
+
+    await projection.schedule_due()
+    await projection.handlers()[UPSERT_JOB](lease)
+    await projection.handlers()[DELTA_JOB](lease)
+
+    assert [scheduler.calls for scheduler in schedulers] == [0, 0, 0]
+    assert handler.calls == [] and completion.calls == []
+
+
+@pytest.mark.asyncio
+async def test_enabled_projection_schedules_and_routes_provider_jobs() -> None:
+    projection, schedulers, handler, completion = _worker_projection(True)
+    upsert = JobLease(uuid4(), UPSERT_JOB, {}, "worker", 1, 5)
+    delta = JobLease(uuid4(), DELTA_JOB, {}, "worker", 1, 5)
+
+    await projection.schedule_due()
+    await projection.handlers()[UPSERT_JOB](upsert)
+    await projection.handlers()[DELTA_JOB](delta)
+
+    assert [scheduler.calls for scheduler in schedulers] == [1, 1, 1]
+    assert handler.calls == [upsert] and completion.calls == [delta]

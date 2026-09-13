@@ -33,8 +33,8 @@ Microsoft To Do 只提供外部视图和 `completed` 信号，标题、时间、
 
 - Ruff：完整 `src`、`tests` 与 `alembic` 检查通过。
 - strict mypy：391 个 source files 无错误。
-- 非 integration、非 sandbox 回归：621 passed，52 deselected。
-- PostgreSQL integration：42 passed，631 deselected。
+- 非 integration、非 sandbox 回归：624 passed，53 deselected。
+- PostgreSQL integration：42 passed，635 deselected。
 - Alembic：`0029_task_projection → 0030_todo_completion_gate → 0029 → 0030` 往返通过，本地数据库为
   `0030_todo_completion_gate (head)`。
 - 重点覆盖：Graph 强读取与危险游标拒绝、delta DTO 隔离、完成/未完成/无映射/缺失/动作失败/超时
@@ -46,3 +46,8 @@ Microsoft To Do 只提供外部视图和 `completed` 信号，标题、时间、
 下一阶段需要在隔离账号与生产发布流程中完成：真实 To Do 创建/修改/勾选、真实 QQ 正常提醒与抑制、
 发布前数据库备份、Agenda/Reminder 摘要比对、连接失权演练、功能关闭与应用/数据库回滚演练。未通过
 这些门槛前不部署生产。
+
+17E 准备已补充默认关闭的 `MICROSOFT_TODO_ENABLED` 独立开关和可清理的真实 To Do 生命周期沙箱。
+2026-09-13 首次本地执行在任何外部写入前停止，因为本地数据库没有活动的 `Tasks.ReadWrite`
+连接；生产主机只读核对显示已有一条 ACTIVE 且具备该能力的 Microsoft 连接。此结果只证明生产具备
+授权前提，不替代候选版本隔离验证，也未修改生产配置、数据库或 To Do 数据。

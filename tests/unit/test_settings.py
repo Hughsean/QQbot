@@ -17,6 +17,7 @@ def test_settings_accept_safe_loopback_configuration() -> None:
         "http://localhost:8000/oauth/microsoft/callback"
     )
     assert _to_runtime_config(settings).qq.diagnostic_raw_event_once is False
+    assert _to_runtime_config(settings).microsoft_todo_enabled is False
 
 
 def test_settings_maps_optional_qq_mail_bootstrap_credentials() -> None:
@@ -43,6 +44,13 @@ def test_settings_diagnostic_flag_can_be_enabled() -> None:
     settings = EnvironmentSettings.model_validate(values)
     assert settings.qq_diagnostic_raw_event_once is True
     assert _to_runtime_config(settings).qq.diagnostic_raw_event_once is True
+
+
+def test_microsoft_todo_requires_explicit_feature_enablement() -> None:
+    values = _values()
+    values["microsoft_todo_enabled"] = True
+    config = _to_runtime_config(EnvironmentSettings.model_validate(values))
+    assert config.microsoft_todo_enabled is True
 
 
 def test_settings_accept_200k_agent_context_profile() -> None:

@@ -54,19 +54,27 @@ class WorkerTaskProjection:
     delta: TaskCompletionDeltaScheduler
     handler: TaskProjectionJobHandler
     completion_handler: TaskCompletionJobHandler
+    enabled: bool = False
 
     def handlers(self) -> dict[str, Callable[[JobLease], Awaitable[None]]]:
+        handler = self.handler if self.enabled else self._discard
+        completion = self.completion_handler if self.enabled else self._discard
         return {
-            UPSERT_JOB: self.handler,
-            CLOSE_JOB: self.handler,
-            RECONCILE_JOB: self.handler,
-            DELTA_JOB: self.completion_handler,
+            UPSERT_JOB: handler,
+            CLOSE_JOB: handler,
+            RECONCILE_JOB: handler,
+            DELTA_JOB: completion,
         }
 
     async def schedule_due(self) -> None:
+        if not self.enabled:
+            return
         await self.relay.enqueue_due()
         await self.reconciliation.enqueue_due()
         await self.delta.enqueue_due()
+
+    async def _discard(self, lease: JobLease) -> None:
+        del lease
 
 
 def build_worker_task_projection(
@@ -77,6 +85,7 @@ def build_worker_task_projection(
     actions: AgendaCompletionPort,
     encryption_key: SecretStr,
     clock: Clock,
+    enabled: bool = False,
 ) -> WorkerTaskProjection:
     graph = MicrosoftGraphTodoAdapter(clock)
     targets = SqlTaskProjectionTargetRepository(sessions)
@@ -118,4 +127,5 @@ def build_worker_task_projection(
         TaskCompletionDeltaScheduler(targets, queue, clock),
         TaskProjectionJobHandler(service),
         TaskCompletionJobHandler(completion),
+        enabled,
     )

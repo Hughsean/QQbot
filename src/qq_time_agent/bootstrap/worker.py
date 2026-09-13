@@ -290,6 +290,7 @@ def build_worker() -> tuple[JobRunner, AsyncEngine, tuple[AsyncClosable, ...]]:
         actions,
         config.credential_encryption_key,
         clock,
+        config.microsoft_todo_enabled,
     )
     agent = AgentLoop(
         agent_model,

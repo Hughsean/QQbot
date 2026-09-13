@@ -139,6 +139,7 @@ class RuntimeConfig:
     qq: QqConfig
     database: DatabaseConfig
     microsoft: MicrosoftConfig
+    microsoft_todo_enabled: bool
     qq_mail: QqMailConfig
     qq_mail_bootstrap: QqMailBootstrapConfig | None
     deepseek: DeepSeekConfig

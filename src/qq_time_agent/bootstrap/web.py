@@ -112,11 +112,15 @@ def build_app() -> tuple[FastAPI, AsyncEngine, tuple[object, ...]]:
         source_deletion,
         audit=audit,
     )
-    todo_setup = ManagedTaskListService(
-        SqlTaskProjectionTargetRepository(sessions),
-        MicrosoftTaskAccessService(connection_repository, vault, graph, clock),
-        graph_todo,
-        clock,
+    todo_setup = (
+        ManagedTaskListService(
+            SqlTaskProjectionTargetRepository(sessions),
+            MicrosoftTaskAccessService(connection_repository, vault, graph, clock),
+            graph_todo,
+            clock,
+        )
+        if config.microsoft_todo_enabled
+        else None
     )
     oauth = microsoft_oauth_router(
         connections,

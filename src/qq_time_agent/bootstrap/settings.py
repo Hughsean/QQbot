@@ -62,6 +62,7 @@ class EnvironmentSettings(BaseSettings):
     qq_diagnostic_raw_event_once: bool = False
     microsoft_tenant: str = "common"
     microsoft_client_id: SecretStr
+    microsoft_todo_enabled: bool = False
     qq_mail_imap_host: str = "imap.qq.com"
     qq_mail_imap_port: int = Field(default=993, ge=1, le=65535)
     qq_mail_timeout_seconds: float = Field(default=20, gt=0, le=120)
@@ -255,6 +256,7 @@ def _to_runtime_config(value: EnvironmentSettings) -> RuntimeConfig:
             value.microsoft_client_id,
             f"http://localhost:{value.app_listen_port}/oauth/microsoft/callback",
         ),
+        microsoft_todo_enabled=value.microsoft_todo_enabled,
         qq_mail=QqMailConfig(
             value.qq_mail_imap_host,
             value.qq_mail_imap_port,

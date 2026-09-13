@@ -294,3 +294,9 @@ Worker 异常。真实 Microsoft/QQ 联动和生产启用留在 17E。
 
 完成标准：发布前后 Agenda/Reminder 摘要一致；真实 To Do 勾选能在提醒前抑制 QQ；关闭 Task
 Projection 后内部日程查询、QQ 按钮与提醒恢复原有行为；Provider ID、token 和游标不进入日志。
+
+当前状态：发布准备已完成。独立 `MICROSOFT_TODO_ENABLED` 开关默认关闭；关闭时不访问 Graph，
+Agenda、Reminder、QQ 按钮和提醒保持原有行为；真实 To Do 生命周期沙箱具备失败后清理能力。本地
+数据库没有活动 Tasks 连接，因此真实沙箱在任何外部写入前停止；生产只读检查确认存在具备
+`Tasks.ReadWrite` 的活动连接，但当前线上版本尚未包含本阶段代码和迁移。生产备份、候选版本迁移、
+受管列表解析、真实 Microsoft/QQ 联动、摘要比对、启用和回滚演练均未执行，不能宣称 17E 完成。

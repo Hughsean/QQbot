@@ -68,6 +68,7 @@ DATABASE_NAME=qq_time_agent
 DATABASE_USER=qq_time_agent
 MICROSOFT_TENANT=common
 MICROSOFT_CLIENT_ID=
+MICROSOFT_TODO_ENABLED=false
 DEEPSEEK_BASE_URL=https://api.deepseek.com
 DEEPSEEK_FAST_MODEL=deepseek-v4-flash
 DEEPSEEK_REASONING_MODEL=deepseek-v4-pro
@@ -115,6 +116,11 @@ DEEPSEEK_API_KEY
 
 Microsoft 回调 URI 由 `APP_LISTEN_PORT` 派生为
 `http://localhost:{APP_LISTEN_PORT}/oauth/microsoft/callback`，不允许通过 `.env` 改成公网地址。
+
+`MICROSOFT_TODO_ENABLED` 是独立发布开关，默认必须为 `false`。关闭时 Web 不解析受管列表，Worker
+不产生或执行投影/delta Graph 工作，QQ 不执行发送前 Microsoft 门禁；Agenda、Reminder、按钮和
+QQ 提醒继续按内部事实源运行。只有 17E 沙箱、备份和回滚门禁全部通过后，生产配置才可改为
+`true`。
 
 ### `.env` 注入规则
 
