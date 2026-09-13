@@ -7,6 +7,7 @@
 | 项目所有者 | 唯一用户，发出命令、授权数据源、确认建议和撤销操作 |
 | QQ 平台 | 主要交互入口和通知出口 |
 | 邮箱提供方 | 提供只读邮件数据，首发为 Microsoft Graph |
+| Microsoft To Do | 展示 Agenda 投影并提供完成勾选，不是日程事实源或提醒出口 |
 | AI 提供方 | 进行受限的分类和结构化提取，不拥有决策权 |
 | 本机 Ollama | 为 RAG 生成嵌入向量，不承担生成式决策 |
 | QQ Time Agent | 保存内部日程，编排理解、检索、排程、确认和提醒 |
@@ -18,9 +19,9 @@
                          │   AI Provider    │
                          └────────▲─────────┘
                                   │ 最小化后的内容
-┌────────┐  命令/确认   ┌─────────┴──────────┐  OAuth/邮件   ┌──────────────┐
-│ Owner  ├─────────────►│   QQ Time Agent   ├──────────────►│ Mail Provider│
-└───▲────┘◄─────────────┤                    │◄──────────────┤              │
+┌────────┐  命令/确认   ┌─────────┴──────────┐  OAuth/邮件/任务 ┌──────────────┐
+│ Owner  ├─────────────►│   QQ Time Agent   ├────────────────►│ Microsoft   │
+└───▲────┘◄─────────────┤                    │◄────────────────┤ Graph        │
     │   建议/主动提醒       └───────┬───────┘               └──────────────┘
     │                              │ embedding
 ┌───┴────┐                  ┌──────▼───────┐
@@ -79,12 +80,27 @@ Connector 接收原始内容
 ```text
 Reminder Worker 租约领取到期提醒
 → 校验日程版本、取消状态和幂等键
-→ QQ Notification 主动发送
+→ 对有效 To Do 映射做有界完成强读取
+→ 仅在核验完成且 Actions 已完成 Agenda 时抑制
+→ 未完成、未映射、超时、失权或 Provider 故障时 QQ Notification 主动发送
 → 保存投递结果
 → 失败时有限退避重试或进入死信
 ```
 
-### 4.5 RAG 索引与查询流
+### 4.5 Microsoft To Do 投影流
+
+```text
+Agenda 创建/修改/完成/取消 → Transactional Outbox → Task Projection
+→ 受控取得 Microsoft task capability → 幂等更新“小智建议”视图
+
+To Do 变化提示/delta → 重新读取任务 → 核验连接、列表、映射和 Agenda 版本
+→ 仅 completed 经 Actions 门禁回写 Agenda → 取消相关 Reminder
+```
+
+To Do 标题、时间、正文、移动和删除均不能形成日程命令。Graph 不可用时投影延迟，但 Agenda 与
+QQ 提醒继续工作。
+
+### 4.6 RAG 索引与查询流
 
 ```text
 已授权内容变更 → 清洗/切块 → Ollama 生成 embedding

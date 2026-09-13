@@ -41,6 +41,8 @@ QQ Time Agent 是一个仅供项目所有者本人使用、以 QQ 为主要交�
 | [22-agent-conversation-context-plan.md](22-agent-conversation-context-plan.md) | 持久化统一会话时间线、快照和分层摘要实施计划 |
 | [23-agent-conversation-context-todo.md](23-agent-conversation-context-todo.md) | 会话上下文改造完成项与生产门槛 |
 | [24-agent-conversation-context-verification-report.md](24-agent-conversation-context-verification-report.md) | 会话上下文改造最终验证证据与生产基线 |
+| [25-microsoft-todo-requirements.md](25-microsoft-todo-requirements.md) | Microsoft To Do 仅作日程视图、完成标记及 QQ 提醒门禁的需求与验收 |
+| [26-microsoft-todo-module-design.md](26-microsoft-todo-module-design.md) | Task Projection 模块拆分、契约、数据所有权、竞态与实施阶段 |
 | [adr/](adr/) | 已接受的关键架构决策（含 Microsoft To Do 外部投影） |
 
 ## 决策优先级
@@ -62,6 +64,7 @@ QQ Time Agent 是一个仅供项目所有者本人使用、以 QQ 为主要交�
 | Task | 有目标和约束、但需要安排执行时间的任务 |
 | Proposal | 尚未执行的安排建议 |
 | Agenda Entry | 项目内部保存的权威日程条目 |
+| Task Projection | Agenda 到外部任务平台的非权威视图，以及受控完成信号回流 |
 | Action | 修改内部日程或向 QQ 发消息的受控操作 |
 | Knowledge Chunk | 可被 RAG 检索、但不是日程事实源的带来源文本片段 |
 | Connector | QQ、邮箱、AI、嵌入模型等外部系统的适配器 |
@@ -84,7 +87,7 @@ QQ Time Agent 是一个仅供项目所有者本人使用、以 QQ 为主要交�
 - AI Provider：DeepSeek API，通过独立适配器和 `.env` 注入配置
 - 日程存储：项目内部 PostgreSQL，不接入外部日历 Provider
 - 用户范围：仅项目所有者本人，拒绝其他 QQ 身份，不设计多租户
-- 提醒出口：QQ 官方 Bot 主动消息
+- 提醒出口：QQ 官方 Bot 主动消息；Microsoft To Do 原生提醒保持关闭
 - RAG：Docker Ollama `qwen3-embedding:4b` + Docker PostgreSQL `pgvector`，混合检索
 - 数据保留：日程/任务/笔记随用户删除，邮件与 QQ/RAG 来源 365 天，分层清理策略见 ADR-0009
 - 当前阶段：阶段 1 已通过本地基础设施、Ollama 与真实 QQ 沙箱门禁；阶段 2 已通过
@@ -117,4 +120,5 @@ QQ Time Agent 是一个仅供项目所有者本人使用、以 QQ 为主要交�
   2026-09-13 随后发布 `0032-0913`（提交 `5c17b3f`）：修复 `127.0.0.1` 授权入口与固定
   `localhost` 回调不同主机导致的 Cookie 丢失，并使默认入口对现有活动 Microsoft 连接做增量授权；
   OAuth 范围加入委托 `Tasks.ReadWrite`，为“小智建议”To Do 投影提供授权基础。To Do 投影与完成
-  回写仍属于阶段 17 后续项，内部 Agenda 继续是唯一事实源。
+  回写仍属于阶段 17 后续项，内部 Agenda 继续是唯一事实源。阶段 17 的产品需求、失败矩阵、
+  Task Projection 模块边界和实施拆分已在 `25`、`26` 文档冻结；未核验或不可用时继续发送 QQ。

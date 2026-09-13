@@ -249,6 +249,80 @@ QQ 直接消息的同步执行会直接回复当前消息，其 30 秒延迟 Job
 来源，也不受邮件静默时段影响。若 `list_agenda` 已成功而最终模型 JSON 无效，Agent Harness 必须
 直接使用该权威观察结果生成清单，不得返回通用失败或复用历史日程文本。
 
+### ReminderCompletionGatePort（ADR-0015）
+
+```text
+evaluateBeforeDelivery(
+  userId,
+  agendaEntryId,
+  expectedAgendaVersion,
+  reminderOccurrence,
+  observedAt,
+) -> ReminderCompletionDecision
+```
+
+该端口由 Task Projection 实现，Notifications 在调用 QQ Provider 前使用。决策只允许：
+
+```text
+SUPPRESS_COMPLETED
+SEND_NOT_COMPLETED
+SEND_UNMAPPED
+SEND_UNAVAILABLE
+SEND_STALE
+```
+
+只有强读取映射任务为 `completed`，且 Actions 已成功完成 Agenda 或确认该条目已经完成，才能返回
+`SUPPRESS_COMPLETED`。其他结果全部继续发送 QQ。任务缺失、删除、移动、授权失效、限流、网络
+错误、超时和版本不一致不能解释为完成。默认总调用预算为 3 秒，提醒关键路径内不做长退避重试。
+结果只返回内部原因码和审计引用，不返回 Provider ID、token、delta link 或原始异常。
+
+### TaskProjectionCommandPort（ADR-0015）
+
+```text
+projectAgendaEntry(entryId, expectedVersion, idempotencyKey) -> ProjectionResult
+closeProjection(entryId, expectedVersion, reason, idempotencyKey) -> ProjectionResult
+reconcileConnection(connectionId, cursor?) -> ReconciliationResult
+```
+
+Agenda 创建、修改、完成和取消以 Outbox/Event 驱动该端口。相同 Agenda 版本重复调用必须幂等；
+外部失败只改变投影 Job/映射状态，不能回滚 Agenda 或阻断 QQ。首次启用只补投影 `ACTIVE` 条目。
+
+### TaskProviderPort（ADR-0015）
+
+```text
+resolveManagedList(accessGrant, normalizedName) -> ManagedTaskList
+upsertTask(accessGrant, listRef, taskDraft, providerTaskRef?) -> ExternalTaskView
+getTask(accessGrant, listRef, taskRef) -> ExternalTaskView
+completeTask(accessGrant, listRef, taskRef, expectedRevision?) -> ExternalTaskView
+deleteTask(accessGrant, listRef, taskRef, expectedRevision?) -> ExternalTaskResult
+fetchDelta(accessGrant, listRef, opaqueCursor?) -> ExternalTaskDeltaPage
+```
+
+首个受管列表的归一化名称固定为“小智建议”。零个匹配和多个同名匹配均明确失败，不得猜测列表
+ID。`ExternalTaskView` 是 Provider 中立 DTO；Microsoft Graph SDK 类型、响应头和异常不得越过
+Adapter。任务投影禁用 Provider 原生提醒，外部标题、时间、正文、删除、移动和重新打开都不形成
+Agenda 命令。
+
+### ConnectionTaskAccessPort（ADR-0015）
+
+```text
+acquireTaskAccess(userId, connectionId, requiredCapability) -> TaskAccessGrant
+```
+
+Connections 校验所有者、连接状态和 `TASKS_READ_WRITE` 能力，Credential Vault 提供短生命周期凭据
+句柄。`TaskAccessGrant` 不可持久化、序列化或日志化；Task Projection 不读取凭据表或环境变量。
+
+### CalendarActionPort 完成扩展（ADR-0015）
+
+```text
+completeAgenda(actionContext, entryId, expectedVersion, idempotencyKey) -> CompleteAgendaResult
+```
+
+To Do 完成回写必须调用该端口，稳定幂等键由连接、映射和 Provider revision 派生。Actions 在自己的
+事务中写 ActionRequest，并通过 Agenda/Reminder 公开端口完成条目和取消旧提醒。QQ 按钮与 To Do
+完成并发时，两条路径必须收敛到一个成功的 Agenda 最终状态；Task Projection 不得直接写 Agenda
+或 Reminder。
+
 ### EmbeddingPort
 
 ```text
@@ -288,6 +362,10 @@ markFailed(leaseId, failureClass, nextAttemptAt?)
 Reminder 到期领取使用数据库 `FOR UPDATE SKIP LOCKED`，查询与写入租约在单事务内完成；过期租约可
 由新 Worker 恢复。Reminder 必须匹配 `AgendaEntry` 的当前活动版本，否则进入
 `StaleAgendaVersion` 死信且不得发送。QQ/Provider 失败采用有限指数退避，达到上限进入死信。
+
+`cancelForEntry` 必须能以版本和租约 fencing 幂等取消 `SCHEDULED`、`RETRY_WAIT` 或正在执行完成
+门禁的 `LEASED` 提醒。若 Task Projection 已核验 To Do 完成，Notifications 只有在 Actions 成功
+完成 Agenda 并取消当前提醒后才记录 `SUPPRESSED_COMPLETED`；不得再调用 `markSent`。
 
 ### RetentionPort
 

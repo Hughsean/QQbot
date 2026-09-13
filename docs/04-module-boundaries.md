@@ -35,6 +35,7 @@ api           对外控制器和 DTO 映射
 | Reminders | 提醒计划、到期租约、重试和死信 | Reminder、执行租约 | 改写日程、直接依赖 QQ SDK |
 | Actions | 所有日程副作用门禁、幂等执行、提醒一致性和撤销 | ActionRequest、执行结果 | 自行决定用户意图 |
 | Notifications | 规划、渲染并发送 QQ 通知，以及邮件结果投递策略解析 | 通知意图、投递记录、模板版本、cooldown、邮件投递决策 | 修改 Proposal、Connection 或 Agenda 状态 |
+| Task Projection | Agenda 外部任务视图、映射、同步、完成核验和提醒完成门禁 | 投影映射、同步游标、观察摘要 | 成为日程事实源、直接发送 QQ、接受外部字段编辑 |
 | Data Lifecycle | 计算保留期限、删除编排、删除记录重放 | Tombstone、PurgeRun、保留策略版本 | 直接跨模块删表、保存业务正文 |
 | Audit | 追加式审计和可追溯视图 | 审计记录 | 业务决策、凭据 |
 | Provider Adapters | Microsoft、QQ、DeepSeek、Ollama SDK/HTTP 适配 | Provider 特定游标可由所属模块托管 | 跨 Provider 业务编排 |
@@ -59,6 +60,7 @@ api           对外控制器和 DTO 映射
 | 内部日程 | Agenda | Busy/Free 和 Agenda 命令/查询契约 |
 | 提醒计划 | Reminders | Reminder 命令/查询契约 |
 | 副作用执行记录 | Actions | Action 查询契约 |
+| 外部任务映射和同步游标 | Task Projection | `TaskProjectionCommandPort`、`ReminderCompletionGatePort` |
 | 删除标记和清理运行 | Data Lifecycle | `RetentionPort`、模块级 `PurgePort` |
 | 审计记录 | Audit | 只追加接口 |
 
@@ -109,11 +111,15 @@ File Adapter┘              │                                │
                                                            │
 User Confirmation ─────────────────────────────────────────┤
                                                            ▼
-                                                     Actions ─► Agenda
-                                                                  │
-                                                            Reminders
-                                                                  │
-                                                            Notifications ─► QQ
+                                                     Actions ─► Agenda ──Outbox──► Task Projection
+                                                          │          ▲                  │
+                                                          ▼          │                  ▼
+                                                     Reminders       └──完成回写── Actions
+                                                          │                             │
+                                                          ▼                             ▼
+                                                    Notifications ──完成门禁──► Task Projection
+                                                          │
+                                                          └───────────────────────────► QQ
 
 Connections ─► Credential Vault  （供各 Provider Adapter 通过受控句柄使用）
 Audit ◄── 接收所有关键领域事件
@@ -136,6 +142,10 @@ Audit ◄── 接收所有关键领域事件
   聊天记录正文的 T2 信任级别。未知展示昵称不得由模型猜测为所有者。
 - Data Lifecycle 不得直接执行跨模块 SQL 删除；任何备份恢复都必须在 Retrieval 启用前重放 Tombstone。
 - Notifications 不得根据用户文本自行改变业务状态。
+- Notifications 不得直接读取 Microsoft、投影表或 Provider DTO；发送 Reminder 前只能调用
+  `ReminderCompletionGatePort`。除已完成且 Actions 成功的明确抑制结果外，均继续发送 QQ。
+- Task Projection 不得直接写 Agenda/Reminder 或发送 QQ；外部任务只有 `completed` 可以通过
+  Actions 形成状态变化，删除、移动、编辑和重新打开都不能成为内部命令。
 - Actions 和 Calendar System 不得在没有有效所有者授权、当前版本和明确自动化规则时执行。
 - AI Adapter 不得接收客户端密码、refresh token、完整审计日志或不必要的个人数据。
 - 任何模块不得通过共享 ORM Entity 形成隐式耦合。
@@ -165,6 +175,7 @@ src/
     reminders/
     actions/
     notifications/
+    task_projection/
     data_lifecycle/
     audit/
   adapters/
@@ -198,3 +209,5 @@ CI 必须包含架构测试，验证：
 - Provider DTO 不出现在 application contract 中。
 - 凭据类型不能被序列化到日志或领域事件。
 - 所有 Action handler 都声明确认策略和幂等策略。
+- Notifications 不导入 Microsoft Adapter 或 Task Projection Repository；Task Projection 不导入
+  Agenda/Actions/Reminders 的 domain、infrastructure 或 ORM Entity。

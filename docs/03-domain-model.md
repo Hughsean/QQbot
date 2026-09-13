@@ -132,6 +132,25 @@
 - `lease_until`
 - `idempotency_key`
 
+### TaskProjectionMapping
+
+代表 Agenda 到外部任务视图的 Provider 中立映射，不是日程事实源。
+
+- `mapping_id`
+- `user_id`
+- `agenda_entry_id`
+- `agenda_entry_version`
+- `connection_id`
+- `provider`
+- `provider_list_ref`
+- `provider_task_ref`
+- `status`
+- `provider_revision`
+- `last_projected_at`
+- `last_checked_at`
+- `last_observed_completion`
+- `version`
+
 ### KnowledgeChunk
 
 RAG 检索单元，仅保存知识索引，不保存日程状态。
@@ -187,6 +206,18 @@ SCHEDULED → LEASED → SENT
 AgendaEntry 到达 `ends_at` 不会自动转为 `COMPLETED`。经过计划结束时间只表示时间窗口已结束，
 不能证明 Event 已实际参加或 Task 已完成；条目必须由所有者通过按钮或直接命令明确完成/取消。
 
+### TaskProjectionMapping
+
+```text
+PENDING → ACTIVE → RETRY_WAIT → ACTIVE
+             ├──→ DETACHED → PENDING
+             ├──→ CLOSED
+             └──→ FAILED_FINAL
+```
+
+`DETACHED`、任务删除、移动或不可读取都不代表 Agenda 已完成。外部 `completed` 只是完成证据，
+必须通过连接、列表、映射、Agenda 版本和 Actions 门禁后才形成内部状态变更。
+
 ## 3. 领域不变量
 
 1. Event 必须有明确的 `starts_at`、`ends_at` 和时区，且结束晚于开始。
@@ -205,6 +236,12 @@ AgendaEntry 到达 `ends_at` 不会自动转为 `COMPLETED`。经过计划结束
 14. 同一向量索引版本内的 embedding 模型、模型摘要和维度必须一致。
 15. Reminder 卡片正文不得暴露内部 Agenda/Reminder UUID 或要求用户回复内部命令；交互操作只通过
     所有者绑定、短期有效、单次使用的按钮令牌提交。
+16. Microsoft To Do 只保存 Agenda 外部投影视图；标题、时间、正文、删除、移动和重新打开不得
+    反向覆盖 Agenda。
+17. 只有受管列表中有效映射任务的最新状态经 Provider 强读取确认为 `completed`，并且 Actions
+    成功完成 Agenda 或确认其已完成后，Reminder 才能因外部完成而抑制。
+18. To Do 完成状态未知、超时、失权、限流、任务缺失或版本过期时，Agenda 保持不变且 QQ 提醒
+    继续发送。
 
 ## 4. 领域事件
 
@@ -222,6 +259,11 @@ AgendaEntry 到达 `ends_at` 不会自动转为 `COMPLETED`。经过计划结束
 - `AgendaEntryChanged`
 - `ReminderDue`
 - `ReminderSent`
+- `TaskProjectionRequested`
+- `TaskProjectionSucceeded`
+- `TaskProjectionFailed`
+- `ExternalTaskCompletionObserved`
+- `ReminderSuppressedByCompletion`
 - `KnowledgeSourceChanged`
 - `KnowledgeChunkIndexed`
 - `ConnectionReauthRequired`

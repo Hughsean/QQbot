@@ -231,12 +231,50 @@ Worker 只生成持久化意图，QQ 进程发送前重新校验 Agenda/Connecti
 
 ## 阶段 17：Microsoft To Do 投影（ADR-0015）
 
-交付物：Microsoft OAuth `Tasks.ReadWrite` 增量授权、固定“小智建议”列表解析、Agenda 到 To Do 的
-幂等任务投影，以及 To Do 完成状态经 Actions 门禁回写 Agenda。
+目标：Microsoft To Do 仅作为 Agenda 外部视图和完成标记入口；QQ 仍是唯一主动提醒出口。详细需求
+与模块设计见 `docs/25-microsoft-todo-requirements.md` 和 `docs/26-microsoft-todo-module-design.md`。
+
+### 17A：需求与模块边界冻结
+
+交付物：完成状态回流边界、QQ 提醒决策矩阵、`Task Projection` 数据所有权、公共端口、竞态策略、
+实施与回滚拆分。
+
+完成标准：明确 Agenda 唯一事实源、To Do 原生提醒关闭、只有核验完成才能抑制 QQ；任务缺失、
+超时、失权、限流和版本过期一律继续发送 QQ；文档之间无冲突。
+
+当前状态：已完成。
+
+### 17B：授权接入、模块骨架与列表解析
+
+交付物：Microsoft OAuth `Tasks.ReadWrite` 增量授权、Task Projection 模块和迁移、Graph task adapter、
+短期 task access grant、固定“小智建议”列表解析。
 
 完成标准：已有邮件连接增量授权不重复建连接或中断邮件同步；`127.0.0.1` 授权入口与固定
-`localhost` 回调同主机；授权失败可按脱敏分类诊断；Provider 不可用时 Agenda 与 QQ 提醒继续工作；
-To Do 任务 ID 变化、重复回调和漏通知由本地映射、幂等键与 delta 补偿处理。
+`localhost` 回调同主机；授权失败可按脱敏分类诊断；零个或多个同名列表明确失败且不猜测。
 
 当前状态：授权基础已完成并发布。`127.0.0.1` 入口规范化、已有活动连接增量授权、失败分类日志、
-`Tasks.ReadWrite` 同意范围和邮件刷新保持最小旧范围均已验证；To Do 任务投影与完成回写尚未交付。
+`Tasks.ReadWrite` 同意范围和邮件刷新保持最小旧范围均已验证；模块骨架和列表解析尚未交付。
+
+### 17C：Agenda 单向投影
+
+交付物：Agenda 创建/修改/完成/取消 Outbox 消费、幂等 upsert、活动历史条目补投影、重试、死信和
+对账。To Do 标题、时间、正文编辑不反向写 Agenda，任务原生提醒保持关闭。
+
+完成标准：相同 Agenda 版本不产生重复任务；外部写失败不回滚 Agenda；Worker 重启、Graph 成功后
+本地事务前崩溃和游标重建均能收敛。
+
+### 17D：完成回写与 QQ 提醒门禁
+
+交付物：每分钟 delta 同步、发送前 3 秒预算强读取、Actions `COMPLETE_AGENDA` 幂等回写、已租约
+Reminder 安全取消、Notifications 抑制记录。
+
+完成标准：核验完成且 Actions 成功时不发 QQ；未完成、未映射、任务删除/移动、授权失效、限流、
+网络错误、超时或版本不符时继续发送；QQ 按钮和 To Do 完成竞态只形成一次完成状态变更。
+
+### 17E：沙箱、生产启用与回滚
+
+交付物：隔离库集成测试、Microsoft/QQ 真实沙箱、生产备份和迁移、活动 Agenda 分批补投影、指标、
+告警和关闭开关。
+
+完成标准：发布前后 Agenda/Reminder 摘要一致；真实 To Do 勾选能在提醒前抑制 QQ；关闭 Task
+Projection 后内部日程查询、QQ 按钮与提醒恢复原有行为；Provider ID、token 和游标不进入日志。
