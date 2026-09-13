@@ -228,6 +228,15 @@ restart count 均为零。切换前后 Agenda 与 Reminder 各 13 条且完整�
 回滚点 `.deploy-backups/20260913-091526-pre0031` 的数据库与旧源码校验通过；切换前后 Agenda 与
 Reminder 各 13 条且完整摘要一致，Web/Worker/QQ 均运行新镜像、restart count 为零，readiness
 通过，最近日志无错误。该发布不重发历史 Reminder。
+2026-09-13 继续发布 `0032-0913 / 5c17b3f`，修复 Microsoft OAuth 本机入口：数值回环地址先
+规范化到固定 callback 使用的 `localhost`，避免浏览器会话 Cookie 因主机名不同而丢失；默认入口对
+现有活动 Microsoft Connection 发起增量授权，不再创建同账号的待授权副本，授权失败不改变原连接
+可用状态。授权范围新增委托 `Tasks.ReadWrite`，邮件后台刷新在完成增量同意前仍只请求原邮件范围。
+候选镜像在独立 `qq_time_agent_test_0032_0913_5c17b3f` 数据库完成全量迁移与 37 项 PostgreSQL
+集成测试，随后删除测试库；回滚点 `.deploy-backups/20260913-101445-pre0032` 的数据库与源码校验
+通过。切换前后 Agenda/Reminder 均为 13 条且完整摘要一致；Web/Worker/QQ restart count 为零，
+readiness 的数据库与嵌入检查通过，最近日志无错误。生产活动 Microsoft 连接保持 ACTIVE，待所有者
+在浏览器完成一次新的交互式同意后 capabilities 才会记录 `Tasks.ReadWrite`。
 
 ## 5. 当前生产主机容量
 
