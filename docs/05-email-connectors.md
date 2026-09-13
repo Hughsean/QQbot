@@ -31,13 +31,14 @@ disconnect()
 - 应用类型：移动和桌面公共客户端，允许 public client flow。
 - 回调地址：`http://localhost:8000/oauth/microsoft/callback`。
 - 权限类型：委托权限。
-- Graph 权限：`User.Read`、`Mail.Read`。
-- OAuth scopes：`openid profile email offline_access User.Read Mail.Read`。
+- Graph 委托权限：`User.Read`、`Mail.Read`、`Tasks.ReadWrite`。
+- OAuth scopes：`openid profile email offline_access User.Read Mail.Read Tasks.ReadWrite`。
 
 ### 授权流程
 
-1. 所有者从 Ubuntu 生产主机浏览器打开 `http://127.0.0.1:8000/oauth/microsoft/owner-start`；
-   短期签名会话由隐藏同源 POST 换取 `HttpOnly` 所有者 Cookie，不把会话放入 URL。
+1. 所有者经 SSH 本地端口转发后打开 `http://127.0.0.1:8000/oauth/microsoft/owner-start`；入口先
+   无秘密地规范化到 `http://localhost:8000`，再设置 `HttpOnly` 所有者 Cookie，使 Cookie 主机与
+   固定 Microsoft 回调 URI 一致。
 2. `/oauth/microsoft/start` 验证所有者 Cookie，生成 `state`、`nonce` 和 PKCE verifier。
 3. 临时授权事务绑定用户、浏览器会话和过期时间。
 4. 用户在 Microsoft 页面登录并同意权限。
@@ -46,6 +47,10 @@ disconnect()
 7. 验证 ID token 的签名、issuer、audience、nonce 和时间声明。
 8. Credential Vault 加密保存 refresh token。
 9. Connections 保存 Provider 账号标识和 ACTIVE 状态。
+
+已有 Microsoft 连接新增权限时，入口必须把授权事务绑定到现有默认 Connection。授权进行期间原连接
+保持 ACTIVE/DEGRADED，成功后原位轮换 refresh token 和 capabilities；不得创建同账号的第二条连接，
+也不得因用户取消或回调失败中断现有邮件同步。
 
 Microsoft 应用不得创建或配置客户端密码；历史密码必须在 Entra 中撤销。
 

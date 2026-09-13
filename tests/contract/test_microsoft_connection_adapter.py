@@ -26,7 +26,7 @@ class FakeMsalApplication:
     token_result: dict[str, object]
     begin_calls: list[tuple[list[str], dict[str, object]]] = field(default_factory=list)
     complete_calls: list[tuple[dict[str, object], dict[str, str]]] = field(default_factory=list)
-    refresh_calls: list[str] = field(default_factory=list)
+    refresh_calls: list[tuple[str, list[str]]] = field(default_factory=list)
 
     def initiate_auth_code_flow(self, scopes: list[str], **kwargs: object) -> dict[str, object]:
         self.begin_calls.append((scopes, kwargs))
@@ -49,7 +49,7 @@ class FakeMsalApplication:
     def acquire_token_by_refresh_token(
         self, refresh_token: str, scopes: list[str], **kwargs: object
     ) -> dict[str, object]:
-        self.refresh_calls.append(refresh_token)
+        self.refresh_calls.append((refresh_token, scopes))
         return self.token_result
 
 
@@ -77,7 +77,16 @@ async def test_adapter_keeps_pkce_nonce_and_provider_dto_inside_boundary() -> No
     flow = json.loads(authorization.flow_state.get_secret_value())
     assert flow["code_verifier"] == "synthetic-verifier"
     assert flow["nonce"] == "synthetic-nonce"
-    assert app.begin_calls[0][0] == SCOPES == ["User.Read", "Mail.Read", "email"]
+    assert (
+        app.begin_calls[0][0]
+        == SCOPES
+        == [
+            "User.Read",
+            "Mail.Read",
+            "Tasks.ReadWrite",
+            "email",
+        ]
+    )
     assert app.begin_calls[0][1]["redirect_uri"] == (
         "http://localhost:8000/oauth/microsoft/callback"
     )
@@ -120,6 +129,7 @@ async def test_adapter_maps_oauth_error_without_exposing_description() -> None:
     with pytest.raises(OAuthProviderError) as error:
         await adapter.refresh("synthetic-refresh")
     assert error.value.failure_class == "Authentication"
+    assert app.refresh_calls == [("synthetic-refresh", ["User.Read", "Mail.Read", "email"])]
     assert "sensitive provider detail" not in str(error.value)
 
 

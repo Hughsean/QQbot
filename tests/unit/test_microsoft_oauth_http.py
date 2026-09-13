@@ -52,7 +52,7 @@ class FakeConnectionService:
             self.connection_id,
             "MICROSOFT",
             status,
-            ("Mail.Read", "User.Read"),
+            ("Mail.Read", "Tasks.ReadWrite", "User.Read"),
             "o***@example.test",
             None,
         )
@@ -118,9 +118,18 @@ def test_owner_bootstrap_redirects_without_url_secret() -> None:
     assert public_client.get("/oauth/microsoft/owner-start").status_code == 404
     response = client.get("/oauth/microsoft/owner-start", follow_redirects=False)
     assert response.status_code == 303
-    assert response.headers["location"] == "/oauth/microsoft/start"
+    assert response.headers["location"].startswith("/oauth/microsoft/start?connection_id=")
     assert "qq_time_agent_owner" in response.cookies
     assert response.headers["Cache-Control"] == "no-store"
+
+
+def test_owner_bootstrap_canonicalizes_127_to_callback_cookie_host() -> None:
+    client, _, _ = _client()
+    numeric_loopback = TestClient(client.app, base_url="http://127.0.0.1:8000")
+    response = numeric_loopback.get("/oauth/microsoft/owner-start", follow_redirects=False)
+    assert response.status_code == 303
+    assert response.headers["location"] == "http://localhost:8000/oauth/microsoft/owner-start"
+    assert "qq_time_agent_owner" not in response.cookies
 
 
 def test_all_oauth_and_connection_routes_reject_non_loopback_host() -> None:
@@ -154,7 +163,7 @@ def test_connection_list_returns_safe_multi_account_shape() -> None:
             "connection_id": str(service.connection_id),
             "provider": "MICROSOFT",
             "status": "ACTIVE",
-            "capabilities": ["Mail.Read", "User.Read"],
+            "capabilities": ["Mail.Read", "Tasks.ReadWrite", "User.Read"],
             "account_mask": "o***@example.test",
             "last_synced_at": None,
             "display_label": "Mailbox",

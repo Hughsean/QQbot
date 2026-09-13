@@ -146,7 +146,7 @@ Microsoft 回调 URI 由 `APP_LISTEN_PORT` 派生为
 - PostgreSQL 部署必须启用 `vector` 扩展；迁移负责创建向量列和索引。
 - 首次连接 Microsoft 时从本机打开
   `http://127.0.0.1:8000/oauth/microsoft/owner-start`；该引导页只允许回环访问，
-  所有者会话通过同源 POST 建立，Microsoft 完成后返回本机
+  并先规范化到 `localhost` 后建立所有者会话，Microsoft 完成后返回本机
   `http://localhost:8000/oauth/microsoft/callback`。不得复制签名值或改用查询参数链接。
 - 容器日志写 stdout/stderr，由 json-file 轮转（10 MB × 3）限制。应用 formatter 只输出
   allowlist 关联字段（role、job/reminder/proposal ID、kind、attempt、failure class、聚合 count

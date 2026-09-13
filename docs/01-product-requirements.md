@@ -57,7 +57,7 @@ P1，但 Gmail 连接器继续关闭，需单独决定和 ADR 后才能启动。
 ### P2：长期个人能力
 
 - 工作平台原生连接器。
-- 任务系统双向同步。
+- Microsoft To Do 任务投影与受控双向同步；项目内部 Agenda 继续作为唯一事实源。
 - 自动移动既有日程。
 - 长期习惯学习和工作负载分析。
 - 在不引入其他用户账号的前提下辅助多人会议时间信息整理。
@@ -78,17 +78,18 @@ P1，但 Gmail 连接器继续关闭，需单独决定和 ADR 后才能启动。
 
 ## 6. 核心用户故事与验收
 
-### PR-01 连接 Outlook
+### PR-01 连接 Microsoft
 
-用户可以通过 Microsoft OAuth 连接个人或组织邮箱。
+用户可以通过 Microsoft OAuth 连接个人或组织账号，并授权只读邮件与本人 To Do 任务读写。
 
 验收条件：
 
 - 使用 Authorization Code Flow、PKCE、`state` 和 `nonce`。
-- 请求 `openid profile email offline_access User.Read Mail.Read`。
+- 请求 `openid profile email offline_access User.Read Mail.Read Tasks.ReadWrite`。
 - 系统不接触 Microsoft 账号密码。
 - refresh token 加密保存，断开连接后删除。
 - 授权失败、拒绝和过期有明确提示。
+- 已存在的 Microsoft 连接通过同一 Connection 增量同意新权限，不创建重复连接，也不在授权过程中中断已有邮件同步。
 
 ### PR-02 从消息识别固定事件
 

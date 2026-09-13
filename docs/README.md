@@ -41,7 +41,7 @@ QQ Time Agent 是一个仅供项目所有者本人使用、以 QQ 为主要交�
 | [22-agent-conversation-context-plan.md](22-agent-conversation-context-plan.md) | 持久化统一会话时间线、快照和分层摘要实施计划 |
 | [23-agent-conversation-context-todo.md](23-agent-conversation-context-todo.md) | 会话上下文改造完成项与生产门槛 |
 | [24-agent-conversation-context-verification-report.md](24-agent-conversation-context-verification-report.md) | 会话上下文改造最终验证证据与生产基线 |
-| [adr/](adr/) | 已接受的关键架构决策 |
+| [adr/](adr/) | 已接受的关键架构决策（含 Microsoft To Do 外部投影） |
 
 ## 决策优先级
 
@@ -72,7 +72,7 @@ QQ Time Agent 是一个仅供项目所有者本人使用、以 QQ 为主要交�
 
 - Agent HTTP 入口：仅生产主机 `http://127.0.0.1:8000`，不提供公网入口
 - 腾讯云职责：仅托管 `hughsean.online` / `www.hughsean.online` 静态站点和 SSH 管理，不代理 Agent
-- 邮箱连接器：Microsoft Graph `Mail.Read` 与单一所有者 QQ 邮箱只读 IMAP
+- 外部连接器：Microsoft Graph `Mail.Read` + `Tasks.ReadWrite` 与单一所有者 QQ 邮箱只读 IMAP
 - Microsoft OAuth 客户端：移动和桌面公共客户端，Authorization Code + PKCE，不使用客户端密码
 - Microsoft OAuth 回调：`http://localhost:8000/oauth/microsoft/callback`，只允许本机回环访问
 - 开发语言：Python 3.12（`qq-botpy 1.2.1` 在 Python 3.14 客户端初始化失败，已按兼容策略降级）

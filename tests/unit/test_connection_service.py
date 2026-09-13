@@ -253,7 +253,7 @@ async def test_authorization_activation_refresh_rotation_and_disconnect() -> Non
     )
     assert view.status == "ACTIVE"
     assert view.account_mask == "o***@example.test"
-    assert view.capabilities == ("Mail.Read", "User.Read")
+    assert view.capabilities == ("Mail.Read", "Tasks.ReadWrite", "User.Read")
     assert len(credentials.records) == 1
     assert all(b"refresh-one" not in item.ciphertext for item in credentials.records.values())
 
@@ -328,6 +328,27 @@ async def test_reauthorization_begin_and_missing_callback_context() -> None:
         await service.complete({}, second.browser_session)
     with pytest.raises(OAuthSecurityError, match="required"):
         await service.complete({"state": "state"}, "")
+
+
+@pytest.mark.asyncio
+async def test_active_connection_incremental_consent_preserves_connection_and_rotates_token() -> (
+    None
+):
+    service, connections, credentials, _, _ = _service()
+    active = await _activate(service)
+    credential_ids = set(credentials.records)
+
+    second = await service.begin("owner", active.connection_id)
+    assert connections.connections[active.connection_id].status.value == "ACTIVE"
+    assert len(connections.connections) == 1
+    state = parse_qs(urlparse(second.authorization_url).query)["state"][0]
+    updated = await service.complete(
+        {"state": state, "code": "synthetic-code"}, second.browser_session
+    )
+
+    assert updated.connection_id == active.connection_id
+    assert updated.capabilities == ("Mail.Read", "Tasks.ReadWrite", "User.Read")
+    assert set(credentials.records) == credential_ids
 
 
 @pytest.mark.asyncio

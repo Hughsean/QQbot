@@ -21,7 +21,8 @@ from qq_time_agent.modules.connections.application.ports import (
 
 __all__ = ["MicrosoftGraphConnectionAdapter", "msal"]
 
-SCOPES = ["User.Read", "Mail.Read", "email"]
+SCOPES = ["User.Read", "Mail.Read", "Tasks.ReadWrite", "email"]
+MAIL_REFRESH_SCOPES = ["User.Read", "Mail.Read", "email"]
 
 
 class _SyncHttpClient:
@@ -122,7 +123,9 @@ class MicrosoftGraphConnectionAdapter:
             raise ValueError("refresh token is required")
 
         def refresh_token_call() -> dict[str, object]:
-            return self._application_factory().acquire_token_by_refresh_token(refresh_token, SCOPES)
+            return self._application_factory().acquire_token_by_refresh_token(
+                refresh_token, MAIL_REFRESH_SCOPES
+            )
 
         return self._tokens(await self._run_sync(refresh_token_call))
 

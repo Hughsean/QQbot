@@ -228,3 +228,14 @@ Worker 只生成持久化意图，QQ 进程发送前重新校验 Agenda/Connecti
 确认/记录类 HOLD，不确定类倾向 NOTIFY；邮件来源 run 调用日程变更工具被授权层拒绝；
 规则命中双向覆盖模型判定；每个完成的邮件 run 摘要出现在次日邮件摘要（已推送的除外）；
 提示词改动必须通过该评估集；Ruff、strict mypy、架构与全量非沙箱回归通过。
+
+## 阶段 17：Microsoft To Do 投影（ADR-0015）
+
+交付物：Microsoft OAuth `Tasks.ReadWrite` 增量授权、固定“小智建议”列表解析、Agenda 到 To Do 的
+幂等任务投影，以及 To Do 完成状态经 Actions 门禁回写 Agenda。
+
+完成标准：已有邮件连接增量授权不重复建连接或中断邮件同步；`127.0.0.1` 授权入口与固定
+`localhost` 回调同主机；授权失败可按脱敏分类诊断；Provider 不可用时 Agenda 与 QQ 提醒继续工作；
+To Do 任务 ID 变化、重复回调和漏通知由本地映射、幂等键与 delta 补偿处理。
+
+当前状态：授权基础修复进行中；To Do 任务投影与完成回写尚未交付。

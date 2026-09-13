@@ -43,7 +43,7 @@ from qq_time_agent.modules.credentials.contracts import (
     CredentialVault,
 )
 
-CONNECTION_CAPABILITIES = frozenset({"User.Read", "Mail.Read"})
+CONNECTION_CAPABILITIES = frozenset({"User.Read", "Mail.Read", "Tasks.ReadWrite"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -98,7 +98,10 @@ class MicrosoftConnectionService:
             authorization.flow_state.get_secret_value(), CredentialKind.OAUTH_FLOW, expires_at
         )
         connection = existing or ExternalConnection.start(user_id, ConnectionProvider.MICROSOFT)
-        if existing is not None:
+        if existing is not None and existing.status not in {
+            ConnectionStatus.ACTIVE,
+            ConnectionStatus.DEGRADED,
+        }:
             connection.restart_authorization()
         transaction = OAuthTransaction(
             uuid4(),
@@ -261,8 +264,8 @@ class MicrosoftConnectionService:
         profile = await self._provider.get_profile(tokens.access_token.get_secret_value())
         connection = await self._require_connection(transaction.connection_id)
         await bind_microsoft_identity(self._repository, self._fingerprinter, connection, profile)
-        refresh_ref = await self._vault.store(
-            tokens.refresh_token.get_secret_value(), CredentialKind.REFRESH_TOKEN
+        refresh_ref, created_refresh = await self._save_refresh_token(
+            connection, tokens.refresh_token.get_secret_value()
         )
         connection.activate(
             profile.account_id,
@@ -275,10 +278,21 @@ class MicrosoftConnectionService:
             await self._save(connection)
         except Exception:
             await self._sources.block_connection_sources(connection.connection_id)
-            await self._vault.delete(refresh_ref)
+            if created_refresh:
+                await self._vault.delete(refresh_ref)
             raise
         await self._audit_connection(connection, "connection-activated")
         return to_connection_view(connection)
+
+    async def _save_refresh_token(
+        self, connection: ExternalConnection, refresh_token: str
+    ) -> tuple[CredentialRef, bool]:
+        if connection.credential_ref is not None:
+            reference = CredentialRef(connection.credential_ref)
+            await self._vault.replace(reference, refresh_token)
+            return reference, False
+        reference = await self._vault.store(refresh_token, CredentialKind.REFRESH_TOKEN)
+        return reference, True
 
     async def _require_connection(self, connection_id: UUID) -> ExternalConnection:
         connection = await self._repository.get(connection_id)

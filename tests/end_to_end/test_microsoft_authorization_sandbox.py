@@ -33,6 +33,7 @@ async def test_live_microsoft_authorization_metadata_pkce_nonce_and_scopes() -> 
         "email",
         "User.Read",
         "Mail.Read",
+        "Tasks.ReadWrite",
     }.issubset(scopes)
     assert parameters["state"] == ["synthetic-state"]
     assert parameters["code_challenge_method"] == ["S256"]

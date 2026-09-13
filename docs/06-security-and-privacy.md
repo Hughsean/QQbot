@@ -127,7 +127,9 @@ Schema Validation
 
 ## 9. 所有者授权与删除说明
 
-- Microsoft 连接只请求委托 `User.Read` 与 `Mail.Read`；断开会停止同步并删除本地 refresh token。当前所有者已经明确断开，系统状态保持 `DISCONNECTED`，不会自动重连。
+- Microsoft 连接只请求委托 `User.Read`、`Mail.Read` 与 `Tasks.ReadWrite`；不申请应用权限、
+  `Mail.ReadWrite` 或 `Mail.Send`。断开会停止同步并删除本地 refresh token。To Do 数据只能用于
+  所有者明确选择的任务列表投影，不得替代内部 Agenda 事实源。
 - QQ 邮箱只使用 `imap.qq.com:993` 的证书校验 TLS 与邮箱生成的 IMAP 授权码。授权码不是 QQ
   登录密码，只以密文保存；断开会取消待执行同步、删除授权码，并按连接来源逐项记录 tombstone，
   删除 Inbox、Normalization、Understanding、Workflow、Proposal 与 Knowledge 派生数据。

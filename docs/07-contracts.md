@@ -28,15 +28,17 @@ GET  /api/v1/connections/microsoft/status
 
 约束：
 
-- `owner-start` 只接受 Windows 本机回环访问，生成的短期签名会话只放在
-  `no-store` 页面中的隐藏 POST 字段；表单只 POST 到本机同源端点。页面使用一次性 CSP
-  nonce 脚本自动提交，按钮作为无脚本回退；签名不进入 URL、访问日志或跨站 Referer。
+- `owner-start` 只接受 Windows 本机回环访问。`127.0.0.1` 入口必须先无秘密地重定向到
+  `localhost`，再设置短期 `HttpOnly` Cookie，保证授权起点与固定 callback 同主机；签名不进入
+  URL、访问日志或跨站 Referer。
 - `owner/session` 只通过本机回环 POST 接收短期签名会话，验证后写入
   `HttpOnly`、`SameSite=Lax` Cookie，再跳转到 `start`；Lax 用于让 Microsoft 的顶层 GET
   回调携带短期 OAuth 会话，不能放宽为跨站子请求。
 - `start` 必须绑定当前已认证所有者；不得接受 URL 查询参数中的会话或 token。
 - `owner/session`、`start`、`callback`、连接状态和断开接口均拒绝非回环 Host。
 - `callback` 不把授权码、token 或 Provider 原始错误展示给用户。
+- 默认 `owner-start` 若发现已有活动 Microsoft 默认连接，必须对该 Connection 发起增量授权；
+  授权未完成或失败时不得把原连接改为不可用，也不得产生同账号重复连接。
 - `disconnect` 使用 CSRF 防护和明确确认。
 - 列表/状态接口只返回 Connection ID、所有者 label、默认/同步开关、能力、账号掩码、同步时间
   和健康状态。无 `connection_id` 的旧 status 接口只返回显式默认连接；新操作必须携带 Connection ID。

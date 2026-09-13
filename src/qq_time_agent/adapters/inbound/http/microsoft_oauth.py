@@ -1,5 +1,6 @@
 """Thin HTTP mapping for Microsoft delegated OAuth lifecycle."""
 
+import logging
 import secrets
 from typing import Annotated
 from urllib.parse import parse_qs
@@ -25,6 +26,7 @@ from qq_time_agent.modules.connections.contracts import ConnectionStatusView
 OWNER_COOKIE = "qq_time_agent_owner"
 OAUTH_COOKIE = "qq_time_agent_oauth"
 CSRF_COOKIE = "qq_time_agent_csrf"
+_LOGGER = logging.getLogger(__name__)
 
 
 class DisconnectRequest(BaseModel):
@@ -36,23 +38,31 @@ def microsoft_oauth_router(
     service: MicrosoftConnectionService, signer: OwnerSessionSigner
 ) -> APIRouter:
     router = APIRouter()
-    router.include_router(_owner_bootstrap_router(signer))
+    router.include_router(_owner_bootstrap_router(service, signer))
     router.include_router(_oauth_flow_router(service, signer))
     router.include_router(_connection_api_router(service, signer))
     return router
 
 
-def _owner_bootstrap_router(signer: OwnerSessionSigner) -> APIRouter:
+def _owner_bootstrap_router(
+    service: MicrosoftConnectionService, signer: OwnerSessionSigner
+) -> APIRouter:
     router = APIRouter()
 
     @router.get("/oauth/microsoft/owner-start", response_class=RedirectResponse)
     async def owner_start(request: Request) -> RedirectResponse:
         _require_loopback_request(request)
+        if request.url.hostname == "127.0.0.1":
+            response = RedirectResponse(
+                _canonical_owner_start_url(request), status.HTTP_303_SEE_OTHER
+            )
+            _secure_redirect(response)
+            return response
         token = signer.issue("owner")
-        response = RedirectResponse("/oauth/microsoft/start", status.HTTP_303_SEE_OTHER)
+        next_path = await _default_authorization_path(service)
+        response = RedirectResponse(next_path, status.HTTP_303_SEE_OTHER)
         _set_loopback_cookie(response, OWNER_COOKIE, token, httponly=True)
-        response.headers["Cache-Control"] = "no-store"
-        response.headers["Referrer-Policy"] = "no-referrer"
+        _secure_redirect(response)
         return response
 
     @router.post("/api/v1/owner/session", response_class=RedirectResponse)
@@ -107,11 +117,22 @@ def _oauth_flow_router(
         parameters = {key: value for key, value in request.query_params.items()}
         try:
             view = await service.complete(parameters, oauth_cookie or "")
-        except (OAuthSecurityError, OAuthProviderError, ValueError):
-            response = HTMLResponse(
-                "Microsoft connection could not be completed. Return to QQ and try again.",
-                status.HTTP_400_BAD_REQUEST,
+        except OAuthProviderError as exc:
+            _LOGGER.warning(
+                "Microsoft OAuth callback rejected",
+                extra={"failure_class": exc.failure_class},
             )
+            response = _failed_callback_response()
+        except OAuthSecurityError:
+            _LOGGER.warning(
+                "Microsoft OAuth callback rejected", extra={"failure_class": "SecurityPolicy"}
+            )
+            response = _failed_callback_response()
+        except (LookupError, ValueError):
+            _LOGGER.warning(
+                "Microsoft OAuth callback rejected", extra={"failure_class": "ConnectionConflict"}
+            )
+            response = _failed_callback_response()
         else:
             response = HTMLResponse(
                 f"Microsoft connection is {view.status.lower()}. You may close this window."
@@ -191,6 +212,31 @@ button{{font:inherit;padding:.7rem 1.2rem}}</style></head>
 <input type="hidden" name="next" value="{next_path}">
 <button type="submit">继续连接</button></form>
 <script nonce="{script_nonce}">document.forms[0].submit()</script></body></html>"""
+
+
+async def _default_authorization_path(service: MicrosoftConnectionService) -> str:
+    current = await service.status("owner")
+    if current is None or current.status == "DISCONNECTED":
+        return "/oauth/microsoft/start"
+    return f"/oauth/microsoft/start?connection_id={current.connection_id}"
+
+
+def _canonical_owner_start_url(request: Request) -> str:
+    port = request.url.port
+    authority = "localhost" if port is None else f"localhost:{port}"
+    return f"http://{authority}/oauth/microsoft/owner-start"
+
+
+def _secure_redirect(response: Response) -> None:
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["Referrer-Policy"] = "no-referrer"
+
+
+def _failed_callback_response() -> HTMLResponse:
+    return HTMLResponse(
+        "Microsoft connection could not be completed. Return to QQ and try again.",
+        status.HTTP_400_BAD_REQUEST,
+    )
 
 
 def _authenticate(signer: OwnerSessionSigner, token: str) -> OwnerSession:
