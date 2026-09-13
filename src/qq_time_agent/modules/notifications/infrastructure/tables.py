@@ -21,6 +21,14 @@ class DeliveryRow(NotificationsBase):
     sent_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
+class ReminderSuppressionRow(NotificationsBase):
+    __tablename__ = "notifications_reminder_suppressions"
+
+    idempotency_key: Mapped[str] = mapped_column(String(240), primary_key=True)
+    reason: Mapped[str] = mapped_column(String(80), nullable=False)
+    suppressed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
 class NotificationIntentRow(NotificationsBase):
     __tablename__ = "notifications_intents"
     __table_args__ = (

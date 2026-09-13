@@ -247,3 +247,60 @@ async def test_close_completes_or_deletes_and_missing_task_is_idempotent() -> No
 
     assert [call.method for call in calls] == ["PATCH", "DELETE"]
     assert json.loads(calls[0].content) == {"status": "completed"}
+
+
+@pytest.mark.asyncio
+async def test_strong_get_and_delta_are_provider_neutral() -> None:
+    calls: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        if request.url.path.endswith("/tasks/task-one"):
+            return httpx.Response(
+                200,
+                json={"id": "task-one", "status": "completed", "@odata.etag": "rev-two"},
+            )
+        return httpx.Response(
+            200,
+            json={
+                "value": [
+                    {"id": "task-one", "status": "completed", "@odata.etag": "rev-two"},
+                    {"id": "task-gone", "@removed": {"reason": "deleted"}},
+                ],
+                "@odata.deltaLink": (
+                    "https://graph.microsoft.com/v1.0/me/todo/lists/managed/tasks/delta"
+                    "?$deltatoken=opaque"
+                ),
+            },
+        )
+
+    client = httpx.AsyncClient(
+        transport=httpx.MockTransport(handler), base_url="https://graph.microsoft.com"
+    )
+    adapter = MicrosoftGraphTodoAdapter(FixedClock(), client=client, max_attempts=1)
+    task = await adapter.get_task(_grant(), "managed", "task-one")
+    page = await adapter.fetch_delta(_grant(), "managed", None)
+    await client.aclose()
+
+    assert task is not None and task.completed and task.revision == "rev-two"
+    assert [(item.task_ref, item.completed, item.removed) for item in page.changes] == [
+        ("task-one", True, False),
+        ("task-gone", False, True),
+    ]
+    assert "$deltatoken=opaque" in page.continuation
+    assert calls[1].url.path.endswith("/tasks/delta")
+
+
+@pytest.mark.asyncio
+async def test_missing_task_and_untrusted_delta_cursor_are_safe() -> None:
+    client = httpx.AsyncClient(
+        transport=httpx.MockTransport(lambda _: httpx.Response(404)),
+        base_url="https://graph.microsoft.com",
+    )
+    adapter = MicrosoftGraphTodoAdapter(FixedClock(), client=client, max_attempts=1)
+    assert await adapter.get_task(_grant(), "managed", "missing") is None
+    with pytest.raises(TaskProviderError, match="SecurityPolicy"):
+        await adapter.fetch_delta(
+            _grant(), "managed", "https://attacker.example/tasks/delta?token=secret"
+        )
+    await client.aclose()

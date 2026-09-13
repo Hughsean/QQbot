@@ -9,7 +9,10 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from qq_time_agent.modules.notifications.application.ports import StoredDelivery
+from qq_time_agent.modules.notifications.application.ports import (
+    StoredDelivery,
+    StoredSuppression,
+)
 from qq_time_agent.modules.notifications.contracts import NotificationIntentMetrics
 from qq_time_agent.modules.notifications.domain.models import (
     NotificationIntent,
@@ -20,6 +23,7 @@ from qq_time_agent.modules.notifications.domain.models import (
 from qq_time_agent.modules.notifications.infrastructure.tables import (
     DeliveryRow,
     NotificationIntentRow,
+    ReminderSuppressionRow,
 )
 
 
@@ -49,6 +53,32 @@ class SqlDeliveryRepository:
             if row is None:
                 raise RuntimeError("idempotent Notification record lost stored row")
             return _to_delivery(row)
+
+
+class SqlSuppressionRepository:
+    def __init__(self, sessions: async_sessionmaker[AsyncSession]) -> None:
+        self._sessions = sessions
+
+    async def get(self, idempotency_key: str) -> StoredSuppression | None:
+        async with self._sessions() as session:
+            row = await session.get(ReminderSuppressionRow, idempotency_key)
+            return None if row is None else _to_suppression(row)
+
+    async def record(self, value: StoredSuppression) -> StoredSuppression:
+        async with self._sessions.begin() as session:
+            await session.execute(
+                insert(ReminderSuppressionRow)
+                .values(
+                    idempotency_key=value.idempotency_key,
+                    reason=value.reason,
+                    suppressed_at=value.suppressed_at,
+                )
+                .on_conflict_do_nothing(index_elements=[ReminderSuppressionRow.idempotency_key])
+            )
+            row = await session.get(ReminderSuppressionRow, value.idempotency_key)
+            if row is None:
+                raise RuntimeError("idempotent suppression record lost stored row")
+            return _to_suppression(row)
 
 
 _BLOCKING_STATES = (
@@ -235,6 +265,10 @@ class SqlNotificationIntentRepository:
 
 def _to_delivery(row: DeliveryRow) -> StoredDelivery:
     return StoredDelivery(row.idempotency_key, row.delivery_id, row.sent_at)
+
+
+def _to_suppression(row: ReminderSuppressionRow) -> StoredSuppression:
+    return StoredSuppression(row.idempotency_key, row.reason, row.suppressed_at)
 
 
 def _intent_values(value: NotificationIntent) -> dict[str, object]:

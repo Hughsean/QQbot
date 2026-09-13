@@ -13,6 +13,7 @@ from qq_time_agent.adapters.outbound.persistence.database import create_database
 from qq_time_agent.adapters.outbound.persistence.jobs import SqlJobQueue
 from qq_time_agent.bootstrap.logging import configure_logging
 from qq_time_agent.bootstrap.qq_notifications import build_qq_notification_services
+from qq_time_agent.bootstrap.qq_task_projection import build_qq_task_completion
 from qq_time_agent.bootstrap.runtime import configure_event_loop_policy
 from qq_time_agent.bootstrap.settings import load_runtime_config
 from qq_time_agent.contracts.clock import SystemClock
@@ -113,6 +114,7 @@ async def run_qq() -> None:
         },
         clock,
     )
+    task_completion = build_qq_task_completion(config, sessions, agenda, actions, clock)
     preferences = UserPreferencesService(
         SqlUserPreferencesRepository(sessions),
         UserPreferencesView(
@@ -221,6 +223,7 @@ async def run_qq() -> None:
         action_tokens=token_service,
         action_owner_id=config.owner.qq_openid.get_secret_value(),
         timeline=NotificationEventRecorder(conversation_events, clock),
+        completion_gate=task_completion.gate,
     )
     reminder_worker = ReminderWorker(
         reminders,
@@ -241,6 +244,7 @@ async def run_qq() -> None:
         await asyncio.gather(gateway_task, return_exceptions=True)
         await ollama.close()
         await deepseek.close()
+        await task_completion.close()
         await engine.dispose()
 
 

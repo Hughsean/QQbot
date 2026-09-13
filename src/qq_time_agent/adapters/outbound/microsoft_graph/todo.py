@@ -9,11 +9,13 @@ import httpx
 
 from qq_time_agent.adapters.outbound.microsoft_graph.todo_models import (
     GraphTaskRecord,
+    map_delta_page,
     map_list_page,
     map_task_page,
     map_task_response,
 )
 from qq_time_agent.adapters.outbound.microsoft_graph.todo_values import (
+    task_delta_path,
     task_path,
     task_payload,
     tasks_path,
@@ -21,6 +23,7 @@ from qq_time_agent.adapters.outbound.microsoft_graph.todo_values import (
 from qq_time_agent.contracts.clock import Clock
 from qq_time_agent.modules.connections.contracts import TaskAccessGrant
 from qq_time_agent.modules.task_projection.contracts import (
+    ExternalTaskDeltaPage,
     ExternalTaskDraft,
     ExternalTaskList,
     ExternalTaskView,
@@ -130,6 +133,44 @@ class MicrosoftGraphTodoAdapter:
             return None
         return ExternalTaskView(task.task_id, task.revision, task.status == "completed")
 
+    async def get_task(
+        self,
+        access_grant: TaskAccessGrant,
+        list_ref: str,
+        task_ref: str,
+    ) -> ExternalTaskView | None:
+        token = access_grant.task_credential.reveal(self._clock.now())
+        response = await self._request(
+            "GET",
+            task_path(list_ref, task_ref),
+            token,
+            params={"$select": "id,status"},
+            allow_not_found=True,
+        )
+        if response.status_code == 404:
+            return None
+        return map_task_response(response)
+
+    async def fetch_delta(
+        self,
+        access_grant: TaskAccessGrant,
+        list_ref: str,
+        continuation: str | None,
+    ) -> ExternalTaskDeltaPage:
+        token = access_grant.task_credential.reveal(self._clock.now())
+        url = continuation or task_delta_path(list_ref)
+        if continuation is not None:
+            _validate_delta_link(continuation, list_ref)
+        response = await self._request(
+            "GET",
+            url,
+            token,
+            params=None if continuation else {"$select": "id,status"},
+        )
+        page = map_delta_page(response)
+        _validate_delta_link(page.continuation, list_ref)
+        return page
+
     async def close_task(
         self,
         access_grant: TaskAccessGrant,
@@ -231,6 +272,14 @@ def _validate_task_next_link(value: str, list_ref: str) -> None:
         raise TaskProviderError("SecurityPolicy")
 
 
+def _validate_delta_link(value: str, list_ref: str) -> None:
+    parsed = urlparse(value)
+    if parsed.scheme != "https" or parsed.hostname != "graph.microsoft.com":
+        raise TaskProviderError("SecurityPolicy")
+    if parsed.path != task_delta_path(list_ref):
+        raise TaskProviderError("SecurityPolicy")
+
+
 def _status_failure(status: int) -> str | None:
     if 200 <= status < 300:
         return None
@@ -240,6 +289,8 @@ def _status_failure(status: int) -> str | None:
         return "Authorization"
     if status == 429:
         return "RateLimit"
+    if status == 410:
+        return "CursorInvalid"
     if status >= 500:
         return "TransientProvider"
     return "PermanentProvider"

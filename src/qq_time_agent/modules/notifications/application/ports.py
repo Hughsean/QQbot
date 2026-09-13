@@ -18,10 +18,23 @@ class StoredDelivery:
     sent_at: datetime
 
 
+@dataclass(frozen=True, slots=True)
+class StoredSuppression:
+    idempotency_key: str
+    reason: str
+    suppressed_at: datetime
+
+
 class DeliveryRepository(Protocol):
     async def get(self, idempotency_key: str) -> StoredDelivery | None: ...
 
     async def record(self, delivery: StoredDelivery) -> StoredDelivery: ...
+
+
+class SuppressionRepository(Protocol):
+    async def get(self, idempotency_key: str) -> StoredSuppression | None: ...
+
+    async def record(self, value: StoredSuppression) -> StoredSuppression: ...
 
 
 class NotificationEligibilityPort(Protocol):

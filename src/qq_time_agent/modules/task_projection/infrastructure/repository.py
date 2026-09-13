@@ -3,12 +3,13 @@
 from typing import cast
 from uuid import UUID
 
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from qq_time_agent.modules.task_projection.domain.models import (
+    TaskProjectionCursor,
     TaskProjectionMapping,
     TaskProjectionProvider,
     TaskProjectionStatus,
@@ -16,6 +17,7 @@ from qq_time_agent.modules.task_projection.domain.models import (
     TaskProjectionTargetStatus,
 )
 from qq_time_agent.modules.task_projection.infrastructure.tables import (
+    TaskProjectionCursorRow,
     TaskProjectionMappingRow,
     TaskProjectionTargetRow,
 )
@@ -105,6 +107,21 @@ class SqlTaskProjectionMappingRepository:
             )
             return tuple(_to_mapping(row) for row in rows)
 
+    async def get_for_external_task(
+        self, connection_id: UUID, provider_list_ref: str, provider_task_ref: str
+    ) -> TaskProjectionMapping | None:
+        async with self._sessions() as session:
+            row = await session.scalar(
+                select(TaskProjectionMappingRow).where(
+                    TaskProjectionMappingRow.connection_id == connection_id,
+                    TaskProjectionMappingRow.provider_list_ref == provider_list_ref,
+                    TaskProjectionMappingRow.provider_task_ref == provider_task_ref,
+                    TaskProjectionMappingRow.provider
+                    == TaskProjectionProvider.MICROSOFT_TODO.value,
+                )
+            )
+            return None if row is None else _to_mapping(row)
+
     async def add_or_get(self, mapping: TaskProjectionMapping) -> TaskProjectionMapping:
         async with self._sessions.begin() as session:
             await session.execute(
@@ -137,6 +154,54 @@ class SqlTaskProjectionMappingRepository:
             )
             if cast("CursorResult[tuple[()]]", result).rowcount != 1:
                 raise RuntimeError("stale task projection mapping update")
+
+
+class SqlTaskProjectionCursorRepository:
+    def __init__(self, sessions: async_sessionmaker[AsyncSession]) -> None:
+        self._sessions = sessions
+
+    async def get(self, connection_id: UUID, provider_list_ref: str) -> TaskProjectionCursor | None:
+        async with self._sessions() as session:
+            row = await session.scalar(
+                select(TaskProjectionCursorRow).where(
+                    TaskProjectionCursorRow.connection_id == connection_id,
+                    TaskProjectionCursorRow.provider_list_ref == provider_list_ref,
+                    TaskProjectionCursorRow.provider == TaskProjectionProvider.MICROSOFT_TODO.value,
+                )
+            )
+            return None if row is None else _to_cursor(row)
+
+    async def save(self, cursor: TaskProjectionCursor, expected_version: int | None) -> None:
+        async with self._sessions.begin() as session:
+            if expected_version is None:
+                await session.execute(
+                    insert(TaskProjectionCursorRow)
+                    .values(**_cursor_values(cursor))
+                    .on_conflict_do_nothing(constraint="uq_task_projection_cursor_target")
+                )
+                return
+            values = _cursor_values(cursor)
+            values.pop("cursor_id")
+            result = await session.execute(
+                update(TaskProjectionCursorRow)
+                .where(
+                    TaskProjectionCursorRow.cursor_id == cursor.cursor_id,
+                    TaskProjectionCursorRow.version == expected_version,
+                )
+                .values(**values)
+            )
+            if cast("CursorResult[tuple[()]]", result).rowcount != 1:
+                raise RuntimeError("stale task projection cursor update")
+
+    async def delete(self, connection_id: UUID, provider_list_ref: str) -> None:
+        async with self._sessions.begin() as session:
+            await session.execute(
+                delete(TaskProjectionCursorRow).where(
+                    TaskProjectionCursorRow.connection_id == connection_id,
+                    TaskProjectionCursorRow.provider_list_ref == provider_list_ref,
+                    TaskProjectionCursorRow.provider == TaskProjectionProvider.MICROSOFT_TODO.value,
+                )
+            )
 
 
 def _values(value: TaskProjectionTarget) -> dict[str, object]:
@@ -203,5 +268,29 @@ def _to_mapping(row: TaskProjectionMappingRow) -> TaskProjectionMapping:
         row.last_projected_at,
         row.last_checked_at,
         row.last_observed_completion,
+        row.version,
+    )
+
+
+def _cursor_values(value: TaskProjectionCursor) -> dict[str, object]:
+    return {
+        "cursor_id": value.cursor_id,
+        "connection_id": value.connection_id,
+        "provider": value.provider.value,
+        "provider_list_ref": value.provider_list_ref,
+        "opaque_cursor": value.opaque_cursor,
+        "updated_at": value.updated_at,
+        "version": value.version,
+    }
+
+
+def _to_cursor(row: TaskProjectionCursorRow) -> TaskProjectionCursor:
+    return TaskProjectionCursor(
+        row.cursor_id,
+        row.connection_id,
+        TaskProjectionProvider(row.provider),
+        row.provider_list_ref,
+        row.opaque_cursor,
+        row.updated_at,
         row.version,
     )

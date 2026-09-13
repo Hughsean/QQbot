@@ -9,10 +9,12 @@ from qq_time_agent.adapters.inbound.workers.runner import (
     RetryableJobError,
 )
 from qq_time_agent.adapters.inbound.workers.task_projection import (
+    DELTA_JOB,
     RECONCILE_JOB,
     UPSERT_JOB,
     AgendaProjectionOutboxRelay,
     AgendaProjectionReconciliationScheduler,
+    TaskCompletionDeltaScheduler,
     TaskProjectionJobHandler,
 )
 from qq_time_agent.contracts.events import EventEnvelope
@@ -20,6 +22,7 @@ from qq_time_agent.contracts.jobs import JobLease, JobRequest
 from qq_time_agent.modules.agenda.contracts import AgendaEntryView
 from qq_time_agent.modules.task_projection.application import ProjectionOperationError
 from qq_time_agent.modules.task_projection.contracts import ProjectionResult
+from qq_time_agent.modules.task_projection.domain import TaskProjectionTarget
 
 NOW = datetime(2026, 9, 13, 8, tzinfo=UTC)
 
@@ -77,6 +80,14 @@ class Projections:
         return ProjectionResult(entry_id, expected_version, "PROJECTED", 1)
 
 
+@dataclass
+class Targets:
+    target: TaskProjectionTarget
+
+    async def list_ready(self, user_id: str) -> tuple[TaskProjectionTarget, ...]:
+        return (self.target,) if user_id == self.target.user_id else ()
+
+
 def _entry() -> AgendaEntryView:
     return AgendaEntryView(
         uuid4(),
@@ -125,6 +136,18 @@ async def test_reconciliation_backfills_active_entries_once_per_time_bucket() ->
     assert await scheduler.enqueue_due() == 0
     assert queue.requests[0].kind == RECONCILE_JOB
     assert str(entry.agenda_entry_id) in queue.requests[0].idempotency_key
+
+
+@pytest.mark.asyncio
+async def test_delta_scheduler_enqueues_each_ready_target_once_per_minute() -> None:
+    target = TaskProjectionTarget.resolve("owner", uuid4(), "managed", "小智建议", NOW)
+    queue = Queue()
+    scheduler = TaskCompletionDeltaScheduler(Targets(target), queue, Clock())
+
+    assert await scheduler.enqueue_due() == 1
+    assert await scheduler.enqueue_due() == 0
+    assert queue.requests[0].kind == DELTA_JOB
+    assert queue.requests[0].payload == {"connection_id": str(target.connection_id)}
 
 
 @pytest.mark.asyncio

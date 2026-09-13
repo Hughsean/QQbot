@@ -4,6 +4,8 @@ import httpx
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from qq_time_agent.modules.task_projection.contracts import (
+    ExternalTaskChange,
+    ExternalTaskDeltaPage,
     ExternalTaskList,
     ExternalTaskView,
     TaskProviderError,
@@ -35,6 +37,21 @@ class GraphTaskRecord(BaseModel):
     body: _GraphTaskBody | None = None
 
 
+class _GraphRemoved(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    reason: str = "changed"
+
+
+class _GraphTaskChange(BaseModel):
+    model_config = ConfigDict(extra="ignore", populate_by_name=True)
+
+    task_id: str = Field(alias="id", min_length=1, max_length=1024)
+    status: str | None = None
+    revision: str | None = Field(default=None, alias="@odata.etag", max_length=1024)
+    removed: _GraphRemoved | None = Field(default=None, alias="@removed")
+
+
 def map_list_page(
     response: httpx.Response,
 ) -> tuple[tuple[ExternalTaskList, ...], str | None]:
@@ -62,6 +79,31 @@ def map_task_page(
         return tuple(GraphTaskRecord.model_validate(item) for item in raw_values), next_link
     except (KeyError, TypeError, ValueError, ValidationError, AttributeError) as exc:
         raise TaskProviderError("PermanentProvider") from exc
+
+
+def map_delta_page(response: httpx.Response) -> ExternalTaskDeltaPage:
+    try:
+        payload = response.json()
+        raw_values = payload["value"]
+        if not isinstance(raw_values, list):
+            raise TypeError
+        changes = tuple(_map_change(value) for value in raw_values)
+        continuation = payload.get("@odata.nextLink") or payload.get("@odata.deltaLink")
+        if not isinstance(continuation, str) or not continuation:
+            raise TypeError
+        return ExternalTaskDeltaPage(changes, continuation)
+    except (KeyError, TypeError, ValueError, ValidationError, AttributeError) as exc:
+        raise TaskProviderError("PermanentProvider") from exc
+
+
+def _map_change(value: object) -> ExternalTaskChange:
+    item = _GraphTaskChange.model_validate(value)
+    return ExternalTaskChange(
+        item.task_id,
+        item.revision,
+        item.status == "completed",
+        item.removed is not None,
+    )
 
 
 def _map_list(value: object) -> ExternalTaskList:

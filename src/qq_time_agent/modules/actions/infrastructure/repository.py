@@ -42,6 +42,11 @@ class SqlActionRepository:
             row = await session.get(ActionRow, value.action_id, with_for_update=True)
             if row is None:
                 raise LookupError("Action does not exist")
+            if (
+                row.status == ActionStatus.SUCCEEDED.value
+                and value.status is not ActionStatus.SUCCEEDED
+            ):
+                return
             for field, field_value in _values(value).items():
                 if field != "action_id":
                     setattr(row, field, field_value)

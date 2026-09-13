@@ -1,5 +1,13 @@
 """Task projection application use cases."""
 
+from qq_time_agent.modules.task_projection.application.completion import (
+    ReminderCompletionGate,
+    TaskCompletionCoordinator,
+)
+from qq_time_agent.modules.task_projection.application.completion_sync import (
+    TaskCompletionSyncError,
+    TaskCompletionSyncService,
+)
 from qq_time_agent.modules.task_projection.application.managed_list import (
     MANAGED_LIST_NAME,
     ManagedTaskListAmbiguousError,
@@ -19,5 +27,9 @@ __all__ = [
     "ManagedTaskListOwnershipError",
     "ManagedTaskListService",
     "ProjectionOperationError",
+    "ReminderCompletionGate",
+    "TaskCompletionCoordinator",
+    "TaskCompletionSyncError",
+    "TaskCompletionSyncService",
     "TaskProjectionService",
 ]

@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from datetime import datetime
+from enum import StrEnum
 from typing import Protocol
 from uuid import UUID
 
@@ -63,6 +64,38 @@ class ExternalTaskView:
 
 
 @dataclass(frozen=True, slots=True)
+class ExternalTaskChange:
+    task_ref: str
+    revision: str | None
+    completed: bool
+    removed: bool
+
+
+@dataclass(frozen=True, slots=True)
+class ExternalTaskDeltaPage:
+    changes: tuple[ExternalTaskChange, ...]
+    continuation: str
+
+
+class ReminderCompletionOutcome(StrEnum):
+    SUPPRESS_COMPLETED = "SUPPRESS_COMPLETED"
+    SEND_NOT_COMPLETED = "SEND_NOT_COMPLETED"
+    SEND_UNMAPPED = "SEND_UNMAPPED"
+    SEND_UNAVAILABLE = "SEND_UNAVAILABLE"
+    SEND_STALE = "SEND_STALE"
+
+
+@dataclass(frozen=True, slots=True)
+class ReminderCompletionDecision:
+    outcome: ReminderCompletionOutcome
+    reason: str
+
+    @property
+    def suppress(self) -> bool:
+        return self.outcome is ReminderCompletionOutcome.SUPPRESS_COMPLETED
+
+
+@dataclass(frozen=True, slots=True)
 class ProjectionResult:
     agenda_entry_id: UUID
     agenda_entry_version: int
@@ -90,6 +123,20 @@ class TaskProviderPort(Protocol):
         stable_marker: str,
     ) -> ExternalTaskView | None: ...
 
+    async def get_task(
+        self,
+        access_grant: TaskAccessGrant,
+        list_ref: str,
+        task_ref: str,
+    ) -> ExternalTaskView | None: ...
+
+    async def fetch_delta(
+        self,
+        access_grant: TaskAccessGrant,
+        list_ref: str,
+        continuation: str | None,
+    ) -> ExternalTaskDeltaPage: ...
+
     async def close_task(
         self,
         access_grant: TaskAccessGrant,
@@ -107,3 +154,16 @@ class TaskProjectionCommandPort(Protocol):
     async def project_agenda_entry(
         self, entry_id: UUID, expected_version: int, idempotency_key: str
     ) -> ProjectionResult: ...
+
+
+class ReminderCompletionGatePort(Protocol):
+    async def evaluate_before_delivery(
+        self,
+        user_id: str,
+        agenda_entry_id: UUID,
+        agenda_entry_version: int,
+    ) -> ReminderCompletionDecision: ...
+
+
+class TaskCompletionSyncPort(Protocol):
+    async def sync_target(self, connection_id: UUID) -> int: ...

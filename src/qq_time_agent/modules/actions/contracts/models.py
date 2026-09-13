@@ -19,6 +19,13 @@ class ActionResultView:
 
 
 @dataclass(frozen=True, slots=True)
+class CompleteAgendaResult:
+    agenda_entry_id: UUID
+    agenda_entry_version: int
+    already_completed: bool
+
+
+@dataclass(frozen=True, slots=True)
 class UndoRequestView:
     action_id: UUID
     agenda_entry_id: UUID
@@ -49,3 +56,13 @@ class CalendarActionPort(Protocol):
         payload: Mapping[str, object],
         idempotency_key: str,
     ) -> ActionResultView: ...
+
+
+class AgendaCompletionPort(Protocol):
+    async def complete_agenda(
+        self,
+        user_id: str,
+        entry_id: UUID,
+        expected_version: int,
+        idempotency_key: str,
+    ) -> CompleteAgendaResult: ...

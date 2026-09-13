@@ -6,7 +6,12 @@ import pytest
 
 from qq_time_agent.modules.actions.application.service import ActionService
 from qq_time_agent.modules.actions.domain.models import ActionRequest
-from qq_time_agent.modules.agenda.contracts import AgendaDraft, AgendaEntryRef
+from qq_time_agent.modules.agenda.contracts import (
+    AgendaDraft,
+    AgendaEntryRef,
+    AgendaEntryView,
+    BusyInterval,
+)
 from qq_time_agent.modules.reminders.contracts import ReminderLease, ReminderRef, ReminderView
 from qq_time_agent.modules.scheduling.contracts import ProposalSlot, SchedulingProposalView
 
@@ -43,6 +48,8 @@ class Agenda:
     cancels: int = 0
     fail_create: bool = False
     entry_id: UUID = field(default_factory=uuid4)
+    status: str = "ACTIVE"
+    version: int = 1
 
     async def create_entry(
         self, action_id: UUID, draft: AgendaDraft, idempotency_key: str
@@ -71,7 +78,37 @@ class Agenda:
     async def complete_entry(
         self, entry_id: UUID, expected_version: int, idempotency_key: str
     ) -> AgendaEntryRef:
-        return AgendaEntryRef(entry_id, expected_version + 1)
+        del idempotency_key
+        self.status = "COMPLETED"
+        self.version = expected_version + 1
+        return AgendaEntryRef(entry_id, self.version)
+
+    async def get_entry(self, entry_id: UUID) -> AgendaEntryView | None:
+        if entry_id != self.entry_id:
+            return None
+        start = datetime(2026, 8, 20, 7, tzinfo=UTC)
+        return AgendaEntryView(
+            entry_id,
+            "TASK_BLOCK",
+            "写报告",
+            start,
+            start + timedelta(hours=1),
+            "Asia/Shanghai",
+            self.status,
+            (),
+            uuid4(),
+            self.version,
+        )
+
+    async def get_busy_intervals(
+        self, range_start: datetime, range_end: datetime
+    ) -> tuple[BusyInterval, ...]:
+        del range_start, range_end
+        return ()
+
+    async def find_active_by_title(self, title: str) -> tuple[AgendaEntryView, ...]:
+        del title
+        return ()
 
 
 @dataclass
@@ -187,6 +224,22 @@ async def test_action_policy_validation_failure_and_retry_recovery() -> None:
     assert result.status == "SUCCEEDED"
     with pytest.raises(LookupError, match="does not exist"):
         await service.confirm_undo("owner", uuid4(), "none")
+
+
+@pytest.mark.asyncio
+async def test_todo_completion_converges_and_cancels_reminders() -> None:
+    repository = Repository()
+    agenda = Agenda()
+    reminders = Reminders()
+    service = ActionService(repository, agenda, reminders, Clock(), agenda_query=agenda)
+
+    first = await service.complete_agenda("owner", agenda.entry_id, 1, "todo-complete:stable")
+    second = await service.complete_agenda("owner", agenda.entry_id, 1, "todo-complete:stable")
+
+    assert first.agenda_entry_version == 2 and not first.already_completed
+    assert second.agenda_entry_version == 2 and second.already_completed
+    assert agenda.status == "COMPLETED"
+    assert reminders.cancelled == 1
 
 
 def _proposal_with_id(proposal_id: UUID | None) -> SchedulingProposalView:

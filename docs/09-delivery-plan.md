@@ -280,6 +280,13 @@ Reminder 安全取消、Notifications 抑制记录。
 完成标准：核验完成且 Actions 成功时不发 QQ；未完成、未映射、任务删除/移动、授权失效、限流、
 网络错误、超时或版本不符时继续发送；QQ 按钮和 To Do 完成竞态只形成一次完成状态变更。
 
+当前状态：本地开发已完成。Worker 每分钟按 READY 受管列表投递 delta Job，只有本页已完成任务的
+强读取与 Actions 回写成功后才推进不透明游标；游标失效会安全清除并在后续周期有界重建。QQ
+Reminder Worker 在 Provider 调用前执行总预算 3 秒、无长退避的强读取门禁，只有核验 `completed`
+且 Actions 已完成或确认 Agenda 已完成、并取消当前租约提醒后才记录 `SUPPRESSED_COMPLETED`；其余
+结果全部继续发送。已发送、已抑制记录分别幂等落库，租约被 QQ 按钮或后台同步并发取消时不再造成
+Worker 异常。真实 Microsoft/QQ 联动和生产启用留在 17E。
+
 ### 17E：沙箱、生产启用与回滚
 
 交付物：隔离库集成测试、Microsoft/QQ 真实沙箱、生产备份和迁移、活动 Agenda 分批补投影、指标、

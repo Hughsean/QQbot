@@ -25,7 +25,9 @@ from qq_time_agent.modules.notifications.contracts import ReminderActionTokenPor
 from qq_time_agent.modules.notifications.infrastructure.repository import (
     SqlDeliveryRepository,
     SqlNotificationIntentRepository,
+    SqlSuppressionRepository,
 )
+from qq_time_agent.modules.task_projection.contracts import ReminderCompletionGatePort
 
 
 def build_qq_notification_services(
@@ -38,6 +40,7 @@ def build_qq_notification_services(
     action_tokens: ReminderActionTokenPort | None = None,
     action_owner_id: str = "owner",
     timeline: NotificationEventCommandPort | None = None,
+    completion_gate: ReminderCompletionGatePort | None = None,
 ) -> tuple[NotificationService, NotificationIntentDeliveryService]:
     agenda = AgendaNotificationQueryService(agenda_repository)
     connections = ConnectionNotificationQueryService(SqlConnectionRepository(sessions))
@@ -49,6 +52,8 @@ def build_qq_notification_services(
             owner_timezone,
             action_tokens,
             action_owner_id=action_owner_id,
+            completion_gate=completion_gate,
+            suppressions=SqlSuppressionRepository(sessions),
         ),
         NotificationIntentDeliveryService(
             SqlNotificationIntentRepository(sessions),

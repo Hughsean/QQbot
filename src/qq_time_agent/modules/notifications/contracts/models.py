@@ -10,7 +10,9 @@ from qq_time_agent.modules.reminders.contracts import ReminderLease
 
 @dataclass(frozen=True, slots=True)
 class DeliveryRef:
-    delivery_id: str
+    delivery_id: str | None
+    suppressed: bool = False
+    reason: str | None = None
 
 
 class NotificationPreSendTransientError(RuntimeError):

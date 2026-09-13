@@ -66,7 +66,7 @@ async def test_pgvector_extension_and_migration_are_active(engine: AsyncEngine) 
             )
         )
     assert extension is not None
-    assert revision == "0029_task_projection"
+    assert revision == "0030_todo_completion_gate"
     assert job_constraint == "uq_platform_jobs_idempotency"
 
     health = await DatabaseReadinessProbe(engine).check()

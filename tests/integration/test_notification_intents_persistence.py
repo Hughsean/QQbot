@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker
 
 from qq_time_agent.adapters.outbound.persistence.database import create_database_engine
 from qq_time_agent.bootstrap.settings import load_runtime_config
+from qq_time_agent.modules.notifications.application.ports import StoredSuppression
 from qq_time_agent.modules.notifications.domain.models import (
     NotificationIntentDraft,
     NotificationIntentState,
@@ -15,8 +16,12 @@ from qq_time_agent.modules.notifications.domain.models import (
 )
 from qq_time_agent.modules.notifications.infrastructure.repository import (
     SqlNotificationIntentRepository,
+    SqlSuppressionRepository,
 )
-from qq_time_agent.modules.notifications.infrastructure.tables import NotificationIntentRow
+from qq_time_agent.modules.notifications.infrastructure.tables import (
+    NotificationIntentRow,
+    ReminderSuppressionRow,
+)
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 NOW = datetime(2026, 8, 15, 8, tzinfo=UTC)
@@ -81,3 +86,21 @@ async def test_intent_upsert_lease_cooldown_and_expired_recovery(
                 )
             )
         )
+
+
+async def test_reminder_suppression_is_idempotently_persisted(engine: AsyncEngine) -> None:
+    sessions = async_sessionmaker(engine, expire_on_commit=False)
+    repository = SqlSuppressionRepository(sessions)
+    key = "reminder:integration:suppression"
+    try:
+        first = await repository.record(StoredSuppression(key, "verified_completed", NOW))
+        repeated = await repository.record(
+            StoredSuppression(key, "different_reason", NOW + timedelta(seconds=1))
+        )
+        assert repeated == first
+        assert await repository.get(key) == first
+    finally:
+        async with sessions.begin() as session:
+            await session.execute(
+                delete(ReminderSuppressionRow).where(ReminderSuppressionRow.idempotency_key == key)
+            )

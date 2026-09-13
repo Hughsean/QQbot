@@ -30,6 +30,10 @@ def task_path(list_ref: str, task_ref: str) -> str:
     return f"{tasks_path(list_ref)}/{quote(task_ref, safe='')}"
 
 
+def task_delta_path(list_ref: str) -> str:
+    return f"{tasks_path(list_ref)}/delta"
+
+
 def _graph_time(value: datetime) -> dict[str, str]:
     normalized = value.astimezone(UTC).replace(tzinfo=None).isoformat(timespec="seconds")
     return {"dateTime": normalized, "timeZone": "UTC"}

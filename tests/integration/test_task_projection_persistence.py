@@ -18,15 +18,18 @@ from qq_time_agent.modules.agenda.contracts import AgendaDraft
 from qq_time_agent.modules.agenda.infrastructure.repository import SqlAgendaRepository
 from qq_time_agent.modules.agenda.infrastructure.tables import AgendaEntryRow
 from qq_time_agent.modules.task_projection.domain.models import (
+    TaskProjectionCursor,
     TaskProjectionMapping,
     TaskProjectionStatus,
     TaskProjectionTarget,
 )
 from qq_time_agent.modules.task_projection.infrastructure.repository import (
+    SqlTaskProjectionCursorRepository,
     SqlTaskProjectionMappingRepository,
     SqlTaskProjectionTargetRepository,
 )
 from qq_time_agent.modules.task_projection.infrastructure.tables import (
+    TaskProjectionCursorRow,
     TaskProjectionMappingRow,
     TaskProjectionTargetRow,
 )
@@ -108,11 +111,43 @@ async def test_mapping_is_agenda_unique_and_persists_projection_state(
         assert loaded.status is TaskProjectionStatus.ACTIVE
         assert loaded.agenda_entry_version == 2
         assert loaded.provider_task_ref == "task-one"
+        external = await repository.get_for_external_task(connection_id, "managed-list", "task-one")
+        assert external is not None and external.mapping_id == stored.mapping_id
+        external.observe(True, "revision-two", datetime(2026, 9, 13, 1, tzinfo=UTC))
+        await repository.save(external, external.version - 1)
+        observed = await repository.get_for_agenda(connection_id, entry_id)
+        assert observed is not None and observed.last_observed_completion is True
     finally:
         async with sessions.begin() as session:
             await session.execute(
                 delete(TaskProjectionMappingRow).where(
                     TaskProjectionMappingRow.connection_id == connection_id
+                )
+            )
+
+
+@pytest.mark.asyncio
+async def test_delta_cursor_is_durable_versioned_and_resettable(engine: AsyncEngine) -> None:
+    sessions = async_sessionmaker(engine, expire_on_commit=False)
+    repository = SqlTaskProjectionCursorRepository(sessions)
+    connection_id = uuid4()
+    now = datetime(2026, 9, 13, tzinfo=UTC)
+    cursor = TaskProjectionCursor.create(connection_id, "managed-list", "cursor-one", now)
+    try:
+        await repository.save(cursor, None)
+        loaded = await repository.get(connection_id, "managed-list")
+        assert loaded is not None and loaded.opaque_cursor == "cursor-one"
+        loaded.advance("cursor-two", now + timedelta(minutes=1))
+        await repository.save(loaded, loaded.version - 1)
+        advanced = await repository.get(connection_id, "managed-list")
+        assert advanced is not None and advanced.opaque_cursor == "cursor-two"
+        await repository.delete(connection_id, "managed-list")
+        assert await repository.get(connection_id, "managed-list") is None
+    finally:
+        async with sessions.begin() as session:
+            await session.execute(
+                delete(TaskProjectionCursorRow).where(
+                    TaskProjectionCursorRow.connection_id == connection_id
                 )
             )
 

@@ -5,7 +5,7 @@ from uuid import uuid4
 
 import pytest
 import pytest_asyncio
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 from sqlalchemy.sql.elements import ColumnElement
 
@@ -49,11 +49,13 @@ async def test_action_agenda_reminder_are_idempotent_and_lease_recovers(
     now = datetime(2026, 8, 20, 6, tzinfo=UTC)
     proposal = _proposal(now)
     reminders = ReminderService(SqlReminderRepository(sessions))
+    agenda = AgendaService(SqlAgendaRepository(sessions, Clock(now)))
     service = ActionService(
         SqlActionRepository(sessions),
-        AgendaService(SqlAgendaRepository(sessions, Clock(now))),
+        agenda,
         reminders,
         Clock(now),
+        agenda_query=agenda,
     )
     first = await service.execute_confirmed(proposal, 15)
     second = await service.execute_confirmed(proposal, 15)
@@ -92,6 +94,25 @@ async def test_action_agenda_reminder_are_idempotent_and_lease_recovers(
     )[0]
     assert recovered.reminder_id == lease_a.reminder_id
     assert recovered.attempt_count == 2
+
+    completed = await service.complete_agenda(
+        "owner",
+        task_entry.agenda_entry_id,
+        task_entry.version,
+        f"todo-complete:integration:{task_entry.agenda_entry_id}",
+    )
+    assert completed.agenda_entry_version == 2
+    repeated = await service.complete_agenda(
+        "owner",
+        task_entry.agenda_entry_id,
+        task_entry.version,
+        f"todo-complete:integration-retry:{task_entry.agenda_entry_id}",
+    )
+    assert repeated.already_completed and repeated.agenda_entry_version == 2
+    reminder = (await reminders.list_for_entry(task_entry.agenda_entry_id))[0]
+    assert reminder.status == "CANCELLED"
+    with pytest.raises(ValueError, match="lease"):
+        await reminders.mark_sent(recovered, "late-delivery")
 
     await _clean_synthetic(sessions)
 
@@ -173,5 +194,12 @@ async def _clean_synthetic(sessions: async_sessionmaker[AsyncSession]) -> None:
             await session.execute(
                 delete(AgendaEntryRow).where(AgendaEntryRow.agenda_entry_id.in_(entry_ids))
             )
-        if action_ids:
-            await session.execute(delete(ActionRow).where(ActionRow.action_id.in_(action_ids)))
+        if action_ids or entry_ids:
+            await session.execute(
+                delete(ActionRow).where(
+                    or_(
+                        ActionRow.action_id.in_(action_ids),
+                        ActionRow.agenda_entry_id.in_(entry_ids),
+                    )
+                )
+            )

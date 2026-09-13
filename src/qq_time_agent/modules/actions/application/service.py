@@ -7,7 +7,11 @@ from uuid import UUID
 from qq_time_agent.contracts.clock import Clock
 from qq_time_agent.modules.actions.application.calendar import CalendarActionExecutor
 from qq_time_agent.modules.actions.application.ports import ActionRepository
-from qq_time_agent.modules.actions.contracts import ActionResultView, UndoRequestView
+from qq_time_agent.modules.actions.contracts import (
+    ActionResultView,
+    CompleteAgendaResult,
+    UndoRequestView,
+)
 from qq_time_agent.modules.actions.domain.models import ActionRequest, ActionStatus
 from qq_time_agent.modules.agenda.contracts import AgendaCommandPort, AgendaDraft, AgendaQueryPort
 from qq_time_agent.modules.audit.contracts import AuditEvent, AuditPort
@@ -47,6 +51,38 @@ class ActionService:
         if self._calendar is None:
             raise RuntimeError("Agenda query port is required for calendar operations")
         return await self._calendar.execute(user_id, operation, payload, idempotency_key)
+
+    async def complete_agenda(
+        self,
+        user_id: str,
+        entry_id: UUID,
+        expected_version: int,
+        idempotency_key: str,
+    ) -> CompleteAgendaResult:
+        if self._agenda_query is None:
+            raise RuntimeError("Agenda query port is required for calendar operations")
+        current = await self._agenda_query.get_entry(entry_id)
+        if current is None or current.status == "CANCELLED":
+            raise LookupError("Agenda entry cannot be completed")
+        already_completed = current.status == "COMPLETED"
+        if not already_completed and current.version != expected_version:
+            raise ValueError("agenda entry version is stale")
+        try:
+            result = await self.execute_calendar_operation(
+                user_id,
+                "COMPLETE_AGENDA",
+                {"agenda_entry_id": str(entry_id), "expected_version": expected_version},
+                idempotency_key,
+            )
+        except (LookupError, ValueError, RuntimeError):
+            converged = await self._agenda_query.get_entry(entry_id)
+            if converged is None or converged.status != "COMPLETED":
+                raise
+            await self._reminders.cancel_for_entry(entry_id, converged.version)
+            return CompleteAgendaResult(entry_id, converged.version, True)
+        if result.agenda_entry_version is None:
+            raise RuntimeError("completed Action omitted Agenda version")
+        return CompleteAgendaResult(entry_id, result.agenda_entry_version, already_completed)
 
     async def execute_confirmed(
         self, proposal: SchedulingProposalView, reminder_lead_minutes: int

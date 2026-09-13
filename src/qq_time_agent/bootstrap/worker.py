@@ -273,14 +273,6 @@ def build_worker() -> tuple[JobRunner, AsyncEngine, tuple[AsyncClosable, ...]]:
     mail_rules = MailRuleService(SqlMailRuleRepository(sessions), clock)
     agenda_repository = SqlAgendaRepository(sessions, clock)
     agenda = AgendaService(agenda_repository)
-    task_projection = build_worker_task_projection(
-        sessions,
-        queue,
-        agenda,
-        graph_connection,
-        config.credential_encryption_key,
-        clock,
-    )
     reminders = ReminderService(SqlReminderRepository(sessions))
     actions = ActionService(
         SqlActionRepository(sessions),
@@ -289,6 +281,15 @@ def build_worker() -> tuple[JobRunner, AsyncEngine, tuple[AsyncClosable, ...]]:
         clock,
         audit,
         agenda,
+    )
+    task_projection = build_worker_task_projection(
+        sessions,
+        queue,
+        agenda,
+        graph_connection,
+        actions,
+        config.credential_encryption_key,
+        clock,
     )
     agent = AgentLoop(
         agent_model,

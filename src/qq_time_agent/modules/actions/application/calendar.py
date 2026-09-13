@@ -100,7 +100,18 @@ class CalendarActionExecutor:
         return _view(action, entry_id, revised.version, reminder)
 
     async def _complete(self, action: ActionRequest) -> ActionResultView:
-        entry_id, expected, _ = await self._target(action)
+        entry_id = _required(action.agenda_entry_id)
+        expected = _required(action.agenda_entry_version)
+        current = await self._query.get_entry(entry_id)
+        if current is None or current.status == "CANCELLED":
+            raise LookupError("Agenda entry cannot be completed")
+        if current.status == "COMPLETED":
+            if current.version < expected + 1:
+                raise ValueError("completed Agenda version is invalid")
+            await self._reminders.cancel_for_entry(entry_id, current.version)
+            return _view(action, entry_id, current.version)
+        if current.version != expected:
+            raise ValueError("agenda entry version is stale")
         revised = await self._agenda.complete_entry(entry_id, expected, action.idempotency_key)
         await self._reminders.cancel_for_entry(entry_id, expected)
         return _view(action, entry_id, revised.version)

@@ -45,6 +45,7 @@ QQ Time Agent 是一个仅供项目所有者本人使用、以 QQ 为主要交�
 | [26-microsoft-todo-module-design.md](26-microsoft-todo-module-design.md) | Task Projection 模块拆分、契约、数据所有权、竞态与实施阶段 |
 | [27-microsoft-todo-17b-verification.md](27-microsoft-todo-17b-verification.md) | Microsoft To Do 授权接入、模块骨架和受管列表解析的本地验证证据 |
 | [28-microsoft-todo-17c-verification.md](28-microsoft-todo-17c-verification.md) | Agenda 到 Microsoft To Do 单向投影、Outbox 和崩溃恢复的本地验证证据 |
+| [29-microsoft-todo-17d-verification.md](29-microsoft-todo-17d-verification.md) | To Do 完成回写、QQ 发送前门禁、租约取消和抑制记录的本地验证证据 |
 | [adr/](adr/) | 已接受的关键架构决策（含 Microsoft To Do 外部投影） |
 
 ## 决策优先级
@@ -127,4 +128,6 @@ QQ Time Agent 是一个仅供项目所有者本人使用、以 QQ 为主要交�
   `0029_task_projection` 迁移、短期 task access grant、Graph 列表适配器和“小智建议”唯一列表
   解析的本地门禁；17C 也已在 `dev` 完成 Agenda Transactional Outbox、Worker 幂等投影、每分钟
   ACTIVE 对账补投影、完成/取消收敛以及不确定创建结果的稳定标记恢复。真实账号验证、完成回写和
-  QQ 发送前门禁仍待 17D—17E；未核验或不可用时继续发送 QQ。
+  QQ 发送前门禁已在 17D 本地完成：每分钟 delta 同步、发送前 3 秒强读取、Actions 幂等完成、已
+  租约 Reminder 取消和 Notifications 抑制记录均已接入，所有未知或失败结果继续发送 QQ。17E 的
+  真实 Microsoft/QQ 联动、生产备份、启用与回滚仍未执行。

@@ -37,6 +37,10 @@ class TaskProjectionTarget:
     updated_at: datetime
     version: int = 1
 
+    @property
+    def is_ready(self) -> bool:
+        return self.status is TaskProjectionTargetStatus.READY
+
     @classmethod
     def resolve(
         cls,
@@ -171,6 +175,53 @@ class TaskProjectionMapping:
             self.last_projected_at = projected_at
             self.status = TaskProjectionStatus.CLOSED
             self.version += 1
+
+    def observe(
+        self,
+        completed: bool,
+        provider_revision: str | None,
+        checked_at: datetime,
+    ) -> None:
+        _aware(checked_at)
+        self.provider_revision = provider_revision
+        self.last_checked_at = checked_at
+        self.last_observed_completion = completed
+        self.version += 1
+
+
+@dataclass(slots=True)
+class TaskProjectionCursor:
+    cursor_id: UUID
+    connection_id: UUID
+    provider: TaskProjectionProvider
+    provider_list_ref: str
+    opaque_cursor: str
+    updated_at: datetime
+    version: int = 1
+
+    @classmethod
+    def create(
+        cls, connection_id: UUID, provider_list_ref: str, opaque_cursor: str, now: datetime
+    ) -> "TaskProjectionCursor":
+        if not provider_list_ref.strip() or not opaque_cursor.strip():
+            raise ValueError("task projection cursor identity is required")
+        _aware(now)
+        return cls(
+            uuid4(),
+            connection_id,
+            TaskProjectionProvider.MICROSOFT_TODO,
+            provider_list_ref,
+            opaque_cursor,
+            now,
+        )
+
+    def advance(self, opaque_cursor: str, now: datetime) -> None:
+        if not opaque_cursor.strip():
+            raise ValueError("task projection cursor is required")
+        _aware(now)
+        self.opaque_cursor = opaque_cursor
+        self.updated_at = now
+        self.version += 1
 
 
 def _identity(user_id: str, provider_list_ref: str, display_name: str) -> None:

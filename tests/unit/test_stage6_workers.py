@@ -85,12 +85,15 @@ class Agenda:
 @dataclass
 class Notifications:
     fail_reminder: bool = False
+    suppress_reminder: bool = False
 
     async def send_reminder(
         self, user_id: str, lease: ReminderLease, entry: AgendaEntryView
     ) -> DeliveryRef:
         if self.fail_reminder:
             raise ConnectionError("QQ unavailable")
+        if self.suppress_reminder:
+            return DeliveryRef(None, True, "verified_completed")
         return DeliveryRef("delivery")
 
 
@@ -151,3 +154,20 @@ async def test_reminder_worker_sends_stale_dead_letters_and_retries(
         getattr(record, "reminder_id", None) == stale.reminder_id for record in caplog.records
     )
     assert "评审" not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_reminder_worker_does_not_mark_suppressed_delivery_sent() -> None:
+    entry = _entry()
+    reminder = _lease(entry, 1)
+    reminders = Reminders((reminder,))
+    worker = ReminderWorker(
+        reminders,
+        Agenda({entry.agenda_entry_id: entry}),
+        Notifications(suppress_reminder=True),
+        Clock(),
+        "worker",
+    )
+
+    assert await worker.run_once() == 0
+    assert reminders.sent == [] and reminders.failed == []

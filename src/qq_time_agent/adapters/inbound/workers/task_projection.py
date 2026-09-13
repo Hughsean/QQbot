@@ -14,12 +14,22 @@ from qq_time_agent.modules.agenda.contracts import (
     AGENDA_CHANGED_EVENT,
     AgendaProjectionQueryPort,
 )
-from qq_time_agent.modules.task_projection.application import ProjectionOperationError
-from qq_time_agent.modules.task_projection.contracts import TaskProjectionCommandPort
+from qq_time_agent.modules.task_projection.application import (
+    ProjectionOperationError,
+    TaskCompletionSyncError,
+)
+from qq_time_agent.modules.task_projection.application.ports import (
+    TaskProjectionTargetRepository,
+)
+from qq_time_agent.modules.task_projection.contracts import (
+    TaskCompletionSyncPort,
+    TaskProjectionCommandPort,
+)
 
 UPSERT_JOB = "task-projection-upsert"
 CLOSE_JOB = "task-projection-close"
 RECONCILE_JOB = "task-projection-reconcile"
+DELTA_JOB = "task-projection-delta"
 _RETRYABLE = {
     "Authentication",
     "Authorization",
@@ -101,6 +111,42 @@ class AgendaProjectionReconciliationScheduler:
         return enqueued
 
 
+class TaskCompletionDeltaScheduler:
+    def __init__(
+        self,
+        targets: TaskProjectionTargetRepository,
+        queue: JobQueue,
+        clock: Clock,
+        interval: timedelta = timedelta(minutes=1),
+        owner_id: str = "owner",
+    ) -> None:
+        self._targets = targets
+        self._queue = queue
+        self._clock = clock
+        self._interval = interval
+        self._owner_id = owner_id
+        self._next_due: datetime | None = None
+
+    async def enqueue_due(self) -> int:
+        now = self._clock.now()
+        if self._next_due is not None and now < self._next_due:
+            return 0
+        bucket = int(now.timestamp() // self._interval.total_seconds())
+        targets = await self._targets.list_ready(self._owner_id)
+        for target in targets:
+            await self._queue.enqueue(
+                JobRequest(
+                    DELTA_JOB,
+                    {"connection_id": str(target.connection_id)},
+                    f"task-projection-delta:{bucket}:{target.connection_id}",
+                    now,
+                    max_attempts=5,
+                )
+            )
+        self._next_due = now + self._interval
+        return len(targets)
+
+
 class TaskProjectionJobHandler:
     def __init__(self, projections: TaskProjectionCommandPort) -> None:
         self._projections = projections
@@ -116,6 +162,24 @@ class TaskProjectionJobHandler:
                 raise RetryableJobError(exc.failure_class) from exc
             raise PermanentJobError(exc.failure_class) from exc
         except (KeyError, TypeError, ValueError) as exc:
+            raise PermanentJobError("PermanentData") from exc
+
+
+class TaskCompletionJobHandler:
+    def __init__(self, completion: TaskCompletionSyncPort) -> None:
+        self._completion = completion
+
+    async def __call__(self, lease: JobLease) -> None:
+        try:
+            raw_connection_id = lease.payload["connection_id"]
+            if not isinstance(raw_connection_id, str):
+                raise ValueError("task completion job payload is invalid")
+            await self._completion.sync_target(UUID(raw_connection_id))
+        except TaskCompletionSyncError as exc:
+            if exc.failure_class in _RETRYABLE:
+                raise RetryableJobError(exc.failure_class) from exc
+            raise PermanentJobError(exc.failure_class) from exc
+        except (KeyError, ValueError) as exc:
             raise PermanentJobError("PermanentData") from exc
 
 

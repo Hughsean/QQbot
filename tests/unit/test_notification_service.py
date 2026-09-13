@@ -5,12 +5,16 @@ from uuid import UUID, uuid4
 import pytest
 
 from qq_time_agent.modules.agenda.contracts import AgendaEntryView
-from qq_time_agent.modules.notifications.application.ports import StoredDelivery
+from qq_time_agent.modules.notifications.application.ports import StoredDelivery, StoredSuppression
 from qq_time_agent.modules.notifications.application.rendering import render_outbound
 from qq_time_agent.modules.notifications.application.service import NotificationService
 from qq_time_agent.modules.notifications.contracts import NotificationMessage
 from qq_time_agent.modules.notifications.domain.models import NotificationKind
 from qq_time_agent.modules.reminders.contracts import ReminderLease
+from qq_time_agent.modules.task_projection.contracts import (
+    ReminderCompletionDecision,
+    ReminderCompletionOutcome,
+)
 
 
 @dataclass
@@ -84,6 +88,28 @@ class ActionTokens:
             )
         )
         return f"opaque-token-{len(self.issued)}"
+
+
+@dataclass
+class CompletionGate:
+    outcome: ReminderCompletionOutcome
+
+    async def evaluate_before_delivery(
+        self, user_id: str, agenda_entry_id: UUID, agenda_entry_version: int
+    ) -> ReminderCompletionDecision:
+        del user_id, agenda_entry_id, agenda_entry_version
+        return ReminderCompletionDecision(self.outcome, "verified_completed")
+
+
+@dataclass
+class Suppressions:
+    values: dict[str, StoredSuppression] = field(default_factory=dict)
+
+    async def get(self, key: str) -> StoredSuppression | None:
+        return self.values.get(key)
+
+    async def record(self, value: StoredSuppression) -> StoredSuppression:
+        return self.values.setdefault(value.idempotency_key, value)
 
 
 @pytest.mark.asyncio
@@ -209,3 +235,37 @@ async def test_reminder_version_gate_and_outbound_source_labels() -> None:
         render_outbound(NotificationKind.QQ_DIRECT_AGENT_RESULT, "恢复后的日程清单")
         == "[处理结果]\n恢复后的日程清单"
     )
+
+
+@pytest.mark.asyncio
+async def test_verified_completion_is_persisted_and_never_sent() -> None:
+    start = datetime(2026, 8, 20, 7, tzinfo=UTC)
+    entry = AgendaEntryView(
+        uuid4(),
+        "TASK_BLOCK",
+        "完成测评",
+        start,
+        start + timedelta(hours=1),
+        "Asia/Shanghai",
+        "ACTIVE",
+        (),
+        uuid4(),
+        1,
+    )
+    lease = ReminderLease(uuid4(), entry.agenda_entry_id, 1, start, "key", "worker", 1, 5)
+    sender = Sender()
+    suppressions = Suppressions()
+    service = NotificationService(
+        sender,
+        Repository(),
+        Clock(),
+        completion_gate=CompletionGate(ReminderCompletionOutcome.SUPPRESS_COMPLETED),
+        suppressions=suppressions,
+    )
+
+    first = await service.send_reminder("owner", lease, entry)
+    second = await service.send_reminder("owner", lease, entry)
+
+    assert first == second
+    assert first.suppressed and first.delivery_id is None
+    assert sender.calls == 0 and len(suppressions.values) == 1
