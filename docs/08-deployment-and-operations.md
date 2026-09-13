@@ -222,6 +222,12 @@ bootstrap 完成，数据库连接状态恢复为 ACTIVE，Worker 运行且 rest
 restart count 均为零。切换前后 Agenda 与 Reminder 各 13 条且完整行摘要一致。新华三笔试和蔚来
 笔试保持 `COMPLETED / version 2` 审计状态，不属于当前 ACTIVE 清单；两条由旧版恢复策略误产生的
 `MissingAgentNotificationSource` 死信经精确核对后改为 COMPLETE，未重放已答复的 QQ 消息。
+2026-09-13 经所有者授权继续发布 `0031-0913 / 9513019`，迁移头仍为
+`0028_summary_contract`。候选在独立 `qq_time_agent_test_0031_0913_9513019` 数据库完成全量迁移
+和 37 项 PostgreSQL 集成测试（含按钮令牌所有者/类型/期限/互斥持久化验证），随后删除测试库。
+回滚点 `.deploy-backups/20260913-091526-pre0031` 的数据库与旧源码校验通过；切换前后 Agenda 与
+Reminder 各 13 条且完整摘要一致，Web/Worker/QQ 均运行新镜像、restart count 为零，readiness
+通过，最近日志无错误。该发布不重发历史 Reminder。
 
 ## 5. 当前生产主机容量
 

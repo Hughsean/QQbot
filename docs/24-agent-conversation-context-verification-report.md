@@ -3,7 +3,7 @@
 - 日期：2026-09-13
 - 分支：`feat/conversation-context-hardening`
 - 本地目标迁移：`0028_summary_contract`
-- 生产当前版本：发布 `0030-0913`、提交 `0975e4c`、数据库 `0028_summary_contract`
+- 生产当前版本：发布 `0031-0913`、提交 `9513019`、数据库 `0028_summary_contract`
 
 ## 1. 已完成能力
 
@@ -103,3 +103,9 @@ fallback 移除。
   13 条且完整摘要一致；Web/Worker/QQ 均为零重启，readiness 通过；
 - 两条旧版 `MissingAgentNotificationSource` 死信在确认对应 Run 已完成后改为 COMPLETE，未重放
   已经答复过的 QQ 消息。
+
+同日后续 `0031-0913 / 9513019` 移除 Reminder 正文中的旧 UUID 回复命令，并完成按钮链路加固：
+完成按钮通过 Actions 幂等审计门禁执行；令牌保持所有者、动作、版本、occurrence 和 24 小时期限
+约束；动作异常返回状态中立提示。全套本地非 integration/sandbox 为 581 passed，生产隔离库为
+37 passed；回滚点 `.deploy-backups/20260913-091526-pre0031` 校验通过，部署前后 13 条 Agenda 和
+13 条 Reminder 完整摘要一致，三个应用进程零重启且 readiness 通过。

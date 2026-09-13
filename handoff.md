@@ -1,17 +1,17 @@
 # QQbot Agent 会话上下文改造交接说明
 
-> 2026-09-13 生产修复发布后版本。后续工作开始前仍须检查当前 git diff、生产健康和最新观察结果。
+> 2026-09-13 Reminder 卡片修复发布后版本。后续工作开始前仍须检查当前 git diff、生产健康和最新观察结果。
 
 ## 1. 当前结论
 
 统一会话时间线、固定 AgentRun snapshot、token budget、分层摘要和正式脱敏 replay 已部署生产；
-多日程执行覆盖、权威日程查询、空检索门禁和异常恢复修复也已上线。当前发布为 `0030-0913`、
-提交 `0975e4c`、迁移头为 `0028_summary_contract`。
+多日程执行覆盖、权威日程查询、空检索门禁、异常恢复和 Reminder 卡片修复均已上线。当前发布为
+`0031-0913`、提交 `9513019`、迁移头为 `0028_summary_contract`。
 
 生产主机 SSH 别名为 `hp-tunnel`。2026-09-12 部署结果：
 
 - 主机部署目录 `/home/x/qq-time-agent-bundle`；
-- 发布版本 `0030-0913`，提交 `0975e4c`；
+- 发布版本 `0031-0913`，提交 `9513019`；
 - 数据库迁移 `0028_summary_contract`；
 - Web、Worker、QQ、PostgreSQL、Ollama 正常，readiness 通过；
 - Agenda 与 Reminder 各 13 条，切换前后完整行摘要一致；
@@ -22,6 +22,9 @@
   `COMPLETED / version 2`，不再属于当前日程。
 - DeepSeek 在权威 `list_agenda` 成功后若持续返回空/非法结构，清单改由确定性路径输出，不再返回
   “处理失败”；Worker 恢复 QQ 直接请求时使用独立幂等通知，不再要求邮件来源。
+- Reminder 正文不再显示内部 UUID 或“回复完成/推迟”旧命令；卡片只保留完成和推迟按钮。
+- 完成按钮经 Actions 幂等审计门禁执行；按钮失败会返回状态中立提示，不再只记录日志。
+- 到达 `ends_at` 不会自动完成日程；必须由所有者显式完成或取消。
 
 未经新一轮明确决定，不回填生产历史、不伪造观察样本、不移除 fallback。
 
@@ -91,11 +94,21 @@
   幂等的 `QQ_DIRECT_AGENT_RESULT` 通知，且不受邮件来源与邮件静默时段约束。
 - `InvalidOutput` 在单次模型有限重试耗尽后仍可由 durable Job 有界重试。
 
+### 2026-09-13 Reminder 卡片与按钮加固
+
+- 主动 Reminder 正文仅显示标题、本地时间和提前量，不再暴露 Agenda/Reminder UUID，也不再要求
+  用户回复内部命令。
+- 完成/推迟按钮仍使用随机令牌；令牌绑定所有者、动作类型、Agenda 版本和 Reminder occurrence，
+  24 小时过期，同一 occurrence 只有第一个按钮领取有效。
+- 完成按钮由 Actions 的 `COMPLETE_AGENDA` 幂等操作执行并产生审计；推迟仍由 Reminders 门禁执行。
+- QQ 回调确认、业务执行和结果投递分阶段处理；动作异常时返回“结果暂时无法确认”的安全提示。
+- 日程不会因计划结束时间经过而自动完成，未显式完成/取消的条目继续保持 ACTIVE。
+
 ## 4. 最新验证证据
 
 ```text
-本地非 integration/sandbox: 576 passed, 46 deselected, 4 dependency warnings
-生产主机隔离 PostgreSQL integration: 36 passed, 586 deselected, 1 dependency warning
+本地非 integration/sandbox: 581 passed, 47 deselected, 4 dependency warnings
+生产主机隔离 PostgreSQL integration: 37 passed, 591 deselected, 1 dependency warning
 Ruff lint: passed
 mypy strict: passed
 git diff --check: passed（仅 Windows 换行提示）
@@ -119,6 +132,11 @@ git diff --check: passed（仅 Windows 换行提示）
 
 最新生产验证：
 
+- 最新回滚点：`.deploy-backups/20260913-091526-pre0031`，数据库与旧源码 SHA-256 校验通过；
+- Web/Worker/QQ 均运行 `0031-0913 / 9513019`，容器 restart count 为零；
+- 候选独立库 37 项集成测试通过且已删除；readiness 的 database/embeddings 为 true；
+- 部署前后 Agenda 与 Reminder 各 13 条，完整行摘要完全一致；没有重发历史 Reminder；
+- 以下为上一版 `0030-0913` 的验证证据：
 - 回滚点：`.deploy-backups/20260913-001525-pre0030`，数据库与旧源码快照哈希校验通过；
 - Web/Worker/QQ 均运行 `0030-0913 / 0975e4c`，容器 restart count 为零；
 - readiness 的 database/embeddings 为 true；候选独立库 36 项集成测试通过且已删除；
