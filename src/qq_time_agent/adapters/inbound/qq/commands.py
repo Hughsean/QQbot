@@ -173,13 +173,14 @@ class QqCommandRouter:
         )
         if turn_input is None:
             return self._format_direct_reply("已接收转发文本, 将用于后续检索。")
-        if turn_input.command_inbox_item_id != current_inbox_item_id:
-            raise RuntimeError("QQ turn callback does not own the latest command")
+        batch_item_ids = {ref.inbox_item_id for ref in refs}
+        if current_inbox_item_id not in batch_item_ids:
+            raise RuntimeError("QQ turn callback does not belong to the claimed batch")
         source_refs = tuple(f"inbox:{item_id}" for item_id in turn_input.related_inbox_item_ids)
         return await self._agent_reply_from_ingested(
             envelope,
             turn_input.live_message,
-            current_inbox_item_id,
+            turn_input.command_inbox_item_id,
             turn_input.evidence_context,
             source_refs,
             f"qq-turn:{conversation_key_hash}",

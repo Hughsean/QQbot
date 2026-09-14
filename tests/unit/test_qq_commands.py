@@ -139,6 +139,105 @@ class Turns:
         del claim, failure_class
 
 
+@dataclass
+class SequencedInbox:
+    ids: list[UUID] = field(default_factory=lambda: [uuid4(), uuid4()])
+    texts: list[str] = field(default_factory=list)
+    marked: list[UUID] = field(default_factory=list)
+
+    async def ingest_qq(
+        self, envelope: SourceEnvelope, content: str, *, has_assets: bool = False
+    ) -> IngestResult:
+        del envelope, has_assets
+        self.texts.append(content)
+        return IngestResult(self.ids[len(self.texts) - 1], True, "RECEIVED")
+
+    async def mark_normalized(self, inbox_item_id: UUID) -> None:
+        self.marked.append(inbox_item_id)
+
+    async def mark_understood(self, inbox_item_id: UUID) -> None:
+        del inbox_item_id
+
+    async def mark_needs_review(self, inbox_item_id: UUID) -> None:
+        del inbox_item_id
+
+    async def mark_ignored(self, inbox_item_id: UUID) -> None:
+        del inbox_item_id
+
+    async def mark_proposed(self, inbox_item_id: UUID) -> None:
+        del inbox_item_id
+
+    async def mark_completed(self, inbox_item_id: UUID) -> None:
+        del inbox_item_id
+
+    async def get_content(self, inbox_item_id: UUID) -> InboxContentView | None:
+        if inbox_item_id not in self.ids or len(self.texts) < len(self.ids):
+            return None
+        index = self.ids.index(inbox_item_id)
+        return InboxContentView(
+            inbox_item_id,
+            "QQ 输入",
+            self.texts[index],
+            None,
+            "text/plain",
+            datetime(2026, 8, 20, tzinfo=UTC),
+            "qq:test",
+            "hash",
+            None,
+        )
+
+
+@dataclass
+class OutOfOrderTurns:
+    """QQ 平台乱序投递:命令先到,证据后到且 occurred_at 更早;证据回调领批。"""
+
+    claim: AgentTurnClaim | None = None
+    completed: int = 0
+    released: int = 0
+    command_id: UUID | None = None
+    evidence_id: UUID | None = None
+
+    async def stage(self, **values: object) -> AgentTurnTicket:
+        item_id = values["inbox_item_id"]
+        occurred_at = values["occurred_at"]
+        assert isinstance(item_id, UUID) and isinstance(occurred_at, datetime)
+        if self.command_id is None:
+            self.command_id = item_id
+            return AgentTurnTicket(uuid4(), 1, occurred_at)
+        self.evidence_id = item_id
+        base = datetime(2026, 8, 20, tzinfo=UTC)
+        self.claim = AgentTurnClaim(
+            uuid4(),
+            2,
+            "a" * 64,
+            "owner",
+            (
+                AgentTurnSegmentRef(
+                    item_id, 2, "QQ_DIRECT", "T1", base - timedelta(seconds=1), None, None, 200
+                ),
+                AgentTurnSegmentRef(self.command_id, 1, "QQ_DIRECT", "T1", base, None, None, 10),
+            ),
+        )
+        return AgentTurnTicket(self.claim.turn_id, 2, occurred_at)
+
+    async def settle(self, ticket: AgentTurnTicket) -> AgentTurnClaim | None:
+        if self.claim is not None and ticket.generation == 2:
+            return self.claim
+        return None
+
+    async def complete(self, claim: AgentTurnClaim) -> None:
+        del claim
+        self.completed += 1
+
+    async def release(self, claim: AgentTurnClaim) -> None:
+        del claim
+        self.released += 1
+
+    async def fail(self, claim: AgentTurnClaim, failure_class: str) -> None:
+        del claim, failure_class
+        self.released += 1
+
+
 class Normalization:
     values: list[UUID]
 
@@ -343,6 +442,43 @@ async def test_coalesced_path_schedules_recovery_and_executes_one_run() -> None:
     assert [item.kind for item in queue.values] == ["qq-turn", "agent-run"]
     assert len(runs.ensured) == len(runs.executed) == 1
     assert turns.completed == 1
+
+
+@pytest.mark.asyncio
+async def test_out_of_order_batch_replies_via_evidence_callback_with_command_anchor() -> None:
+    """QQ 乱序投递回归:命令先到、证据后到且 occurred_at 更早;证据回调领批。
+
+    2026-09-14 生产事故:相等守卫把"领批消息 ≠ 命令消息"误判为错乱,导致先回
+    "处理失败"、再由 Worker 恢复路径兜底回复。正确语义:回调消息属于本批即合法,
+    且 AgentRun 审计锚点固定为命令消息。
+    """
+    inbox = SequencedInbox()
+    queue, runs, turns = Queue(), Runs(), OutOfOrderTurns()
+    router = QqCommandRouter(
+        inbox,
+        inbox,
+        Normalization(),
+        queue,
+        Clock(),
+        None,
+        Context(),
+        runs,
+        turn_coordinator=turns,  # type: ignore[arg-type]
+        inbox_content=inbox,
+    )
+
+    first = await router.receive(_envelope("记录一下日程提醒"), "记录一下日程提醒")
+    assert first is None
+    assert turns.command_id == inbox.ids[0]
+
+    notice = "【1】时间:9月16日(周三)下午2:30 【3】人员统计:请各支部填写名单表。" * 3
+    second = await router.receive(_envelope(notice), notice)
+
+    assert second == "小智\N{FULLWIDTH COLON}Agent已处理"
+    assert runs.ensured == [turns.command_id]
+    assert len(runs.executed) == 1
+    assert turns.completed == 1
+    assert turns.released == 0
 
 
 @pytest.mark.asyncio
