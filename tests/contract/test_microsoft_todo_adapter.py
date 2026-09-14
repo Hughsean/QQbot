@@ -79,7 +79,8 @@ async def test_lists_are_paginated_and_mapped_without_provider_dto_leak() -> Non
         ("first", "Tasks"),
         ("managed", "小智建议"),
     ]
-    assert "$select" in calls[0].url.params
+    assert "$select" not in calls[0].url.params
+    assert calls[0].url.params["$top"] == "100"
     assert "$skiptoken" in calls[1].url.params
 
 

@@ -189,6 +189,7 @@ def _values() -> dict[str, object]:
         "qq_bot_app_id": "sandbox-app",
         "qq_bot_secret": "sandbox-secret",
         "microsoft_client_id": "synthetic-client",
+        "microsoft_todo_enabled": False,
         "deepseek_api_key": "synthetic-api-key",
         "deepseek_fast_model": "fast-model",
         "deepseek_reasoning_model": "reasoning-model",

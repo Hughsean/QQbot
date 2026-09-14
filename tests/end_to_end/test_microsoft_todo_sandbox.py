@@ -29,6 +29,16 @@ pytestmark = [pytest.mark.sandbox, pytest.mark.asyncio]
 
 
 async def test_live_todo_create_read_complete_and_delete() -> None:
+    try:
+        await _live_todo_create_read_complete_and_delete()
+    except Exception as exc:
+        failure = getattr(exc, "failure_class", type(exc).__name__)
+        if not isinstance(failure, str):
+            failure = type(exc).__name__
+        pytest.fail(f"live Microsoft To Do lifecycle failed: {failure}", pytrace=False)
+
+
+async def _live_todo_create_read_complete_and_delete() -> None:
     config = load_runtime_config()
     clock = SystemClock()
     engine = create_database_engine(config.database)

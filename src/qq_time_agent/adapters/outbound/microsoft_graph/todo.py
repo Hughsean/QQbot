@@ -32,7 +32,6 @@ from qq_time_agent.modules.task_projection.contracts import (
 
 GRAPH_ORIGIN = "https://graph.microsoft.com"
 LISTS_PATH = "/v1.0/me/todo/lists"
-LIST_SELECT = "id,displayName,isOwner,isShared,wellknownListName"
 
 
 class MicrosoftGraphTodoAdapter:
@@ -59,7 +58,7 @@ class MicrosoftGraphTodoAdapter:
     async def list_task_lists(self, access_grant: TaskAccessGrant) -> tuple[ExternalTaskList, ...]:
         token = access_grant.task_credential.reveal(self._clock.now())
         url = LISTS_PATH
-        params: dict[str, str] | None = {"$select": LIST_SELECT, "$top": "100"}
+        params: dict[str, str] | None = {"$top": "100"}
         values: list[ExternalTaskList] = []
         for _ in range(self._max_pages):
             response = await self._request("GET", url, token, params=params)
