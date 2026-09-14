@@ -14,10 +14,11 @@ BEARER_VALUE: Final = re.compile(r"(?i)\b(bearer|basic)\s+[A-Za-z0-9._~+/=-]+")
 JWT_VALUE: Final = re.compile(r"\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b")
 KEY_VALUE: Final = re.compile(
     r"(?i)(password|secret|token|credential|authorization|key|body|content|prompt|payload|completion)"
-    r"(['\"]?\s*[:=]\s*['\"]?)([^'\"\s,}\]]+)"
+    r"(['\"]?\s*[:=]\s*['\"]?)(?!\[REDACTED\])([^'\"\s,}\]]+)"
 )
 SENSITIVE_QUERY: Final = re.compile(
-    r"(?i)([?&](?:code|state|client_info|session_state|id_token|access_token)="
+    r"(?i)([?&](?:code|state|client_info|session_state|id_token|access_token|"
+    r"(?:%24|\$)?(?:delta|skip)token)="
     r")([^&#\s]+)"
 )
 REDACTED: Final = "[REDACTED]"
@@ -103,5 +104,7 @@ def configure_logging(level: int = logging.INFO, role: str | None = None) -> Non
     root.handlers.clear()
     root.addHandler(handler)
     root.setLevel(level)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
     if role is not None:
         logging.getLogger("qq_time_agent").info("process started", extra={"role": role})

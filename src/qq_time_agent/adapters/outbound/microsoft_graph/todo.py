@@ -3,7 +3,7 @@
 import asyncio
 import random
 from collections.abc import Awaitable, Callable
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 import httpx
 
@@ -273,9 +273,16 @@ def _validate_task_next_link(value: str, list_ref: str) -> None:
 
 def _validate_delta_link(value: str, list_ref: str) -> None:
     parsed = urlparse(value)
-    if parsed.scheme != "https" or parsed.hostname != "graph.microsoft.com":
+    if parsed.scheme != "https" or parsed.netloc != "graph.microsoft.com":
         raise TaskProviderError("SecurityPolicy")
-    if parsed.path != task_delta_path(list_ref):
+    prefix, suffix = f"{LISTS_PATH}/", "/tasks/delta"
+    if not parsed.path.startswith(prefix) or not parsed.path.endswith(suffix):
+        raise TaskProviderError("SecurityPolicy")
+    encoded_ref = parsed.path[len(prefix) : -len(suffix)]
+    if not encoded_ref or "/" in encoded_ref or unquote(encoded_ref) != list_ref:
+        raise TaskProviderError("SecurityPolicy")
+    query = parse_qs(parsed.query, keep_blank_values=True)
+    if not ({"$deltatoken", "$skiptoken"} & query.keys()) or parsed.fragment:
         raise TaskProviderError("SecurityPolicy")
 
 

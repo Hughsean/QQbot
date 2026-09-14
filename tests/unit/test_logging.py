@@ -4,6 +4,7 @@ from qq_time_agent.bootstrap.logging import (
     REDACTED,
     RedactingFormatter,
     SecretRedactionFilter,
+    configure_logging,
     sanitize,
 )
 
@@ -47,6 +48,21 @@ def test_sanitize_redacts_oauth_callback_query_values() -> None:
     callback = "/oauth/microsoft/callback?code=not-for-logs&state=not-for-logs&safe=ok"
     sanitized = sanitize(callback)
     assert sanitized == (f"/oauth/microsoft/callback?code={REDACTED}&state={REDACTED}&safe=ok")
+
+
+def test_sanitize_redacts_graph_delta_and_skip_tokens() -> None:
+    value = "https://graph.microsoft.com/tasks/delta?%24deltatoken=private&$skiptoken=private"
+    sanitized = sanitize(value)
+    assert sanitized == (
+        f"https://graph.microsoft.com/tasks/delta?%24deltatoken={REDACTED}"
+        f"&$skiptoken={REDACTED}"
+    )
+
+
+def test_configure_logging_suppresses_http_client_request_urls() -> None:
+    configure_logging()
+    assert logging.getLogger("httpx").level == logging.WARNING
+    assert logging.getLogger("httpcore").level == logging.WARNING
 
 
 def test_sanitize_redacts_business_content_and_payload_fields() -> None:

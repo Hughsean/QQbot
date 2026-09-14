@@ -305,3 +305,28 @@ async def test_missing_task_and_untrusted_delta_cursor_are_safe() -> None:
             _grant(), "managed", "https://attacker.example/tasks/delta?token=secret"
         )
     await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_delta_accepts_graph_normalized_provider_id_path() -> None:
+    client = httpx.AsyncClient(
+        transport=httpx.MockTransport(
+            lambda _: httpx.Response(
+                200,
+                json={
+                    "value": [],
+                    "@odata.deltaLink": (
+                        "https://graph.microsoft.com/v1.0/me/todo/lists/opaque=id/tasks/delta"
+                        "?$deltatoken=opaque"
+                    ),
+                },
+            )
+        ),
+        base_url="https://graph.microsoft.com",
+    )
+    adapter = MicrosoftGraphTodoAdapter(FixedClock(), client=client, max_attempts=1)
+    page = await adapter.fetch_delta(_grant(), "opaque=id", None)
+    await client.aclose()
+
+    assert page.changes == ()
+    assert page.continuation.endswith("$deltatoken=opaque")

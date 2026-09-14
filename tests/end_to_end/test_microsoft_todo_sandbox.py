@@ -103,6 +103,9 @@ async def _live_todo_create_read_complete_and_delete() -> None:
         await graph_todo.close_task(grant, list_ref, task_ref, completed=True)
         completed = await graph_todo.get_task(grant, list_ref, task_ref)
         assert completed is not None and completed.completed
+        await graph_todo.close_task(grant, list_ref, task_ref, completed=False)
+        assert await graph_todo.get_task(grant, list_ref, task_ref) is None
+        task_ref = None
         assert target.status == "READY"
     finally:
         if task_ref is not None and list_ref is not None and grant is not None:
