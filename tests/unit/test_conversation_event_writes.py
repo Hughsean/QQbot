@@ -72,8 +72,9 @@ class Repository:
         source_type: str,
         now: datetime,
         scope: ContextScope | None = None,
+        source_refs: tuple[str, ...] = (),
     ) -> AgentRun:
-        del user_id, source_type, now
+        del user_id, source_type, now, source_refs
         self.run.inbox_item_id = inbox_item_id
         self.run.conversation_id = None if scope is None else scope.conversation_id
         return self.run

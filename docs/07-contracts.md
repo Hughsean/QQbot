@@ -98,8 +98,9 @@ settle(conversationKey, generation) -> SettledAgentTurn | Superseded
 complete(turnId, result) -> TurnCompletion
 ```
 
-`AgentTurnSegment` 携带 provider-neutral envelope、`msg_seq`、引用存在性、正文和附件描述；Provider
-ID 只用于幂等与关联，不进入日志。`stage` 必须先持久化 Inbox，再登记 turn segment；`settle` 使用
+`AgentTurnSegment` 携带 Inbox ID、来源/信任标签、`msg_seq`、引用哈希和有界长度；正文与附件仍由
+Inbox 持有，不复制到 Turn 表。Provider ID 只用于幂等与关联，不进入日志。`stage` 必须先持久化
+Inbox，再登记 turn segment；`settle` 使用
 有界静默窗口且同一 Conversation 只能有一个执行租约。`SettledAgentTurn` 分开返回 T1 live command
 与 T2 evidence，不得返回无信任标签的拼接文本。重复 stage/complete 必须返回已有结果。
 

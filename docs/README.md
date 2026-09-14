@@ -47,6 +47,7 @@ QQ Time Agent 是一个仅供项目所有者本人使用、以 QQ 为主要交�
 | [28-microsoft-todo-17c-verification.md](28-microsoft-todo-17c-verification.md) | Agenda 到 Microsoft To Do 单向投影、Outbox 和崩溃恢复的本地验证证据 |
 | [29-microsoft-todo-17d-verification.md](29-microsoft-todo-17d-verification.md) | To Do 完成回写、QQ 发送前门禁、租约取消和抑制记录的本地验证证据 |
 | [30-qq-ingress-turn-coalescing.md](30-qq-ingress-turn-coalescing.md) | QQ 连续消息合并、同会话串行、信任分段和默认时间策略 |
+| [31-qq-ingress-turn-verification.md](31-qq-ingress-turn-verification.md) | QQ 连续消息合并实现、迁移、恢复与本地验证证据 |
 | [adr/](adr/) | 已接受的关键架构决策（含 Microsoft To Do 外部投影） |
 
 ## 决策优先级
@@ -138,3 +139,5 @@ QQ Time Agent 是一个仅供项目所有者本人使用、以 QQ 为主要交�
   delta 链接规范化校验和 Provider URL/游标日志脱敏问题已修复。真实到期 Reminder 前勾选 To Do 并
   抑制 QQ 仍待自然场景观察，因此 17E 尚未全部完成；未知或失败路径继续发送 QQ。生产主机 NVIDIA
   驱动与 NVML 不匹配，本次以 CPU Ollama 回退保持服务就绪，GPU 恢复留待独立维护窗口。
+  阶段 18 已在独立开发分支完成 QQ 连续文本静默窗合并、同会话串行租约、T1/T2 分段、持久化恢复
+  Job 和配置化默认日程时长/提醒的本地实现与验证；尚未合并或部署生产。

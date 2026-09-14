@@ -181,4 +181,5 @@ class AgentRunCommandPort(AgentRunExecutionPort, Protocol):
         event_key: str | None = None,
         occurred_at: datetime | None = None,
         message: str | None = None,
+        source_refs: tuple[str, ...] = (),
     ) -> "AgentRun": ...

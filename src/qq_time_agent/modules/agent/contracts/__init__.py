@@ -62,6 +62,14 @@ from qq_time_agent.modules.agent.contracts.runs import (
     MailRunSummaryQueryPort,
     ScopedAgentReply,
 )
+from qq_time_agent.modules.agent.contracts.turns import (
+    AgentTurnClaim,
+    AgentTurnRepository,
+    AgentTurnSegmentRef,
+    AgentTurnTicket,
+    TurnClaimDecision,
+    TurnClaimResult,
+)
 
 __all__ = [
     "AgentContextAssemblyPort",
@@ -92,6 +100,10 @@ __all__ = [
     "AgentToolCall",
     "AgentToolDefinition",
     "AgentToolPort",
+    "AgentTurnClaim",
+    "AgentTurnRepository",
+    "AgentTurnSegmentRef",
+    "AgentTurnTicket",
     "ContextDiagnostics",
     "ContextScope",
     "ConversationContextRepository",
@@ -113,6 +125,8 @@ __all__ = [
     "NotificationEventRequest",
     "ScopedAgentReply",
     "ToolObservation",
+    "TurnClaimDecision",
+    "TurnClaimResult",
     "bounded_event_content",
     "is_notification_event",
     "owner_timeline_scope_id",

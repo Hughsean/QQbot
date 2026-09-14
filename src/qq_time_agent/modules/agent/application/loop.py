@@ -24,7 +24,7 @@ from qq_time_agent.modules.agent.application.request_guards import (
     is_short_acknowledgement,
     successful_agenda_creates,
 )
-from qq_time_agent.modules.agent.application.system_instruction import SYSTEM_INSTRUCTION
+from qq_time_agent.modules.agent.application.system_instruction import build_system_instruction
 from qq_time_agent.modules.agent.application.tool_call_validation import (
     arguments_hash,
     validate_schema,
@@ -79,6 +79,8 @@ class AgentLoop:
         config: AgentLoopConfig | None = None,
         owner_timezone: str = "Asia/Shanghai",
         clock: Clock | None = None,
+        default_item_minutes: int = 30,
+        default_reminder_minutes: int = 15,
     ) -> None:
         try:
             self._owner_zone = ZoneInfo(owner_timezone)
@@ -89,6 +91,9 @@ class AgentLoop:
         self._config = config or AgentLoopConfig()
         self._owner_timezone = owner_timezone
         self._clock = clock or SystemClock()
+        self._system_instruction = build_system_instruction(
+            default_item_minutes, default_reminder_minutes
+        )
 
     async def run(  # noqa: C901
         self,
@@ -102,11 +107,12 @@ class AgentLoop:
         on_event: Callable[[str, int, Mapping[str, object]], Awaitable[None]] | None = None,
         source_type: str = "QQ_DIRECT",
         inbox_item_id: UUID | None = None,
+        source_refs: tuple[str, ...] = (),
     ) -> AgentFinal:
         if not owner_id.strip() or not message.strip():
             raise ValueError("Agent owner and message are required")
         run_id = uuid4().hex[:16]
-        tool_context = ToolCallContext(source_type, inbox_item_id)
+        tool_context = ToolCallContext(source_type, inbox_item_id, source_refs)
         reference_time = self._clock.now()
         if reference_time.tzinfo is None or reference_time.utcoffset() is None:
             raise ValueError("Agent reference time must be timezone-aware")
@@ -229,7 +235,7 @@ class AgentLoop:
             started = perf_counter()
             response = await self._model.respond(
                 AgentRequest(
-                    SYSTEM_INSTRUCTION,
+                    self._system_instruction,
                     message,
                     context,
                     tools,

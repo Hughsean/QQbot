@@ -21,6 +21,7 @@ class CalendarToolRegistry:
         actions: CalendarActionPort,
         authorization: CalendarAuthorizationPort,
         owner_timezone: str = "Asia/Shanghai",
+        default_reminder_minutes: int = 15,
     ) -> None:
         try:
             resolve_timezone(owner_timezone)
@@ -30,6 +31,9 @@ class CalendarToolRegistry:
         self._actions = actions
         self._authorization = authorization
         self._owner_timezone = owner_timezone
+        if default_reminder_minutes < 0:
+            raise ValueError("default reminder minutes must not be negative")
+        self._default_reminder_minutes = default_reminder_minutes
         self._definitions = (
             ToolDefinition(
                 "list_agenda",
@@ -237,12 +241,19 @@ class CalendarToolRegistry:
             {
                 "starts_at": starts.isoformat(),
                 "ends_at": ends.isoformat(),
-                "source_refs": [
-                    "inbox:" + str(context.inbox_item_id)
-                    if context.inbox_item_id is not None
-                    else "agent:" + owner_id
-                ],
-                "reminder_lead_minutes": 30,
+                "source_refs": list(
+                    dict.fromkeys(
+                        (
+                            *context.source_refs,
+                            (
+                                "inbox:" + str(context.inbox_item_id)
+                                if context.inbox_item_id is not None
+                                else "agent:" + owner_id
+                            ),
+                        )
+                    )
+                ),
+                "reminder_lead_minutes": self._default_reminder_minutes,
             }
         )
         result = _render_result(
@@ -262,7 +273,7 @@ class CalendarToolRegistry:
                 "reminder_due_at": (
                     payload.get("reminder_due_at")
                     if reminder_due_at is not None
-                    else (starts - timedelta(minutes=30)).isoformat()
+                    else (starts - timedelta(minutes=self._default_reminder_minutes)).isoformat()
                 ),
             }
         )

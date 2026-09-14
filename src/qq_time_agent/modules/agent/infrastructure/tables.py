@@ -4,8 +4,10 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import (
+    BigInteger,
     CheckConstraint,
     DateTime,
+    ForeignKey,
     Index,
     Integer,
     String,
@@ -45,6 +47,7 @@ class AgentRunRow(AgentBase):
     context_revision: Mapped[int | None] = mapped_column(Integer)
     context_max_sequence: Mapped[int | None] = mapped_column(Integer)
     context_hash: Mapped[str | None] = mapped_column(String(64))
+    source_refs: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
     __table_args__ = (UniqueConstraint("inbox_item_id", name="uq_agent_runs_inbox_item"),)
 
 
@@ -95,6 +98,64 @@ class ConversationRow(AgentBase):
         UniqueConstraint(
             "user_id", "channel", "conversation_key", name="uq_agent_conversation_scope"
         ),
+    )
+
+
+_TURN_STATUS_CHECK = "status IN ('OPEN', 'LEASED', 'COMPLETED', 'FAILED')"
+
+
+class AgentTurnBatchRow(AgentBase):
+    """Durable quiet-window batch; conversation keys are stored only as hashes."""
+
+    __tablename__ = "agent_turn_batches"
+    turn_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    user_id: Mapped[str] = mapped_column(String(120), nullable=False)
+    conversation_key_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    generation: Mapped[int] = mapped_column(Integer, nullable=False)
+    message_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    content_chars: Mapped[int] = mapped_column(Integer, nullable=False)
+    ready_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    hard_deadline_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    lease_owner: Mapped[str | None] = mapped_column(String(160))
+    lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    failure_class: Mapped[str | None] = mapped_column(String(120))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    __table_args__ = (
+        CheckConstraint(_TURN_STATUS_CHECK, name="ck_agent_turn_batches_status"),
+        CheckConstraint(
+            "generation >= 1 AND message_count >= 1 AND content_chars >= 0",
+            name="ck_agent_turn_batches_counts",
+        ),
+        Index(
+            "ix_agent_turn_batches_conversation_status",
+            "conversation_key_hash",
+            "status",
+            "created_at",
+        ),
+    )
+
+
+class AgentTurnSegmentRow(AgentBase):
+    __tablename__ = "agent_turn_segments"
+    turn_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("agent_turn_batches.turn_id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    position: Mapped[int] = mapped_column(Integer, primary_key=True)
+    inbox_item_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    source_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    trust_level: Mapped[str] = mapped_column(String(10), nullable=False)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    provider_sequence: Mapped[int | None] = mapped_column(BigInteger)
+    reference_hash: Mapped[str | None] = mapped_column(String(64))
+    content_chars: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    __table_args__ = (
+        UniqueConstraint("inbox_item_id", name="uq_agent_turn_segments_inbox_item"),
+        CheckConstraint("position >= 1 AND content_chars >= 0", name="ck_agent_turn_segments_size"),
     )
 
 

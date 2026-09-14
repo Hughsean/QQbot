@@ -31,11 +31,13 @@ from qq_time_agent.modules.agent.application.json_model import JsonAgentModel
 from qq_time_agent.modules.agent.application.loop import AgentLoop, AgentLoopConfig
 from qq_time_agent.modules.agent.application.notification_events import NotificationEventRecorder
 from qq_time_agent.modules.agent.application.run_service import AgentRunService
+from qq_time_agent.modules.agent.application.turns import ConversationTurnCoordinator
 from qq_time_agent.modules.agent.infrastructure.conversation_events import (
     SqlConversationEventRepository,
 )
 from qq_time_agent.modules.agent.infrastructure.events import SqlAgentRunEventRepository
 from qq_time_agent.modules.agent.infrastructure.repository import SqlAgentRunRepository
+from qq_time_agent.modules.agent.infrastructure.turns import SqlAgentTurnRepository
 from qq_time_agent.modules.ai_gateway.application.service import AIGatewayService
 from qq_time_agent.modules.ai_gateway.infrastructure.repository import SqlInvocationRepository
 from qq_time_agent.modules.audit.application.service import AuditService
@@ -92,7 +94,8 @@ async def run_qq() -> None:
     )
     deepseek = DeepSeekStructuredAdapter(config.deepseek)
     ollama = OllamaEmbeddingAdapter(config.ollama)
-    inbox = InboxService(SqlInboxRepository(sessions))
+    inbox_repository = SqlInboxRepository(sessions)
+    inbox = InboxService(inbox_repository)
     knowledge_repository = SqlKnowledgeRepository(sessions)
     agenda_repository = SqlAgendaRepository(sessions, clock)
     agenda = AgendaService(agenda_repository)
@@ -155,10 +158,14 @@ async def run_qq() -> None:
     retrieval.configure_query_model(model)
     tools = ToolDispatcher(
         CalendarToolRegistry(
-            agenda, actions, OwnerCalendarAuthorization("owner"), str(config.schedule.timezone)
+            agenda,
+            actions,
+            OwnerCalendarAuthorization("owner"),
+            str(config.schedule.timezone),
+            config.schedule.default_reminder_minutes,
         ),
         OwnerGroupAliasToolRegistry(owner_aliases, mail_rules),
-        RecentMailToolRegistry(SqlInboxRepository(sessions)),
+        RecentMailToolRegistry(inbox_repository),
         ConnectionStatusToolRegistry(connection_status),
     )
     agent = AgentLoop(
@@ -175,6 +182,8 @@ async def run_qq() -> None:
         ),
         owner_timezone=str(config.schedule.timezone),
         clock=clock,
+        default_item_minutes=config.schedule.default_item_minutes,
+        default_reminder_minutes=config.schedule.default_reminder_minutes,
     )
     run_repository = SqlAgentRunRepository(sessions)
     run_event_repository = SqlAgentRunEventRepository(sessions)
@@ -183,7 +192,7 @@ async def run_qq() -> None:
         retrieval,
         inbox,
         run_repository,
-        SqlInboxRepository(sessions),
+        inbox_repository,
         AgendaNotificationQueryService(agenda_repository),
         PendingProposalQueryService(SqlProposalRepository(sessions), clock),
         str(config.schedule.timezone),
@@ -197,6 +206,14 @@ async def run_qq() -> None:
     agent_runs = AgentRunService(
         run_repository, agent, clock, events=run_event_repository, timeline=conversation_events
     )
+    turns = ConversationTurnCoordinator(
+        SqlAgentTurnRepository(sessions),
+        clock,
+        quiet_seconds=config.qq.ingress_quiet_seconds,
+        max_batch_seconds=config.qq.ingress_max_batch_seconds,
+        max_messages=config.qq.ingress_max_messages,
+        max_chars=config.qq.ingress_max_chars,
+    )
     router = QqCommandRouter(
         inbox,
         inbox,
@@ -209,6 +226,8 @@ async def run_qq() -> None:
         agent_context,
         agent_runs,
         config.qq.display_name,
+        turn_coordinator=turns,
+        inbox_content=inbox_repository,
     )
     gateway = OfficialQqGateway(
         config.qq,

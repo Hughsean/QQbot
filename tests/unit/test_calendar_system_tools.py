@@ -5,6 +5,7 @@ from uuid import UUID, uuid4
 
 import pytest
 
+from qq_time_agent.contracts.tools import ToolCallContext
 from qq_time_agent.modules.actions.contracts import ActionResultView
 from qq_time_agent.modules.agenda.contracts import AgendaEntryView, BusyInterval
 from qq_time_agent.modules.calendar_system.application.authorization import (
@@ -201,6 +202,44 @@ async def test_create_receipt_contains_user_visible_schedule_facts() -> None:
     assert isinstance(value, dict)
     assert value["title"] == "南瑞继保测评"
     assert value["reminder_due_at"] == "2026-09-12T18:00:00+08:00"
+
+
+@pytest.mark.asyncio
+async def test_create_uses_configured_default_reminder_and_all_turn_sources() -> None:
+    actions = CapturingActions()
+    registry = CalendarToolRegistry(
+        Agenda(_entry(), []),
+        actions,
+        OwnerCalendarAuthorization("owner"),
+        "Asia/Shanghai",
+        default_reminder_minutes=20,
+    )
+    command_id, evidence_id = uuid4(), uuid4()
+
+    value = await registry.call(
+        "owner",
+        "create_agenda",
+        {
+            "title": "集中大课",
+            "starts_at": "2026-09-16T14:30:00+08:00",
+            "ends_at": "2026-09-16T15:00:00+08:00",
+            "timezone": "Asia/Shanghai",
+            "kind": "EVENT",
+        },
+        ToolCallContext(
+            "QQ_DIRECT",
+            command_id,
+            (f"inbox:{evidence_id}",),
+        ),
+    )
+
+    assert actions.payload is not None
+    assert actions.payload["reminder_lead_minutes"] == 20
+    assert actions.payload["source_refs"] == [
+        f"inbox:{evidence_id}",
+        f"inbox:{command_id}",
+    ]
+    assert value["reminder_due_at"] == "2026-09-16T14:10:00+08:00"
 
 
 @pytest.mark.asyncio

@@ -28,6 +28,10 @@ class QqConfig:
     sandbox: bool
     display_name: str = "小智"
     diagnostic_raw_event_once: bool = False
+    ingress_quiet_seconds: float = 1.2
+    ingress_max_batch_seconds: float = 4.0
+    ingress_max_messages: int = 8
+    ingress_max_chars: int = 12_000
 
 
 @dataclass(frozen=True, slots=True)

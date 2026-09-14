@@ -318,4 +318,8 @@ Projection 后内部日程查询、QQ 按钮与提醒恢复原有行为；Provid
 恢复且不重复副作用；转发命令不能获得 T1 权限；Ruff、strict mypy、架构、单元、契约和 PostgreSQL
 集成测试通过。生产部署需要独立备份与所有者授权。
 
-当前状态：需求与模块边界已冻结，代码开发中。
+当前状态：本地开发已完成，尚未部署生产。`Main` 已先快进合并原 `dev`，实现位于
+`codex/qq-ingress-turn-coalescing`。新增 `0031_agent_turn_batches`、静默窗 generation、Conversation
+租约、延迟 `qq-turn` 恢复 Job、`msg_seq`/引用哈希、T1/T2 分段和 AgentRun `source_refs`；日程缺省
+时长与提醒提前量统一由 ScheduleConfig 注入。Ruff、strict mypy、架构、单元和 PostgreSQL 竞态测试
+已通过，验证细节见 `docs/31-qq-ingress-turn-verification.md`。生产部署仍需独立备份与所有者授权。

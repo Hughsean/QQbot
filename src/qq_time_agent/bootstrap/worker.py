@@ -20,6 +20,7 @@ from qq_time_agent.adapters.inbound.workers.knowledge import (
     KnowledgeIndexJobHandler,
 )
 from qq_time_agent.adapters.inbound.workers.mail_sync import MailSyncJobHandler
+from qq_time_agent.adapters.inbound.workers.qq_turn import QqTurnJobHandler
 from qq_time_agent.adapters.inbound.workers.runner import JobRunner
 from qq_time_agent.adapters.inbound.workers.source_asset import (
     SourceAssetFetchJobHandler,
@@ -62,11 +63,13 @@ from qq_time_agent.modules.agent.application.conversation_summary import (
 from qq_time_agent.modules.agent.application.json_model import JsonAgentModel
 from qq_time_agent.modules.agent.application.loop import AgentLoop, AgentLoopConfig
 from qq_time_agent.modules.agent.application.run_service import AgentRunService
+from qq_time_agent.modules.agent.application.turns import ConversationTurnCoordinator
 from qq_time_agent.modules.agent.infrastructure.conversation_events import (
     SqlConversationEventRepository,
 )
 from qq_time_agent.modules.agent.infrastructure.events import SqlAgentRunEventRepository
 from qq_time_agent.modules.agent.infrastructure.repository import SqlAgentRunRepository
+from qq_time_agent.modules.agent.infrastructure.turns import SqlAgentTurnRepository
 from qq_time_agent.modules.ai_gateway.application.service import AIGatewayService
 from qq_time_agent.modules.ai_gateway.infrastructure.repository import SqlInvocationRepository
 from qq_time_agent.modules.ai_gateway.infrastructure.retention import AIGatewayExpiryAdapter
@@ -296,7 +299,11 @@ def build_worker() -> tuple[JobRunner, AsyncEngine, tuple[AsyncClosable, ...]]:
         agent_model,
         ToolDispatcher(
             CalendarToolRegistry(
-                agenda, actions, OwnerCalendarAuthorization("owner"), str(config.schedule.timezone)
+                agenda,
+                actions,
+                OwnerCalendarAuthorization("owner"),
+                str(config.schedule.timezone),
+                config.schedule.default_reminder_minutes,
             ),
             OwnerGroupAliasToolRegistry(owner_aliases, mail_rules),
             RecentMailToolRegistry(inbox_repository),
@@ -311,6 +318,8 @@ def build_worker() -> tuple[JobRunner, AsyncEngine, tuple[AsyncClosable, ...]]:
         ),
         owner_timezone=str(config.schedule.timezone),
         clock=clock,
+        default_item_minutes=config.schedule.default_item_minutes,
+        default_reminder_minutes=config.schedule.default_reminder_minutes,
     )
     run_repository = SqlAgentRunRepository(sessions)
     run_event_repository = SqlAgentRunEventRepository(sessions)
@@ -336,6 +345,14 @@ def build_worker() -> tuple[JobRunner, AsyncEngine, tuple[AsyncClosable, ...]]:
         clock,
         events=run_event_repository,
         timeline=conversation_events,
+    )
+    turns = ConversationTurnCoordinator(
+        SqlAgentTurnRepository(sessions),
+        clock,
+        quiet_seconds=config.qq.ingress_quiet_seconds,
+        max_batch_seconds=config.qq.ingress_max_batch_seconds,
+        max_messages=config.qq.ingress_max_messages,
+        max_chars=config.qq.ingress_max_chars,
     )
     agent_scheduler = MailAgentRunScheduler(
         agent_runs, inbox_repository, inbox_repository, queue, clock
@@ -363,6 +380,13 @@ def build_worker() -> tuple[JobRunner, AsyncEngine, tuple[AsyncClosable, ...]]:
             AgentMailResultNotificationService(SqlNotificationIntentRepository(sessions)),
             clock,
             MailDeliveryPolicy(mail_rules),
+        ),
+        "qq-turn": QqTurnJobHandler(
+            turns,
+            inbox_repository,
+            agent_runs,
+            queue,
+            clock,
         ),
         "conversation-summary": ConversationSummaryJobHandler(
             ConversationSummaryService(conversation_events, clock), clock

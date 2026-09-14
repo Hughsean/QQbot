@@ -19,6 +19,7 @@ class ToolCallContext:
 
     source_type: str
     inbox_item_id: UUID | None = None
+    source_refs: tuple[str, ...] = ()
 
 
 class ToolProvider(Protocol):

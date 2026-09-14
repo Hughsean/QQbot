@@ -80,3 +80,20 @@ Provider ID 或所有者标识。
 - 缺少结束时间时使用配置默认时长，显式结束时间永远优先。
 - 重启、重复 Provider 事件和 AgentRun recovery 不重复回复或重复创建日程。
 - 日志不包含正文、Provider message/reference ID、owner ID 或批次拼接内容。
+
+## 7. 配置与启用
+
+该修复属于 QQ 入站正确性基线，不设置独立功能开关，代码升级和数据库迁移后自动生效。以下配置均
+有安全默认值，不要求生产 `.env` 显式添加；只有需要调整窗口时才覆盖：
+
+```text
+QQ_INGRESS_QUIET_SECONDS=1.2
+QQ_INGRESS_MAX_BATCH_SECONDS=4.0
+QQ_INGRESS_MAX_MESSAGES=8
+QQ_INGRESS_MAX_CHARS=12000
+```
+
+每次 stage 后同时登记延迟 10 秒的持久化 `qq-turn` 恢复 Job。正常 callback 会先取得租约并被动回复，
+恢复 Job 随后因批次已完成而幂等退出；进程中断时 Worker 重新领取批次、创建同一个 Inbox 级 AgentRun，
+再由既有 `agent-run` 恢复和 NotificationIntent 投递结果。租约过期可重领，临时失败会释放为 OPEN；
+超过硬截止 30 秒仍没有恢复 Job 的旧 OPEN 批次会明确失败，避免永久阻塞后续消息。
