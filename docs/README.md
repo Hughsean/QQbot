@@ -46,6 +46,7 @@ QQ Time Agent 是一个仅供项目所有者本人使用、以 QQ 为主要交�
 | [27-microsoft-todo-17b-verification.md](27-microsoft-todo-17b-verification.md) | Microsoft To Do 授权接入、模块骨架和受管列表解析的本地验证证据 |
 | [28-microsoft-todo-17c-verification.md](28-microsoft-todo-17c-verification.md) | Agenda 到 Microsoft To Do 单向投影、Outbox 和崩溃恢复的本地验证证据 |
 | [29-microsoft-todo-17d-verification.md](29-microsoft-todo-17d-verification.md) | To Do 完成回写、QQ 发送前门禁、租约取消和抑制记录的本地验证证据 |
+| [30-qq-ingress-turn-coalescing.md](30-qq-ingress-turn-coalescing.md) | QQ 连续消息合并、同会话串行、信任分段和默认时间策略 |
 | [adr/](adr/) | 已接受的关键架构决策（含 Microsoft To Do 外部投影） |
 
 ## 决策优先级

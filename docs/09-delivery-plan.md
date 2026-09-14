@@ -304,3 +304,18 @@ Projection 后内部日程查询、QQ 按钮与提醒恢复原有行为；Provid
 3 条 delta 死信已在成功增量后精确取消。尚未通过的唯一关键验收是：在真实即将到期的 Reminder 前
 勾选对应 To Do，并观察 QQ 被抑制且内部 Agenda 收敛为完成。该自然场景完成前不得宣称 17E 完成；
 遇到未完成、超时、失权或其他未知结果仍继续发送 QQ。
+
+## 阶段 18：QQ 入站连续消息合并
+
+目标：解决“转发资料后紧跟短指令”被拆成并发 AgentRun、回复乱序和信任边界丢失的问题。详细契约
+见 `docs/30-qq-ingress-turn-coalescing.md`。
+
+交付物：QQ `msg_seq`/message reference 映射、每条消息先入 Inbox、持久化 Turn Batch、1.2 秒静默
+合并、4 秒硬上限、同 Conversation 执行租约、一次回复投递栅栏、T1/T2 分段上下文，以及缺少结束
+时间时使用 ScheduleConfig 默认值。
+
+完成标准：事故复现用例只产生一个 Run/Action/回复；同会话并发压力下顺序稳定；重启和重复事件可
+恢复且不重复副作用；转发命令不能获得 T1 权限；Ruff、strict mypy、架构、单元、契约和 PostgreSQL
+集成测试通过。生产部署需要独立备份与所有者授权。
+
+当前状态：需求与模块边界已冻结，代码开发中。

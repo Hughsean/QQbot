@@ -31,7 +31,7 @@ api           对外控制器和 DTO 映射
 | Scheduling | 约束求解和 Proposal 生成 | Proposal、约束快照 | 写内部日程、发 QQ 消息 |
 | Agenda | 项目内权威日程和忙闲查询 | AgendaEntry、日程版本 | 理解自然语言、发送提醒 |
 | Calendar System | 日程工具边界、目标解析、授权和策略校验 | 日程工具契约，不持有日程事实 | 模型推理、直接写 Agenda/Reminder、Provider SDK、凭据 |
-| Agent | Conversation/EventCase 作用域、AgentRun、上下文选择与工具编排 | Conversation、EventCase、AgentRun、工具调用记录 | 日程事实、直接 Provider 调用 |
+| Agent | Conversation/EventCase 作用域、QQ 连续消息 turn 协调、AgentRun、上下文选择与工具编排 | Conversation、EventCase、Turn Batch、AgentRun、工具调用记录 | 日程事实、直接 Provider 调用 |
 | Reminders | 提醒计划、到期租约、重试和死信 | Reminder、执行租约 | 改写日程、直接依赖 QQ SDK |
 | Actions | 所有日程副作用门禁、幂等执行、提醒一致性和撤销 | ActionRequest、执行结果 | 自行决定用户意图 |
 | Notifications | 规划、渲染并发送 QQ 通知，以及邮件结果投递策略解析 | 通知意图、投递记录、模板版本、cooldown、邮件投递决策 | 修改 Proposal、Connection 或 Agenda 状态 |
@@ -135,6 +135,8 @@ Audit ◄── 接收所有关键领域事件
 - Scheduling 不得发送 QQ 消息或写入内部日程。
 - Agent 只能调用 Calendar System 的公开工具；Calendar System 只通过 Actions 写 Agenda/Reminder，并拒绝未授权、歧义、冲突或过期请求。
 - QQ 与邮件入口只能创建幂等 AgentRun；不得在 Controller 中同步形成不可恢复的唯一执行路径。
+- QQ Adapter 不得为同一 Conversation 并发执行多个 AgentRun；连续消息必须经 Agent 的公开 turn
+  intake port 有界合并和串行。批内每段信任等级保持独立，禁止把 T2 拼接文本整体提升为 T1。
 - RAG/Retrieval 不得充当 Agenda、Task、Proposal、Confirmation 或 Reminder 的事实源。
 - Knowledge 不得直接调用 DeepSeek；Embeddings 不得把 Ollama DTO 传给 Knowledge。
 - 检索结果只能作为带来源的 T2 上下文，不能提升为命令或绕过确认。
