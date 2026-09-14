@@ -323,3 +323,19 @@ Projection 后内部日程查询、QQ 按钮与提醒恢复原有行为；Provid
 租约、延迟 `qq-turn` 恢复 Job、`msg_seq`/引用哈希、T1/T2 分段和 AgentRun `source_refs`；日程缺省
 时长与提醒提前量统一由 ScheduleConfig 注入。Ruff、strict mypy、架构、单元和 PostgreSQL 竞态测试
 已通过，验证细节见 `docs/31-qq-ingress-turn-verification.md`。生产部署仍需独立备份与所有者授权。
+
+## 阶段 19：迁移链压缩为单基线
+
+目标：消除为中间生产部署保留的迁移历史（含数据回填），使源码可以直接从零建出全新生产库，
+全链离线 SQL 恢复可用。决策见 `docs/adr/0016-squash-migration-baseline.md`。
+
+交付物：`0001_initial_schema` 单基线迁移（与压缩前 `0031_agent_turn_batches` 产物逐项一致）、
+一次性存量库切换脚本 `ops/baseline-cutover-to-initial-schema.sql`、动态断言迁移 head 的
+集成测试，以及 ORM 元数据对齐修复（索引、约束、CHECK、server_default 与 JSONB 类型声明）。
+
+完成标准：新基线从零建库与旧链产物清单逐项一致；`alembic check`（含 server_default）归零；
+`downgrade base → upgrade head` 往返通过；全链 `--sql` 离线导出正常；旧链库 stamp 后
+`alembic check` 归零；Ruff、strict mypy、架构和全量非沙箱测试通过。存量生产库部署新代码前
+必须先执行一次性切换脚本。
+
+当前状态：本地开发完成，生产切换未执行。

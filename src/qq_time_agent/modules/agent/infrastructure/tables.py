@@ -291,7 +291,7 @@ class ConversationSummaryRow(AgentBase):
     content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     source_hash: Mapped[str] = mapped_column(String(64), nullable=False, default="")
     structured_json: Mapped[dict[str, object]] = mapped_column(
-        JSONB, nullable=False, default=dict, server_default="'{}'::jsonb"
+        JSONB, nullable=False, default=dict, server_default="{}"
     )
     idempotency_key: Mapped[str] = mapped_column(String(255), nullable=False, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

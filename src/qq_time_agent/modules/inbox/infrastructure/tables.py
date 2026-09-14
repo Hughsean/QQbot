@@ -67,7 +67,7 @@ class InboxRawContentRow(InboxBase):
     change_key: Mapped[str | None] = mapped_column(String(512))
     has_attachments: Mapped[bool] = mapped_column(Boolean, nullable=False)
     attachment_metadata: Mapped[list[dict[str, object]]] = mapped_column(
-        JSONB, nullable=False, default=list, server_default="'[]'::jsonb"
+        JSONB, nullable=False, default=list, server_default="[]"
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 

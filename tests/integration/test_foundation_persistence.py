@@ -1,9 +1,12 @@
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from uuid import uuid4
 
 import pytest
 import pytest_asyncio
+from alembic.config import Config
+from alembic.script import ScriptDirectory
 from sqlalchemy import delete, select, text
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker
 
@@ -66,11 +69,16 @@ async def test_pgvector_extension_and_migration_are_active(engine: AsyncEngine) 
             )
         )
     assert extension is not None
-    assert revision == "0031_agent_turn_batches"
+    assert revision == _migration_head()
     assert job_constraint == "uq_platform_jobs_idempotency"
 
     health = await DatabaseReadinessProbe(engine).check()
     assert health.available and health.vector_enabled
+
+
+def _migration_head() -> str:
+    config = Config(str(Path(__file__).resolve().parents[2] / "alembic.ini"))
+    return ScriptDirectory.from_config(config).get_current_head()
 
 
 @pytest.mark.asyncio
