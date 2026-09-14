@@ -42,13 +42,26 @@ class AgentRunRow(AgentBase):
     event_case_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     execution_owner: Mapped[str | None] = mapped_column(String(160))
     execution_lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    execution_epoch: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    execution_epoch: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     context_revision: Mapped[int | None] = mapped_column(Integer)
     context_max_sequence: Mapped[int | None] = mapped_column(Integer)
     context_hash: Mapped[str | None] = mapped_column(String(64))
     source_refs: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
-    __table_args__ = (UniqueConstraint("inbox_item_id", name="uq_agent_runs_inbox_item"),)
+    __table_args__ = (
+        UniqueConstraint("inbox_item_id", name="uq_agent_runs_inbox_item"),
+        CheckConstraint(
+            "effective_delivery IS NULL OR effective_delivery IN ('HOLD', 'NOTIFY')",
+            name="ck_agent_runs_effective_delivery",
+        ),
+        Index("ix_agent_runs_status_updated", "status", "updated_at"),
+        Index("ix_agent_runs_completed", "completed_at"),
+        Index("ix_agent_runs_conversation_reply_time", "conversation_id", "updated_at"),
+        Index("ix_agent_runs_event_reply_time", "event_case_id", "updated_at"),
+        Index("ix_agent_runs_execution_lease", "status", "execution_lease_until"),
+    )
 
 
 class AgentRunEventRow(AgentBase):
@@ -172,6 +185,9 @@ class EventCaseRow(AgentBase):
 
 class ContextItemRow(AgentBase):
     __tablename__ = "agent_context_items"
+    __table_args__ = (
+        Index("ix_agent_context_items_scope_time", "scope_type", "scope_id", "occurred_at"),
+    )
     scope_type: Mapped[str] = mapped_column(String(20), primary_key=True)
     scope_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
     inbox_item_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
@@ -250,6 +266,12 @@ class ConversationSummaryRow(AgentBase):
             "to_sequence",
             name="uq_agent_conversation_summaries_range",
         ),
+        UniqueConstraint("idempotency_key", name="uq_agent_conversation_summaries_idempotency"),
+        CheckConstraint(_SCOPE_CHECK, name="ck_agent_conversation_summaries_scope"),
+        CheckConstraint(
+            "from_sequence >= 1 AND to_sequence >= from_sequence",
+            name="ck_agent_conversation_summaries_range",
+        ),
         Index(
             "ix_agent_conversation_summaries_scope_to",
             "scope_type",
@@ -268,6 +290,8 @@ class ConversationSummaryRow(AgentBase):
     content: Mapped[str] = mapped_column(Text, nullable=False)
     content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     source_hash: Mapped[str] = mapped_column(String(64), nullable=False, default="")
-    structured_json: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False, default=dict)
+    structured_json: Mapped[dict[str, object]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default="'{}'::jsonb"
+    )
     idempotency_key: Mapped[str] = mapped_column(String(255), nullable=False, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

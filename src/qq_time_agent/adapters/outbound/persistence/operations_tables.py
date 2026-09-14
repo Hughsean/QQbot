@@ -22,7 +22,9 @@ class OutboxEventRow(OperationsBase):
     payload: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False)
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    attempt_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
     last_error_class: Mapped[str | None] = mapped_column(String(80))
 
     __table_args__ = (Index("ix_outbox_unpublished", "published_at", "occurred_at"),)
@@ -39,8 +41,12 @@ class JobRow(OperationsBase):
     available_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     lease_owner: Mapped[str | None] = mapped_column(String(120))
     lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    max_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=5)
+    attempt_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    max_attempts: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=5, server_default="5"
+    )
     last_error_class: Mapped[str | None] = mapped_column(String(80))
     last_error_detail: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

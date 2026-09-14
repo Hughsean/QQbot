@@ -3,7 +3,16 @@
 from datetime import datetime, time
 from uuid import UUID
 
-from sqlalchemy import Boolean, DateTime, Integer, String, Time
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    Index,
+    Integer,
+    String,
+    Time,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -15,9 +24,20 @@ class IdentityBase(DeclarativeBase):
 
 class IdentityMailRuleRow(IdentityBase):
     __tablename__ = "identity_mail_rules"
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id",
+            "match_field",
+            "normalized_pattern",
+            name="identity_mail_rules_user_id_match_field_normalized_pattern_key",
+        ),
+        Index("ix_identity_mail_rules_user", "user_id", "created_at"),
+        CheckConstraint("action IN ('NOTIFY', 'HOLD')", name="ck_mail_rules_action"),
+        CheckConstraint("match_field IN ('SENDER', 'SUBJECT')", name="ck_mail_rules_match_field"),
+    )
 
     rule_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
-    user_id: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
+    user_id: Mapped[str] = mapped_column(String(120), nullable=False)
     match_field: Mapped[str] = mapped_column(String(20), nullable=False)
     pattern: Mapped[str] = mapped_column(String(240), nullable=False)
     normalized_pattern: Mapped[str] = mapped_column(String(240), nullable=False)
