@@ -175,7 +175,7 @@ class QqCommandRouter:
             return self._format_direct_reply("已接收转发文本, 将用于后续检索。")
         batch_item_ids = {ref.inbox_item_id for ref in refs}
         if current_inbox_item_id not in batch_item_ids:
-            raise RuntimeError("QQ turn callback does not belong to the claimed batch")
+            raise RuntimeError("QQ 回合回调消息不属于已领取的批次")
         source_refs = tuple(f"inbox:{item_id}" for item_id in turn_input.related_inbox_item_ids)
         return await self._agent_reply_from_ingested(
             envelope,
