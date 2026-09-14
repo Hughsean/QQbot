@@ -57,9 +57,13 @@ tests/
 | Side-effect Gate | AI/Understanding/Scheduling 直接获得写日程、发送消息或凭据工具 |
 | File Size | 普通手写生产 Python 文件超过 500 逻辑代码行 |
 | Complexity | 函数 McCabe 复杂度超过 10 |
+| Schema Metadata | ORM 元数据与 Alembic 迁移产物不一致（临时库 `upgrade head` 后 `alembic check`，含 server_default） |
 | Secret Safety | `.env`、token、密钥或凭据进入版本控制、日志夹具或快照 |
 
 优先使用简单、透明的 pytest/import 检查；只有确有收益时才增加架构工具。不能只依赖代码评审肉眼发现违规。
+
+迁移链形态约定（ADR-0016）：链必须保持单基线加线性增量、单 head；迁移只承载纯 DDL，运行时数据
+回填一律走一次性运维脚本；ORM 元数据与迁移产物的一致性由 `alembic check` 门禁测试持续校验。
 
 ## 4. 文件拆分准则
 

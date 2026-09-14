@@ -304,3 +304,38 @@ Projection 后内部日程查询、QQ 按钮与提醒恢复原有行为；Provid
 3 条 delta 死信已在成功增量后精确取消。尚未通过的唯一关键验收是：在真实即将到期的 Reminder 前
 勾选对应 To Do，并观察 QQ 被抑制且内部 Agenda 收敛为完成。该自然场景完成前不得宣称 17E 完成；
 遇到未完成、超时、失权或其他未知结果仍继续发送 QQ。
+
+## 阶段 18：QQ 入站连续消息合并
+
+目标：解决“转发资料后紧跟短指令”被拆成并发 AgentRun、回复乱序和信任边界丢失的问题。详细契约
+见 `docs/30-qq-ingress-turn-coalescing.md`。
+
+交付物：QQ `msg_seq`/message reference 映射、每条消息先入 Inbox、持久化 Turn Batch、1.2 秒静默
+合并、4 秒硬上限、同 Conversation 执行租约、一次回复投递栅栏、T1/T2 分段上下文，以及缺少结束
+时间时使用 ScheduleConfig 默认值。
+
+完成标准：事故复现用例只产生一个 Run/Action/回复；同会话并发压力下顺序稳定；重启和重复事件可
+恢复且不重复副作用；转发命令不能获得 T1 权限；Ruff、strict mypy、架构、单元、契约和 PostgreSQL
+集成测试通过。生产部署需要独立备份与所有者授权。
+
+当前状态：本地开发已完成，尚未部署生产。`Main` 已先快进合并原 `dev`，实现位于
+`codex/qq-ingress-turn-coalescing`。新增 `0031_agent_turn_batches`、静默窗 generation、Conversation
+租约、延迟 `qq-turn` 恢复 Job、`msg_seq`/引用哈希、T1/T2 分段和 AgentRun `source_refs`；日程缺省
+时长与提醒提前量统一由 ScheduleConfig 注入。Ruff、strict mypy、架构、单元和 PostgreSQL 竞态测试
+已通过，验证细节见 `docs/31-qq-ingress-turn-verification.md`。生产部署仍需独立备份与所有者授权。
+
+## 阶段 19：迁移链压缩为单基线
+
+目标：消除为中间生产部署保留的迁移历史（含数据回填），使源码可以直接从零建出全新生产库，
+全链离线 SQL 恢复可用。决策见 `docs/adr/0016-squash-migration-baseline.md`。
+
+交付物：`0001_initial_schema` 单基线迁移（与压缩前 `0031_agent_turn_batches` 产物逐项一致）、
+一次性存量库切换脚本 `ops/baseline-cutover-to-initial-schema.sql`、动态断言迁移 head 的
+集成测试，以及 ORM 元数据对齐修复（索引、约束、CHECK、server_default 与 JSONB 类型声明）。
+
+完成标准：新基线从零建库与旧链产物清单逐项一致；`alembic check`（含 server_default）归零；
+`downgrade base → upgrade head` 往返通过；全链 `--sql` 离线导出正常；旧链库 stamp 后
+`alembic check` 归零；Ruff、strict mypy、架构和全量非沙箱测试通过。存量生产库部署新代码前
+必须先执行一次性切换脚本。
+
+当前状态：本地开发完成，生产切换未执行。

@@ -66,6 +66,7 @@ class AgentRunService:
         event_key: str | None = None,
         occurred_at: datetime | None = None,
         message: str | None = None,
+        source_refs: tuple[str, ...] = (),
     ) -> AgentRun:
         scope = None
         timestamp = occurred_at or self._clock.now()
@@ -75,7 +76,12 @@ class AgentRunService:
             )
             await self._context_repository.attach_item(scope, inbox_item_id, timestamp)
         run = await self._repository.get_or_create(
-            inbox_item_id, user_id, source_type, self._clock.now(), scope
+            inbox_item_id,
+            user_id,
+            source_type,
+            self._clock.now(),
+            scope,
+            source_refs,
         )
         await self._record_user_message(scope, run, message, source_type, timestamp)
         return run
@@ -218,6 +224,7 @@ class AgentRunService:
                 record_event,
                 source_type=claim.run.source_type,
                 inbox_item_id=claim.run.inbox_item_id,
+                source_refs=claim.run.source_refs,
             )
             await renew()
             await self._repository.complete_claim(claim, result, self._clock.now())
@@ -266,6 +273,7 @@ class AgentRunService:
                 record,
                 source_type=run.source_type,
                 inbox_item_id=run.inbox_item_id,
+                source_refs=run.source_refs,
             )
         except Exception as exc:
             current = await self._repository.get(run_id)

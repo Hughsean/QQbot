@@ -23,10 +23,13 @@ from qq_time_agent.modules.agent.contracts import (
     AgentRunExecution,
     AgentRunExecutionStatus,
     AgentRunStatus,
+    AgentTurnClaim,
+    AgentTurnSegmentRef,
+    AgentTurnTicket,
     ConversationSnapshot,
 )
 from qq_time_agent.modules.ai_gateway.contracts import AgentMessage
-from qq_time_agent.modules.inbox.contracts import IngestResult
+from qq_time_agent.modules.inbox.contracts import InboxContentView, IngestResult
 from qq_time_agent.modules.normalization.contracts import NormalizedContentView
 
 
@@ -69,6 +72,71 @@ class Inbox:
 
     async def mark_completed(self, inbox_item_id: UUID) -> None:
         del inbox_item_id
+
+    async def get_content(self, inbox_item_id: UUID) -> InboxContentView | None:
+        if inbox_item_id != self.inbox_item_id or not self.contents:
+            return None
+        return InboxContentView(
+            inbox_item_id,
+            "QQ 输入",
+            self.contents[-1],
+            None,
+            "text/plain",
+            datetime(2026, 8, 20, tzinfo=UTC),
+            "qq:test",
+            "hash",
+            None,
+        )
+
+
+@dataclass
+class Turns:
+    claim: AgentTurnClaim | None = None
+    completed: int = 0
+
+    async def stage(self, **values: object) -> AgentTurnTicket:
+        item_id = values["inbox_item_id"]
+        occurred_at = values["occurred_at"]
+        content_chars = values["content_chars"]
+        assert (
+            isinstance(item_id, UUID)
+            and isinstance(occurred_at, datetime)
+            and isinstance(content_chars, int)
+        )
+        turn_id = uuid4()
+        self.claim = AgentTurnClaim(
+            turn_id,
+            1,
+            "a" * 64,
+            "owner",
+            (
+                AgentTurnSegmentRef(
+                    item_id,
+                    1,
+                    str(values["source_type"]),
+                    str(values["trust_level"]),
+                    occurred_at,
+                    None,
+                    None,
+                    content_chars,
+                ),
+            ),
+        )
+        return AgentTurnTicket(turn_id, 1, occurred_at)
+
+    async def settle(self, ticket: AgentTurnTicket) -> AgentTurnClaim | None:
+        assert self.claim is not None and ticket.turn_id == self.claim.turn_id
+        return self.claim
+
+    async def complete(self, claim: AgentTurnClaim) -> None:
+        assert claim == self.claim
+        self.completed += 1
+
+    async def release(self, claim: AgentTurnClaim) -> None:
+        del claim
+
+    async def fail(self, claim: AgentTurnClaim, failure_class: str) -> None:
+        del claim, failure_class
 
 
 class Normalization:
@@ -152,9 +220,14 @@ class Runs:
         event_key: str | None = None,
         occurred_at: datetime | None = None,
         message: str | None = None,
+        source_refs: tuple[str, ...] = (),
     ) -> AgentRun:
+        del source_refs
         assert user_id == "owner" and source_type == "QQ_DIRECT" and event_key is None
-        assert conversation_key == "owner" and occurred_at is not None
+        assert conversation_key is not None and (
+            conversation_key == "owner" or conversation_key.startswith("qq-turn:")
+        )
+        assert occurred_at is not None
         assert message is not None and message.strip()
         self.ensured.append(inbox_item_id)
         run = AgentRun(self.run_id, inbox_item_id, user_id, source_type, AgentRunStatus.PENDING, 0)
@@ -246,6 +319,30 @@ async def test_direct_message_uses_one_persistent_agent_run() -> None:
     assert reply == "小智\N{FULLWIDTH COLON}Agent已处理"
     assert len(inbox.envelopes) == len(runs.ensured) == len(runs.executed) == 1
     assert queue.values[0].kind == "agent-run"
+
+
+@pytest.mark.asyncio
+async def test_coalesced_path_schedules_recovery_and_executes_one_run() -> None:
+    inbox, queue, runs, turns = Inbox(), Queue(), Runs(), Turns()
+    router = QqCommandRouter(
+        inbox,
+        inbox,
+        Normalization(),
+        queue,
+        Clock(),
+        None,
+        Context(),
+        runs,
+        turn_coordinator=turns,  # type: ignore[arg-type]
+        inbox_content=inbox,
+    )
+
+    reply = await router.receive(_envelope("创建明天下午三点的日程"), "创建明天下午三点的日程")
+
+    assert reply == "小智\N{FULLWIDTH COLON}Agent已处理"
+    assert [item.kind for item in queue.values] == ["qq-turn", "agent-run"]
+    assert len(runs.ensured) == len(runs.executed) == 1
+    assert turns.completed == 1
 
 
 @pytest.mark.asyncio
@@ -426,8 +523,17 @@ async def test_completed_duplicate_reuses_persisted_agent_reply() -> None:
             event_key: str | None = None,
             occurred_at: datetime | None = None,
             message: str | None = None,
+            source_refs: tuple[str, ...] = (),
         ) -> AgentRun:
-            del user_id, source_type, conversation_key, event_key, occurred_at, message
+            del (
+                user_id,
+                source_type,
+                conversation_key,
+                event_key,
+                occurred_at,
+                message,
+                source_refs,
+            )
             self.ensured.append(inbox_item_id)
             return AgentRun(
                 self.run_id,

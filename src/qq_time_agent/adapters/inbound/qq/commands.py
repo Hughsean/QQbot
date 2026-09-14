@@ -3,6 +3,7 @@
 import logging
 from contextlib import suppress
 from datetime import timedelta
+from uuid import UUID
 
 from qq_time_agent.adapters.inbound.qq.message_syntax import (
     as_forwarded,
@@ -20,6 +21,11 @@ from qq_time_agent.contracts.source import (
     SourceEnvelope,
     SourceType,
 )
+from qq_time_agent.modules.agent.application import ConversationTurnCoordinator
+from qq_time_agent.modules.agent.application.turn_input import (
+    LoadedTurnSegment,
+    build_turn_input,
+)
 from qq_time_agent.modules.agent.contracts import (
     AgentContextAssemblyPort,
     AgentFinal,
@@ -28,9 +34,16 @@ from qq_time_agent.modules.agent.contracts import (
     AgentRunExecution,
     AgentRunExecutionStatus,
     AgentRunStatus,
+    AgentTurnSegmentRef,
+    AgentTurnTicket,
     ConversationSnapshot,
 )
-from qq_time_agent.modules.inbox.contracts import InboxProcessingPort, IngestResult, QqInboxPort
+from qq_time_agent.modules.inbox.contracts import (
+    InboxContentPort,
+    InboxProcessingPort,
+    IngestResult,
+    QqInboxPort,
+)
 from qq_time_agent.modules.normalization.contracts import NormalizationPort
 
 LOGGER = logging.getLogger(__name__)
@@ -48,6 +61,9 @@ class QqCommandRouter:
         agent_context: AgentContextAssemblyPort,
         agent_runs: AgentRunCommandPort,
         display_name: str = "小智",
+        *,
+        turn_coordinator: ConversationTurnCoordinator | None = None,
+        inbox_content: InboxContentPort | None = None,
     ) -> None:
         self._inbox = inbox
         self._processing = processing
@@ -58,13 +74,15 @@ class QqCommandRouter:
         self._agent_runs = agent_runs
         self._asset_discovery = asset_discovery
         self._display_name = display_name
+        self._turns = turn_coordinator
+        self._inbox_content = inbox_content
 
     async def receive(
         self,
         envelope: SourceEnvelope,
         content: str,
         assets: tuple[SourceAssetDescriptor, ...] = (),
-    ) -> str:
+    ) -> str | None:
         LOGGER.info(
             "QQ 消息进入路由: 开始判断处理路径",
             extra={
@@ -76,26 +94,139 @@ class QqCommandRouter:
         )
         if assets:
             return await self._ingest_text(envelope, content, assets)
+        is_note, note_text = noted(content)
+        if is_note:
+            note_envelope = as_note(envelope, note_text)
+            return await self._ingest_text(note_envelope, note_text)
+        if self._turns is not None:
+            return await self._receive_coalesced(envelope, content)
         is_forwarded, text = forwarded(content)
         if is_forwarded:
             forwarded_envelope = as_forwarded(envelope, text)
             return await self._ingest_text(forwarded_envelope, text)
-        is_note, text = noted(text)
-        if is_note:
-            note_envelope = as_note(envelope, text)
-            return await self._ingest_text(note_envelope, text)
         return await self._agent_reply(envelope, text)
+
+    async def _receive_coalesced(self, envelope: SourceEnvelope, content: str) -> str | None:
+        if self._inbox_content is None or self._turns is None:
+            raise RuntimeError("QQ turn coordination dependencies are incomplete")
+        is_forwarded, text = forwarded(content)
+        staged_envelope = as_forwarded(envelope, text) if is_forwarded else envelope
+        ingested = await self._inbox.ingest_qq(staged_envelope, text)
+        await self._normalize_ingested_text(staged_envelope, text, ingested)
+        ticket = await self._turns.stage(
+            user_id="owner",
+            conversation_key=envelope.thread_id or envelope.sender.provider_id,
+            inbox_item_id=ingested.inbox_item_id,
+            source_type=staged_envelope.source_type.value,
+            trust_level=staged_envelope.trust_level.value,
+            occurred_at=staged_envelope.occurred_at,
+            provider_sequence=_provider_sequence(envelope),
+            reference_hash=envelope.metadata.get("message_reference_hash"),
+            content_chars=len(text),
+        )
+        await self._schedule_turn_recovery(ticket)
+        claim = await self._turns.settle(ticket)
+        if claim is None:
+            return None
+        try:
+            reply = await self._execute_turn(
+                claim.segments,
+                envelope,
+                ingested.inbox_item_id,
+                claim.conversation_key_hash,
+            )
+            await self._turns.complete(claim)
+            return reply
+        except (LookupError, ValueError) as exc:
+            with suppress(Exception):
+                await self._turns.fail(claim, type(exc).__name__)
+            raise
+        except Exception:
+            with suppress(Exception):
+                await self._turns.release(claim)
+            raise
+
+    async def _execute_turn(
+        self,
+        refs: tuple[AgentTurnSegmentRef, ...],
+        envelope: SourceEnvelope,
+        current_inbox_item_id: UUID,
+        conversation_key_hash: str,
+    ) -> str:
+        assert self._inbox_content is not None
+        loaded: list[LoadedTurnSegment] = []
+        for ref in refs:
+            content = await self._inbox_content.get_content(ref.inbox_item_id)
+            if content is None or content.deleted_at is not None:
+                raise LookupError("QQ turn source content is unavailable")
+            loaded.append(LoadedTurnSegment(ref, content.body_text))
+        turn_input = build_turn_input(tuple(loaded))
+        LOGGER.info(
+            "QQ 连续消息批次已封口",
+            extra={
+                "role": "qq",
+                "message_count": len(loaded),
+                "evidence_count": 0
+                if turn_input is None
+                else len(turn_input.evidence_inbox_item_ids),
+            },
+        )
+        if turn_input is None:
+            return self._format_direct_reply("已接收转发文本, 将用于后续检索。")
+        if turn_input.command_inbox_item_id != current_inbox_item_id:
+            raise RuntimeError("QQ turn callback does not own the latest command")
+        source_refs = tuple(f"inbox:{item_id}" for item_id in turn_input.related_inbox_item_ids)
+        return await self._agent_reply_from_ingested(
+            envelope,
+            turn_input.live_message,
+            current_inbox_item_id,
+            turn_input.evidence_context,
+            source_refs,
+            f"qq-turn:{conversation_key_hash}",
+        )
+
+    async def _schedule_turn_recovery(self, ticket: AgentTurnTicket) -> None:
+        try:
+            await self._jobs.enqueue(
+                JobRequest(
+                    "qq-turn",
+                    {"turn_id": str(ticket.turn_id), "generation": ticket.generation},
+                    f"qq-turn:{ticket.turn_id}:g{ticket.generation}",
+                    ticket.ready_at + timedelta(seconds=10),
+                )
+            )
+        except Exception:
+            LOGGER.exception(
+                "QQ turn 恢复任务入队失败: 继续当前安全执行",
+                extra={"role": "qq", "path": "turn"},
+            )
 
     async def _agent_reply(self, envelope: SourceEnvelope, content: str) -> str:
         ingested = await self._inbox.ingest_qq(envelope, content)
         await self._normalize_ingested_text(envelope, content, ingested)
+        return await self._agent_reply_from_ingested(
+            envelope, content, ingested.inbox_item_id, "", (), None
+        )
+
+    async def _agent_reply_from_ingested(
+        self,
+        envelope: SourceEnvelope,
+        content: str,
+        inbox_item_id: UUID,
+        turn_context: str,
+        source_refs: tuple[str, ...],
+        conversation_key: str | None,
+    ) -> str:
         run = await self._agent_runs.ensure_run(
-            ingested.inbox_item_id,
+            inbox_item_id,
             "owner",
             envelope.source_type.value,
-            conversation_key=envelope.thread_id or envelope.sender.provider_id,
+            conversation_key=(
+                conversation_key or envelope.thread_id or envelope.sender.provider_id
+            ),
             occurred_at=envelope.occurred_at,
             message=content,
+            source_refs=source_refs,
         )
         if run.status is AgentRunStatus.COMPLETED:
             if run.final_content is None or run.final_delivery is None:
@@ -107,7 +238,7 @@ class QqCommandRouter:
             await self._jobs.enqueue(
                 JobRequest(
                     "agent-run",
-                    {"run_id": str(run.run_id), "inbox_item_id": str(ingested.inbox_item_id)},
+                    {"run_id": str(run.run_id), "inbox_item_id": str(inbox_item_id)},
                     f"agent-run:{run.run_id}",
                     self._clock.now() + timedelta(seconds=30),
                 )
@@ -123,7 +254,7 @@ class QqCommandRouter:
                 "owner",
                 content,
                 before=envelope.occurred_at,
-                exclude_id=ingested.inbox_item_id,
+                exclude_id=inbox_item_id,
                 conversation_id=run.conversation_id,
                 event_case_id=run.event_case_id,
                 run_id=run.run_id,
@@ -133,8 +264,11 @@ class QqCommandRouter:
             with suppress(Exception):
                 await self._agent_runs.fail_before_execution(run.run_id, type(exc).__name__)
             raise
+        execution_context = assembled.context
+        if turn_context:
+            execution_context = f"{execution_context}\n\n{turn_context}".strip()
         raw_outcome = await self._agent_runs.execute(
-            run.run_id, content, assembled.context, assembled.messages, assembled.snapshot
+            run.run_id, content, execution_context, assembled.messages, assembled.snapshot
         )
         outcome = _execution_outcome(raw_outcome)
         if outcome.status is AgentRunExecutionStatus.IN_PROGRESS:
@@ -152,7 +286,7 @@ class QqCommandRouter:
                 "path": "agent",
                 "result_type": "agent_final",
                 "result_chars": len(result.content),
-                "context_chars": len(assembled.context),
+                "context_chars": len(execution_context),
                 "timeline_messages": len(assembled.messages),
             },
         )
@@ -221,3 +355,14 @@ def _execution_outcome(value: AgentRunExecution | AgentFinal) -> AgentRunExecuti
     if isinstance(value, AgentRunExecution):
         return value
     return AgentRunExecution(AgentRunExecutionStatus.EXECUTED, value)
+
+
+def _provider_sequence(envelope: SourceEnvelope) -> int | None:
+    value = envelope.metadata.get("provider_sequence")
+    if value is None:
+        return None
+    try:
+        parsed = int(value)
+    except ValueError:
+        return None
+    return parsed if parsed >= 0 else None

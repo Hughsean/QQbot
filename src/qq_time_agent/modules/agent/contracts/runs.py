@@ -49,6 +49,7 @@ class AgentRun:
     context_revision: int | None = None
     context_max_sequence: int | None = None
     context_hash: str | None = None
+    source_refs: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -161,6 +162,7 @@ class AgentRunRepository(Protocol):
         source_type: str,
         now: datetime,
         scope: ContextScope | None = None,
+        source_refs: tuple[str, ...] = (),
     ) -> AgentRun: ...
 
     async def get(self, run_id: UUID) -> AgentRun | None: ...

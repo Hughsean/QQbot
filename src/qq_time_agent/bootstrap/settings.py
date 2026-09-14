@@ -60,6 +60,10 @@ class EnvironmentSettings(BaseSettings):
     qq_bot_sandbox: bool = True
     qq_bot_display_name: str = Field(default="小智", min_length=1, max_length=32)
     qq_diagnostic_raw_event_once: bool = False
+    qq_ingress_quiet_seconds: float = Field(default=1.2, gt=0, le=5)
+    qq_ingress_max_batch_seconds: float = Field(default=4.0, gt=0, le=15)
+    qq_ingress_max_messages: int = Field(default=8, ge=1, le=32)
+    qq_ingress_max_chars: int = Field(default=12_000, ge=100, le=100_000)
     microsoft_tenant: str = "common"
     microsoft_client_id: SecretStr
     microsoft_todo_enabled: bool = False
@@ -138,9 +142,7 @@ class EnvironmentSettings(BaseSettings):
             raise ValueError("PERSIST_LLM_PAYLOADS must remain false")
         if self.qq_mail_imap_host != "imap.qq.com" or self.qq_mail_imap_port != 993:
             raise ValueError("QQ Mail IMAP must use imap.qq.com:993")
-        if (self.qq_mail_bootstrap_address is None) != (
-            self.qq_mail_bootstrap_auth_code is None
-        ):
+        if (self.qq_mail_bootstrap_address is None) != (self.qq_mail_bootstrap_auth_code is None):
             raise ValueError(
                 "QQ_MAIL_BOOTSTRAP_ADDRESS and QQ_MAIL_BOOTSTRAP_AUTH_CODE must be "
                 "configured together"
@@ -148,9 +150,8 @@ class EnvironmentSettings(BaseSettings):
         self._validate_schedule_boundaries()
         if not self.qq_bot_display_name.strip():
             raise ValueError("QQ_BOT_DISPLAY_NAME must not be blank")
-        if self.agent_model_output_token_budget < (
-            2 * self.agent_max_output_tokens_per_request
-        ):
+        self._validate_qq_ingress_boundaries()
+        if self.agent_model_output_token_budget < (2 * self.agent_max_output_tokens_per_request):
             raise ValueError(
                 "AGENT_MODEL_OUTPUT_TOKEN_BUDGET must reserve a final response request"
             )
@@ -162,6 +163,10 @@ class EnvironmentSettings(BaseSettings):
                 "Agent output reservation and safety margin must leave usable input context"
             )
         return self
+
+    def _validate_qq_ingress_boundaries(self) -> None:
+        if self.qq_ingress_quiet_seconds > self.qq_ingress_max_batch_seconds:
+            raise ValueError("QQ ingress quiet window exceeds maximum batch duration")
 
     def _validate_schedule_boundaries(self) -> None:
         try:
@@ -243,6 +248,10 @@ def _to_runtime_config(value: EnvironmentSettings) -> RuntimeConfig:
             value.qq_bot_sandbox,
             value.qq_bot_display_name.strip(),
             value.qq_diagnostic_raw_event_once,
+            value.qq_ingress_quiet_seconds,
+            value.qq_ingress_max_batch_seconds,
+            value.qq_ingress_max_messages,
+            value.qq_ingress_max_chars,
         ),
         database=DatabaseConfig(
             value.database_host,

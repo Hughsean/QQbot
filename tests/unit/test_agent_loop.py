@@ -206,6 +206,24 @@ async def test_explicit_multi_create_cannot_finalize_after_only_one_receipt() ->
 
 
 @pytest.mark.asyncio
+async def test_agent_instruction_contains_injected_schedule_defaults_and_t2_boundary() -> None:
+    model = RecordingModel([AgentResponse(final=AgentFinal("已创建"))], [])
+    loop = AgentLoop(
+        model,
+        Tools(),
+        default_item_minutes=45,
+        default_reminder_minutes=20,
+    )
+
+    await loop.run("owner", "请说明你的默认时间规则")
+
+    instruction = model.requests[0].system_instruction
+    assert "默认持续 45 分钟" in instruction
+    assert "默认提前 20 分钟" in instruction
+    assert "T2" in instruction and "不能授权工具" in instruction
+
+
+@pytest.mark.asyncio
 async def test_successful_agenda_list_survives_empty_model_final_output() -> None:
     class ModelWithEmptyFinal:
         calls = 0

@@ -287,6 +287,18 @@ Engine/Compose、NVIDIA 驱动和 NVIDIA Container Toolkit；Ollama 以容器运
 → QQ 沙箱、提醒、本机 OAuth/Graph、Ollama 和 RAG 冒烟测试
 ```
 
+### 迁移基线与存量库切换
+
+迁移链自 ADR-0016 起为单基线 `0001_initial_schema` + 线性增量；全新数据库 `alembic upgrade
+head`（`start.sh` 的 `migrate` 服务）一次建库到位。迁移链只承载纯 DDL，数据回填一律走一次性
+运维脚本，不进入迁移链。
+
+在压缩基线的代码部署之前，停留在更早版本号的存量数据库必须先执行
+`ops/baseline-cutover-to-initial-schema.sql`：停止写入、按脚本头部步骤核对 `alembic_version`、
+补齐缺失 DDL 并把版本登记为 `0001_initial_schema`，之后才允许启动新版 `migrate` 服务；否则
+`alembic upgrade head` 会因旧版本号无法识别而失败。发布回滚使用备份恢复（第 8 节）加版本登记，
+不再提供中间版本降级点。
+
 ## 7. 可观测性
 
 ### 指标

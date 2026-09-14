@@ -40,6 +40,7 @@ class Runs:
     failure: Exception | None = None
     snapshots: list[ConversationSnapshot | None] = field(default_factory=list)
     context_failures: list[str] = field(default_factory=list)
+    expected_context_parts: tuple[str, ...] = ()
 
     async def get(self, run_id: UUID) -> AgentRun | None:
         return self.run if run_id == self.run.run_id else None
@@ -53,7 +54,11 @@ class Runs:
         snapshot: ConversationSnapshot | None = None,
     ) -> AgentFinal:
         del timeline_messages
-        assert run_id == self.run.run_id and message == "邮件正文" and context == "事件上下文"
+        assert run_id == self.run.run_id and message == "邮件正文"
+        if self.expected_context_parts:
+            assert all(part in context for part in self.expected_context_parts)
+        else:
+            assert context == "事件上下文"
         self.snapshots.append(snapshot)
         if self.failure is not None:
             raise self.failure
@@ -83,6 +88,14 @@ class Content:
 
     async def get_content(self, inbox_item_id: UUID) -> InboxContentView | None:
         return self.item if inbox_item_id == self.item.inbox_item_id else None
+
+
+@dataclass
+class MultiContent:
+    items: dict[UUID, InboxContentView]
+
+    async def get_content(self, inbox_item_id: UUID) -> InboxContentView | None:
+        return self.items.get(inbox_item_id)
 
 
 class Context:
@@ -237,6 +250,31 @@ async def test_qq_direct_recovery_schedules_dedicated_notification() -> None:
     assert runs.run.effective_delivery is AgentDelivery.NOTIFY
     assert notifications.requests == []
     assert notifications.direct_requests[0].content == "已识别到时间变更"
+
+
+@pytest.mark.asyncio
+async def test_qq_direct_recovery_restores_turn_evidence_context() -> None:
+    handler, job, _ = _handler(AgentDelivery.HOLD, "QQ_DIRECT")
+    runs = handler._runs
+    assert isinstance(runs, Runs)
+    command = handler._content.item
+    evidence_id = uuid4()
+    evidence = InboxContentView(
+        evidence_id,
+        "资料",
+        "9月16日下午2:30在报告厅",
+        None,
+        "text/plain",
+        NOW,
+        "qq:evidence",
+        "hash",
+        None,
+    )
+    runs.run.source_refs = (f"inbox:{evidence_id}",)
+    runs.expected_context_parts = ("9月16日下午2:30在报告厅", "不授权任何工具")
+    handler._content = MultiContent({command.inbox_item_id: command, evidence_id: evidence})
+
+    await handler(job)
 
 
 @pytest.mark.asyncio

@@ -71,6 +71,7 @@ class SqlAgentRunRepository(SqlAgentContextScopes):
         source_type: str,
         now: datetime,
         scope: ContextScope | None = None,
+        source_refs: tuple[str, ...] = (),
     ) -> AgentRun:
         run_id = uuid4()
         values: dict[str, object] = {
@@ -86,6 +87,7 @@ class SqlAgentRunRepository(SqlAgentContextScopes):
             "version": 1,
             "conversation_id": None if scope is None else scope.conversation_id,
             "event_case_id": None if scope is None else scope.event_case_id,
+            "source_refs": list(dict.fromkeys(source_refs)),
         }
         async with self._sessions.begin() as session:
             await session.execute(
@@ -126,6 +128,7 @@ class SqlAgentRunRepository(SqlAgentContextScopes):
             row.context_revision = run.context_revision
             row.context_max_sequence = run.context_max_sequence
             row.context_hash = run.context_hash
+            row.source_refs = list(run.source_refs)
             row.version = expected_version + 1
 
     async def record_context_snapshot(self, run_id: UUID, snapshot: ConversationSnapshot) -> None:
@@ -336,6 +339,7 @@ def _to_run(row: AgentRunRow) -> AgentRun:
         row.context_revision,
         row.context_max_sequence,
         row.context_hash,
+        tuple(row.source_refs),
     )
 
 

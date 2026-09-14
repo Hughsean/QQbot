@@ -208,21 +208,20 @@ class QqMessageProcessor:
         content: str,
         occurred_at: datetime,
         assets: tuple[SourceAssetDescriptor, ...] = (),
+        *,
+        provider_sequence: int | None = None,
+        message_reference_id: str | None = None,
     ) -> str | None:
         if not self.is_owner(author_openid):
             return None
-        envelope = SourceEnvelope(
-            source_type=SourceType.QQ_DIRECT,
-            ingress_type=IngressType.DIRECT,
-            external_id=message_id,
-            thread_id=None,
-            occurred_at=_require_aware(occurred_at),
-            received_at=_require_aware(self._clock.now()),
-            sender=SourceSender(author_openid),
-            content_ref=f"qq:{message_id}",
-            content_hash=f"sha256:{hashlib.sha256(content.encode()).hexdigest()}",
-            trust_level=TrustLevel.T1,
-            metadata={"message_kind": "c2c"},
+        envelope = _qq_envelope(
+            author_openid,
+            message_id,
+            content,
+            occurred_at,
+            self._clock.now(),
+            provider_sequence,
+            message_reference_id,
         )
         try:
             if assets:
@@ -250,6 +249,37 @@ class QqMessageProcessor:
 
     def _direct_reply(self, content: str) -> str:
         return format_direct_reply(self._display_name, content)
+
+
+def _qq_envelope(
+    author_openid: str,
+    message_id: str,
+    content: str,
+    occurred_at: datetime,
+    received_at: datetime,
+    provider_sequence: int | None,
+    message_reference_id: str | None,
+) -> SourceEnvelope:
+    metadata = {"message_kind": "c2c"}
+    if provider_sequence is not None and provider_sequence >= 0:
+        metadata["provider_sequence"] = str(provider_sequence)
+    if message_reference_id:
+        metadata["message_reference_hash"] = hashlib.sha256(
+            message_reference_id.encode()
+        ).hexdigest()
+    return SourceEnvelope(
+        source_type=SourceType.QQ_DIRECT,
+        ingress_type=IngressType.DIRECT,
+        external_id=message_id,
+        thread_id=None,
+        occurred_at=_require_aware(occurred_at),
+        received_at=_require_aware(received_at),
+        sender=SourceSender(author_openid),
+        content_ref=f"qq:{message_id}",
+        content_hash=f"sha256:{hashlib.sha256(content.encode()).hexdigest()}",
+        trust_level=TrustLevel.T1,
+        metadata=metadata,
+    )
 
 
 class _BotpyClient(botpy.Client):  # type: ignore[misc]
@@ -326,6 +356,8 @@ class _BotpyClient(botpy.Client):  # type: ignore[misc]
             content,
             _parse_timestamp(str(message.timestamp)),
             assets,
+            provider_sequence=_optional_nonnegative_int(getattr(message, "msg_seq", None)),
+            message_reference_id=_message_reference_id(getattr(message, "message_reference", None)),
         )
         if reply is not None:
             if unsupported:
@@ -467,6 +499,23 @@ def _delivery_id(result: object) -> str:
     if not identifier:
         raise RuntimeError("QQ response omitted delivery identifier")
     return str(identifier)
+
+
+def _optional_nonnegative_int(value: object) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if not isinstance(value, (int, str)):
+        return None
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed >= 0 else None
+
+
+def _message_reference_id(value: object) -> str | None:
+    identifier = getattr(value, "message_id", None)
+    return identifier if isinstance(identifier, str) and identifier else None
 
 
 def _parse_timestamp(value: str) -> datetime:

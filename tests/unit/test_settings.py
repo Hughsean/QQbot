@@ -17,6 +17,8 @@ def test_settings_accept_safe_loopback_configuration() -> None:
         "http://localhost:8000/oauth/microsoft/callback"
     )
     assert _to_runtime_config(settings).qq.diagnostic_raw_event_once is False
+    assert _to_runtime_config(settings).qq.ingress_quiet_seconds == 1.2
+    assert _to_runtime_config(settings).qq.ingress_max_messages == 8
     assert _to_runtime_config(settings).microsoft_todo_enabled is False
 
 
@@ -44,6 +46,14 @@ def test_settings_diagnostic_flag_can_be_enabled() -> None:
     settings = EnvironmentSettings.model_validate(values)
     assert settings.qq_diagnostic_raw_event_once is True
     assert _to_runtime_config(settings).qq.diagnostic_raw_event_once is True
+
+
+def test_settings_reject_qq_quiet_window_longer_than_batch_deadline() -> None:
+    values = _values()
+    values["qq_ingress_quiet_seconds"] = 5.0
+    values["qq_ingress_max_batch_seconds"] = 4.0
+    with raises(ValidationError, match="quiet window"):
+        EnvironmentSettings.model_validate(values)
 
 
 def test_microsoft_todo_requires_explicit_feature_enablement() -> None:

@@ -75,6 +75,8 @@ class CallbackMessage:
     attachments: object = None
     id: str = "message-1"
     timestamp: str = "2026-08-13T00:00:00Z"
+    msg_seq: int | None = None
+    message_reference: object = None
     replies: list[str] = field(default_factory=list)
 
     @property
@@ -406,6 +408,30 @@ async def test_owner_message_becomes_t1_provider_neutral_envelope() -> None:
 
 
 @pytest.mark.asyncio
+async def test_provider_order_and_reference_are_recorded_only_as_safe_metadata() -> None:
+    now = datetime(2026, 8, 13, 12, tzinfo=UTC)
+    ingress = RecordingIngress()
+    processor = QqMessageProcessor(OwnerConfig(SecretStr("owner")), ingress, FixedClock(now))
+
+    await processor.process(
+        "owner",
+        "m1",
+        "hello",
+        now,
+        provider_sequence=7,
+        message_reference_id="sensitive-reference-id",
+    )
+
+    envelope = ingress.received[0][0]
+    assert envelope.metadata["provider_sequence"] == "7"
+    assert (
+        envelope.metadata["message_reference_hash"]
+        == hashlib.sha256(b"sensitive-reference-id").hexdigest()
+    )
+    assert "sensitive-reference-id" not in repr(envelope.metadata)
+
+
+@pytest.mark.asyncio
 async def test_owner_command_errors_are_safe_and_provider_details_are_hidden() -> None:
     now = datetime(2026, 8, 13, tzinfo=UTC)
     expected = QqMessageProcessor(
@@ -535,9 +561,7 @@ def test_qq_provider_response_mapping_is_contained() -> None:
 
 
 def test_reminder_button_exposes_only_opaque_action_token() -> None:
-    payload = _button(
-        NotificationAction("reminder.complete", "完成", token="synthetic-token")
-    )
+    payload = _button(NotificationAction("reminder.complete", "完成", token="synthetic-token"))
 
     assert payload["id"] == "reminder.complete"
     assert payload["action"] == {
