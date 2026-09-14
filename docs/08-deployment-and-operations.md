@@ -119,8 +119,9 @@ Microsoft 回调 URI 由 `APP_LISTEN_PORT` 派生为
 
 `MICROSOFT_TODO_ENABLED` 是独立发布开关，默认必须为 `false`。关闭时 Web 不解析受管列表，Worker
 不产生或执行投影/delta Graph 工作，QQ 不执行发送前 Microsoft 门禁；Agenda、Reminder、按钮和
-QQ 提醒继续按内部事实源运行。只有 17E 沙箱、备份和回滚门禁全部通过后，生产配置才可改为
-`true`。
+QQ 提醒继续按内部事实源运行。生产改为 `true` 前至少要通过候选迁移、真实 To Do 生命周期沙箱、
+备份校验、Agenda/Reminder 摘要比对和回滚准备，并由所有者明确授权。真实 QQ 抑制可在保守
+“未知即继续发送”策略下分阶段观察；没有完成该观察时不得宣称 17E 全部完成。
 
 ### `.env` 注入规则
 
@@ -243,6 +244,23 @@ Reminder 各 13 条且完整摘要一致，Web/Worker/QQ 均运行新镜像、re
 通过。切换前后 Agenda/Reminder 均为 13 条且完整摘要一致；Web/Worker/QQ restart count 为零，
 readiness 的数据库与嵌入检查通过，最近日志无错误。生产活动 Microsoft 连接保持 ACTIVE，待所有者
 在浏览器完成一次新的交互式同意后 capabilities 才会记录 `Tasks.ReadWrite`。
+2026-09-14 经所有者授权分阶段启用 Microsoft To Do 投影。部署前在
+`.deploy-backups/20260913-202356-pre0033` 保存 PostgreSQL custom-format 备份、源码快照、受限权限
+配置备份和 SHA-256 清单；候选先完成空库迁移，再对生产备份副本执行
+`0028_summary_contract → 0029_task_projection → 0030_todo_completion_gate`，实际生产随后迁移至
+`0030_todo_completion_gate`。发布版本最终为 `0035-0914 / 6edfdb7`；中间版本修复 Graph 列表查询
+不接受 `$select` 的兼容性问题，最终版本又修复 Graph 规范化列表 ID 后的 delta 链接校验，并将
+`httpx/httpcore` 日志提高到 WARNING，避免 Provider URL、任务 ID 和 delta/skip token 进入普通日志。
+真实“小智建议”列表生命周期沙箱已完成创建、强读取、完成、删除和删除后缺失验证；生产目标为
+`READY=1`、活动映射为 3、delta 游标为 1，增量和对账任务持续成功。修复前产生的 3 条
+`SecurityPolicy` delta 死信在成功增量后精确标记为 `CANCELLED / SupersededByFix`，未重放且未改动
+Agenda、Reminder 或 To Do。发布前后 Agenda/Reminder 各 13 行的完整数据快照一致；最终复核时
+Agenda 为 3 ACTIVE、2 CANCELLED、8 COMPLETED，Reminder 为 7 CANCELLED、1 DEAD_LETTER、5 SENT。
+Web/Worker/QQ 均运行同一 `0035-0914` 镜像、restart count 为零，live/ready/metrics 均返回 200，
+Worker 与 QQ 当前容器日志中的 Graph URL/游标及错误计数均为零。生产配置已启用
+`MICROSOFT_TODO_ENABLED`，QQ 运行于非沙箱模式；真实“勾选后抑制一次即将发送的 QQ Reminder”仍需
+在自然到期日程中观察，因此阶段 17E 尚不宣称全部完成。目标主机 NVIDIA 驱动与 NVML 库版本不匹配，
+本次以 CPU Ollama 回退保持 readiness；GPU 驱动修复属于独立主机维护事项。
 
 ## 5. 当前生产主机容量
 
