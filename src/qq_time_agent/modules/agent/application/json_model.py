@@ -43,7 +43,7 @@ class JsonAgentModel(AgentModelPort):
             StructuredRequest(
                 "agent.loop",
                 "agent-loop-v2",
-                ModelRoute.FAST,
+                ModelRoute.AGENT,
                 _instruction(request),
                 _external_data(request),
                 self._user_alias,

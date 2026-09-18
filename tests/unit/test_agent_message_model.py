@@ -81,6 +81,7 @@ async def test_json_model_forwards_timeline_messages_to_structured_request() -> 
 
     assert response.final is not None and response.final.content == "答复"
     assert capturing.request is not None
+    assert capturing.request.route is ModelRoute.AGENT
     assert capturing.request.messages == messages
 
 

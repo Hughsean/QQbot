@@ -10,6 +10,7 @@ from uuid import UUID
 class ModelRoute(StrEnum):
     FAST = "FAST"
     REASONING = "REASONING"
+    AGENT = "AGENT"
 
 
 class AgentMessageRole(StrEnum):

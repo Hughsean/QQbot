@@ -88,8 +88,11 @@ class DeepSeekConfig:
     base_url: str
     fast_model: str
     reasoning_model: str
+    agent_model: str
     fast_timeout_seconds: float
     reasoning_timeout_seconds: float
+    agent_timeout_seconds: float
+    agent_thinking_enabled: bool
     max_retries: int
     max_concurrency: int
 

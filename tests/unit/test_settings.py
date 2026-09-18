@@ -13,9 +13,10 @@ def test_settings_accept_safe_loopback_configuration() -> None:
     assert settings.rag_embedding_dimensions == 1024
     assert settings.qq_diagnostic_raw_event_once is False
     assert settings.database_password.get_secret_value() == "synthetic-password"
-    assert _to_runtime_config(settings).microsoft.redirect_uri == (
-        "http://localhost:8000/oauth/microsoft/callback"
-    )
+    runtime = _to_runtime_config(settings)
+    assert runtime.deepseek.agent_model == "fast-model"
+    assert runtime.deepseek.agent_thinking_enabled is False
+    assert runtime.microsoft.redirect_uri == ("http://localhost:8000/oauth/microsoft/callback")
     assert _to_runtime_config(settings).qq.diagnostic_raw_event_once is False
     assert _to_runtime_config(settings).qq.ingress_quiet_seconds == 1.2
     assert _to_runtime_config(settings).qq.ingress_max_messages == 8

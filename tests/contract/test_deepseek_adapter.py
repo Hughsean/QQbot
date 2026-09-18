@@ -14,17 +14,22 @@ from qq_time_agent.modules.ai_gateway.contracts import (
 )
 
 
-def _config() -> DeepSeekConfig:
-    return DeepSeekConfig(
-        SecretStr("synthetic-deepseek-key"),
-        "https://api.deepseek.com",
-        "deepseek-v4-flash",
-        "deepseek-v4-pro",
-        1,
-        2,
-        1,
-        2,
-    )
+def _config(**overrides: object) -> DeepSeekConfig:
+    values: dict[str, object] = {
+        "api_key": SecretStr("synthetic-deepseek-key"),
+        "base_url": "https://api.deepseek.com",
+        "fast_model": "deepseek-v4-flash",
+        "reasoning_model": "deepseek-v4-pro",
+        "agent_model": "deepseek-v4-flash",
+        "fast_timeout_seconds": 1,
+        "reasoning_timeout_seconds": 2,
+        "agent_timeout_seconds": 3,
+        "agent_thinking_enabled": False,
+        "max_retries": 1,
+        "max_concurrency": 2,
+    }
+    values.update(overrides)
+    return DeepSeekConfig(**values)  # type: ignore[arg-type]
 
 
 def _request(
@@ -66,6 +71,52 @@ async def test_deepseek_json_contract_has_no_tools_and_maps_usage() -> None:
     assert captured["thinking"] == {"type": "disabled"}
     assert "tools" not in captured and "tool_choice" not in captured
     assert "api_key" not in json.dumps(captured)
+
+
+@pytest.mark.asyncio
+async def test_deepseek_agent_route_uses_agent_model_and_thinking_switch() -> None:
+    captured: dict[str, object] = {}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        captured.update(json.loads(request.content))
+        return httpx.Response(
+            200,
+            json={
+                "model": "deepseek-v4-pro",
+                "choices": [{"finish_reason": "stop", "message": {"content": "{}"}}],
+                "usage": {"prompt_tokens": 1, "completion_tokens": 1},
+            },
+        )
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    adapter = DeepSeekStructuredAdapter(
+        _config(agent_model="deepseek-v4-pro", agent_thinking_enabled=True), client
+    )
+    await adapter.invoke(_request(ModelRoute.AGENT))
+    assert captured["model"] == "deepseek-v4-pro"
+    assert captured["thinking"] == {"type": "enabled"}
+
+
+@pytest.mark.asyncio
+async def test_deepseek_agent_route_keeps_thinking_disabled_by_default() -> None:
+    captured: dict[str, object] = {}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        captured.update(json.loads(request.content))
+        return httpx.Response(
+            200,
+            json={
+                "model": "deepseek-v4-flash",
+                "choices": [{"finish_reason": "stop", "message": {"content": "{}"}}],
+                "usage": {"prompt_tokens": 1, "completion_tokens": 1},
+            },
+        )
+
+    adapter = DeepSeekStructuredAdapter(
+        _config(), httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    )
+    await adapter.invoke(_request(ModelRoute.AGENT))
+    assert captured["thinking"] == {"type": "disabled"}
 
 
 @pytest.mark.asyncio

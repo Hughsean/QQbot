@@ -78,8 +78,11 @@ class EnvironmentSettings(BaseSettings):
     deepseek_base_url: str = "https://api.deepseek.com"
     deepseek_fast_model: str = "deepseek-v4-flash"
     deepseek_reasoning_model: str = "deepseek-v4-pro"
+    deepseek_agent_model: str = ""
     deepseek_fast_timeout_seconds: float = Field(default=30, gt=0)
     deepseek_reasoning_timeout_seconds: float = Field(default=60, gt=0)
+    deepseek_agent_timeout_seconds: float = Field(default=60, gt=0)
+    deepseek_agent_thinking_enabled: bool = False
     deepseek_max_retries: int = Field(default=2, ge=0, le=5)
     deepseek_max_concurrency: int = Field(default=2, ge=1, le=10)
     agent_context_max_tokens: int = Field(default=12_000, ge=1_000, le=200_000)
@@ -287,8 +290,11 @@ def _to_runtime_config(value: EnvironmentSettings) -> RuntimeConfig:
             value.deepseek_base_url,
             value.deepseek_fast_model,
             value.deepseek_reasoning_model,
+            value.deepseek_agent_model or value.deepseek_fast_model,
             value.deepseek_fast_timeout_seconds,
             value.deepseek_reasoning_timeout_seconds,
+            value.deepseek_agent_timeout_seconds,
+            value.deepseek_agent_thinking_enabled,
             value.deepseek_max_retries,
             value.deepseek_max_concurrency,
         ),

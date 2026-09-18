@@ -142,6 +142,9 @@ DEEPSEEK_API_KEY=            # 必填、秘密
 DEEPSEEK_BASE_URL=https://api.deepseek.com
 DEEPSEEK_FAST_MODEL=deepseek-v4-flash
 DEEPSEEK_REASONING_MODEL=deepseek-v4-pro
+DEEPSEEK_AGENT_MODEL=
+DEEPSEEK_AGENT_TIMEOUT_SECONDS=60
+DEEPSEEK_AGENT_THINKING_ENABLED=false
 DEEPSEEK_FAST_TIMEOUT_SECONDS=30
 DEEPSEEK_REASONING_TIMEOUT_SECONDS=60
 DEEPSEEK_MAX_RETRIES=2
@@ -152,6 +155,8 @@ DEEPSEEK_MAX_CONCURRENCY=2
 
 - Flash：路由、分类、常规 Event/Task 提取。
 - Pro：复杂时间歧义、低置信度复核；不默认用于每条消息。
+- Agent：QQ/Worker 的 agent 对话循环单独一档；`DEEPSEEK_AGENT_MODEL` 留空时回落
+  Flash，`DEEPSEEK_AGENT_THINKING_ENABLED=true` 时仅该档启用思考模式。
 - 使用 JSON/structured output，并继续用 Pydantic 做本地验证。
 - JSON Output 请求显式包含 `response_format={"type":"json_object"}` 和 JSON schema 示例；
   非正常 finish、空内容、未知/额外字段与非法时间都按不可信输出处理。

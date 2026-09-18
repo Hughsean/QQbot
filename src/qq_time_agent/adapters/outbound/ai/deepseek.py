@@ -50,7 +50,7 @@ class DeepSeekStructuredAdapter:
             "response_format": {"type": "json_object"},
             "max_tokens": request.max_output_tokens,
             "temperature": 0,
-            "thinking": {"type": "disabled"},
+            "thinking": self._thinking(request.route),
             "user_id": request.user_alias,
         }
         serialized = _serialize_payload(payload)
@@ -72,7 +72,14 @@ class DeepSeekStructuredAdapter:
     def _route(self, route: ModelRoute) -> tuple[str, float]:
         if route is ModelRoute.REASONING:
             return self._config.reasoning_model, self._config.reasoning_timeout_seconds
+        if route is ModelRoute.AGENT:
+            return self._config.agent_model, self._config.agent_timeout_seconds
         return self._config.fast_model, self._config.fast_timeout_seconds
+
+    def _thinking(self, route: ModelRoute) -> dict[str, str]:
+        if route is ModelRoute.AGENT and self._config.agent_thinking_enabled:
+            return {"type": "enabled"}
+        return {"type": "disabled"}
 
     async def _post(self, content: bytes, timeout: float) -> httpx.Response:
         attempts = self._config.max_retries + 1
