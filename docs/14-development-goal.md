@@ -1,5 +1,8 @@
 # QQ Time Agent MVP 开发 Goal
 
+2026-10-18：新增开发按 ADR-0017 与文档 32 完整迁移至 Go；下文 Python/uv/LangGraph 的
+实现选择仅作为原基线，其产品行为、安全、恢复和质量完成条件继续适用。原运行入口保存在 Main，Go 新分支已按所有者要求移除旧实现，未完成的功能不能宣称可用。
+
 ## 1. Outcome
 
 按照本仓库 `AGENTS.md`、`docs/README.md`、`docs/09-delivery-plan.md` 和全部已接受 ADR，完成 QQ Time Agent 的可运行、可测试 MVP：

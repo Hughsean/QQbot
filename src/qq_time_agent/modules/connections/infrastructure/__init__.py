@@ -1,1 +1,0 @@
-"""Connection persistence adapters."""

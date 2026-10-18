@@ -1,1 +1,0 @@
-"""Independent calendar system boundary."""

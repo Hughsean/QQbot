@@ -1,1 +1,0 @@
-"""Private Inbox domain model."""

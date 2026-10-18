@@ -11,10 +11,19 @@ __pycache__
 .ruff_cache
 .coverage
 logs
-tests
-ops
 compose.yaml
 Dockerfile
 .dockerignore
 docs
 !docs/README.md
+!docs/go-legacy-test-inventory.json
+
+# Local caches and development state are never part of a build context.
+tmp
+dist
+.uv-cache
+.tmp-uv-cache
+.claude
+.zcode
+.codex
+.agents

@@ -1,1 +1,0 @@
-"""Versioned, traceable Knowledge index."""

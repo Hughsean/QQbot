@@ -1,5 +1,10 @@
 # 模块边界
 
+2026-10-18：开发栈按 ADR-0017 迁移到 Go，模块与数据所有权保持不变。
+下文 LangGraph 指原实现；Go 由 Workflow/Application 显式状态机承接相同职责。
+Go 目录为 `cmd/qq-time-agent`、`internal/bootstrap`、`internal/modules/<module>`、`internal/adapters`；
+跨模块只允许 contracts/明确公开的 port，Domain 禁止导入 net/http、database/sql、pgx、SDK 和 Bootstrap。
+
 ## 1. 架构形态
 
 MVP 采用模块化单体，而不是微服务。所有模块可以在同一进程和仓库中部署，但必须保持独立命名空间、独立数据所有权和显式契约，使未来拆分不需要重写领域逻辑。

@@ -1,5 +1,11 @@
 # 部署与运维
 
+2026-10-18：Go 迁移按 ADR-0017 和文档 32 执行。以下是现有 Python 部署的运维基线；
+2026-10-19 所有者要求 Go 新分支删除旧实现；该分支的 Dockerfile/Compose 仅提供独立开发环境。
+HP 原 Python 的 Web/Worker/QQ 已按授权停止但未删除，PostgreSQL/Ollama 保留运行。
+Go 全功能和副本验收前不替换 HP 生产服务。没有公网服务器，保持出站 QQ
+WebSocket，不增加公网 Webhook 或隧道；Go 测试使用独立镜像、网络、卷和合成配置。
+
 ## 1. 当前拓扑
 
 ```text

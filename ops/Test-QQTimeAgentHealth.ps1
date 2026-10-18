@@ -17,6 +17,4 @@ do {
     if ((Get-Date) -ge $deadline) { throw "QQ Time Agent did not become ready within $TimeoutSeconds seconds" }
     Start-Sleep -Seconds 2
 } while ($true)
-$metrics = Invoke-WebRequest -Uri "$BaseUrl/metrics" -TimeoutSec 10
-if ($metrics.StatusCode -ne 200) { throw "Metrics endpoint is unavailable" }
-Write-Output "QQ Time Agent health and metrics are available on loopback port $Port."
+Write-Output "Go foundation dependencies are ready on loopback port $Port. Business migration status is documented separately."

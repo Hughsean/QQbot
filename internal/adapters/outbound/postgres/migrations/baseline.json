@@ -1,0 +1,7 @@
+{
+  "source_commit": "c63eae17adf4fc2cf26c694ae8ba7e7f23c93470",
+  "source_path": "alembic/versions/0001_initial_schema.py",
+  "source_sha256": "e9aed01b55126c37490f3511bbc33207a74428d31a48d2beba79b6536ee2ceec",
+  "sql_sha256": "787b74b4e30059a9c4d7a45c93d76325a2e009144defbab57a0da2a415dfdafc",
+  "table_count": 49
+}

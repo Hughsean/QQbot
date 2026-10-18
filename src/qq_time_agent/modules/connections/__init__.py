@@ -1,1 +1,0 @@
-"""External connection lifecycle module."""

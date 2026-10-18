@@ -27,3 +27,11 @@ Thumbs.db
 
 tmp/
 .zcode/
+
+# Go local build and coverage outputs
+/qq-time-agent
+/qq-time-agent.exe
+/coverage.out
+/coverage.html
+/go.work
+/go.work.sum

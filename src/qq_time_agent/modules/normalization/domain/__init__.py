@@ -1,1 +1,0 @@
-"""Private pure Normalization domain."""

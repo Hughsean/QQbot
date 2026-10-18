@@ -1,40 +1,23 @@
-# Build and runtime share the same uv + CPython 3.12 image so the copied
-# .venv symlinks stay valid between stages.
-# Base pinned from ghcr.io/astral-sh/uv:python3.12-bookworm-slim on 2026-08-13.
-FROM ghcr.io/astral-sh/uv@sha256:e5b65587bce7de595f299855d7385fe7fca39b8a74baa261ba1b7147afa78e58 AS build
-WORKDIR /app
-ENV UV_COMPILE_BYTECODE=1 \
-    UV_LINK_MODE=copy
-COPY pyproject.toml uv.lock .python-version ./
-COPY src/ ./src/
-COPY docs/README.md ./docs/README.md
-COPY version ./version
-# The application version is intentionally stable between source-only fixes. Do not reuse a
-# cached wheel for this local package, otherwise Docker may ship an older source tree.
-RUN uv sync --frozen --no-dev --no-editable --no-cache
+# Go migration branch: development artifact, not a completed production replacement.
+FROM golang:1.27.2-bookworm@sha256:5cf287a799e6b94384bad13d16b14904c531f51ba65792237e122ce42b392f61 AS build
+WORKDIR /build
+COPY go.mod go.sum ./
+RUN go mod download && go mod verify
+COPY cmd/ ./cmd/
+COPY internal/ ./internal/
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /qq-time-agent ./cmd/qq-time-agent
 
-FROM ghcr.io/astral-sh/uv@sha256:e5b65587bce7de595f299855d7385fe7fca39b8a74baa261ba1b7147afa78e58 AS runtime
-ENV PYTHONUNBUFFERED=1 \
-    TZ=Asia/Shanghai \
-    PATH="/app/.venv/bin:$PATH"
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-        ca-certificates \
-        libgl1 \
-        libglib2.0-0 \
-        libxcb1 \
-        tzdata \
-    && rm -rf /var/lib/apt/lists/* \
-    && groupadd --system --gid 10001 app \
-    && useradd --system --uid 10001 --gid app --create-home app
+FROM build AS verify
+COPY tests/goarchitecture/ ./tests/goarchitecture/
+COPY docs/go-legacy-test-inventory.json ./docs/go-legacy-test-inventory.json
+COPY ops/ ./ops/
+COPY .github/ ./.github/
+CMD ["go", "test", "-race", "-tags=integration", "./..."]
+
+FROM scratch AS runtime
+COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+COPY --from=build /qq-time-agent /qq-time-agent
+USER 10001:10001
 WORKDIR /app
-ENV PYTHONPATH="/app/src"
-COPY --from=build --chown=app:app /app/.venv /app/.venv
-# Keep the current build-context source tree in the runtime image. The package version intentionally
-# stays stable between source fixes, so relying on the installed local wheel alone can serve stale code.
-COPY --chown=app:app src/ ./src/
-COPY --chown=app:app version ./version
-COPY --chown=app:app alembic.ini alembic.ini
-COPY --chown=app:app alembic/ alembic/
-USER app
-CMD ["qq-time-agent-web"]
+ENTRYPOINT ["/qq-time-agent"]
+CMD ["web"]

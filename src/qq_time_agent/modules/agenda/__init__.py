@@ -1,1 +1,0 @@
-"""Agenda fact-source module."""

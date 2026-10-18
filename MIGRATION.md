@@ -1,35 +1,39 @@
-# Ubuntu migration bundle
+# Go migration branch
 
-This bundle targets Ubuntu Server `linux/amd64` with Docker Compose. It contains the
-source, a PostgreSQL custom-format snapshot, the source-asset archive, and the Ollama
-model volume archive. It never contains the source `.env` or secret values.
+This branch contains the Go foundation and the frozen PostgreSQL schema, not a
+complete replacement for the existing application. Track G1–G10 in
+`docs/32-go-migration.md`. The original implementation and tests remain at
+`Main@c63eae17adf4fc2cf26c694ae8ba7e7f23c93470`; historical test scenarios are
+listed in `docs/go-legacy-test-inventory.json`.
 
-## First start
+## Development
 
-1. Install Docker Engine, Docker Compose v2, `curl`, and (for GPU mode) the NVIDIA
-   driver plus NVIDIA Container Toolkit.
-2. Extract the archive and copy `.env.example` to `.env`.
-3. Provide the same `CREDENTIAL_ENCRYPTION_KEY` used by the source host if existing
-   encrypted mailbox credentials must remain usable. Also provide the other required
-   secrets in `.env`; do not commit or transmit it with the bundle.
-4. Make scripts executable and run `./start.sh`.
+Use Go 1.27.2 and Go Modules. Run `go test ./...`, `go vet ./...`, and
+`go build ./cmd/qq-time-agent`. Configuration is loaded only by Bootstrap. Do not
+print or commit real `.env` values.
 
-`start.sh` verifies `SHA256SUMS`, restores the database and assets only when the new
-PostgreSQL volume has not been migrated yet, and restores the Ollama model volume once.
-It then runs migrations, replays tombstones, starts the three application roles, and
-checks readiness. It is safe to run again after `.bundle-restored` and
-`.ollama-restored` exist.
+For synthetic integration tests, start the dedicated infrastructure:
 
-## GPU
+```sh
+docker compose --project-name qqtimeagent-go-test --env-file ops/go-test.settings -f compose.go-test.yaml up -d --wait
+go test -tags=integration ./...
+```
 
-`start.sh` auto-detects `nvidia-smi` and adds `compose.gpu.yaml`. A GTX 1650 Ti may
-offload only part of `qwen3-embedding:4b`; the readiness probe is the authority. Set
-`USE_GPU=1` to require the NVIDIA runtime, or leave it unset for CPU fallback when
-the driver is unavailable. Do not expose Ollama outside the Compose network.
+The default Compose project is `qq-time-agent-go-dev`, with separate Go development
+volumes. Only the `development` profile starts the health Web process. The `migrate`
+operation initializes empty databases; it refuses to adopt an unverified existing
+Python database. Worker, business QQ processing, OAuth, mailbox, Agenda, RAG and
+To Do are still scheduled migration work. Do not mount production volumes into this
+stack or deploy it as the production replacement.
 
-## Network and security
+## HP deployment retained in stopped state
 
-Web and PostgreSQL publish only to `127.0.0.1`. Ollama has no host port. The host
-needs outbound HTTPS to QQ, DeepSeek, Microsoft, and Docker registries; no inbound
-public port is required. Keep the bundle, `.env`, database backup, and encryption key
-under separate filesystem permissions and run a restore drill before real use.
+On 2026-10-19, at the owner's request, the existing Python Web/Worker/QQ containers
+in the remote `qq-time-agent-bundle` project were stopped. Containers, the original
+image, all volumes and their `unless-stopped` restart policy were retained.
+PostgreSQL and Ollama stayed running. No Go service was deployed to HP.
+
+The retained containers can be restored with an explicit `docker start` of
+`qq-time-agent-bundle-web-1`, `qq-time-agent-bundle-worker-1` and
+`qq-time-agent-bundle-qq-1`. Restoring them is a separate operational decision; do
+not run old and new consumers against the same database.

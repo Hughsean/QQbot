@@ -1,0 +1,45 @@
+name: Go migration gates
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  go:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Format
+        run: test -z "$(gofmt -l cmd internal tests/goarchitecture)"
+      - name: Verify module checksums
+        run: go mod verify
+      - name: Vet
+        run: go vet ./...
+      - name: Static analysis
+        run: go run honnef.co/go/tools/cmd/staticcheck@v0.8.2 ./...
+      - name: Synthetic database
+        run: docker compose --project-name qqtimeagent-go-test --env-file ops/go-test.settings -f compose.go-test.yaml up -d --wait postgres
+      - name: Unit, contract, architecture, integration and race checks
+        run: go test -race -tags=integration -coverprofile=coverage.out ./...
+      - name: Coverage gate
+        shell: bash
+        run: |
+          total=$(go tool cover -func=coverage.out | awk '/^total:/{gsub(/%/,"",$3);print $3}')
+          awk -v coverage="$total" 'BEGIN { if (coverage < 80) exit 1 }'
+      - name: Build
+        run: go build ./cmd/qq-time-agent
+      - name: Dependency vulnerabilities
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
+      - name: Stop synthetic database
+        if: always()
+        run: docker compose --project-name qqtimeagent-go-test --env-file ops/go-test.settings -f compose.go-test.yaml down

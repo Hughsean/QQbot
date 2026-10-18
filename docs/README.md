@@ -27,7 +27,7 @@ QQ Time Agent 是一个仅供项目所有者本人使用、以 QQ 为主要交�
 | [08-deployment-and-operations.md](08-deployment-and-operations.md) | 域名、Caddy、服务、配置和可观测性 |
 | [09-delivery-plan.md](09-delivery-plan.md) | 分阶段交付顺序和每阶段完成定义 |
 | [10-open-decisions.md](10-open-decisions.md) | 已关闭决策、质量门禁和未来重新评估条件 |
-| [11-technology-stack.md](11-technology-stack.md) | Python、uv、LangGraph、QQ SDK、DeepSeek 和版本策略 |
+| [11-technology-stack.md](11-technology-stack.md) | Go 迁移技术栈、QQ SDK、DeepSeek 和版本策略（含原 Python 基线） |
 | [12-rag-system.md](12-rag-system.md) | Ollama、Qwen3 Embedding、pgvector 和检索边界 |
 | [13-development-guardrails.md](13-development-guardrails.md) | 分层、文件规模、架构测试和阶段质量门禁 |
 | [14-development-goal.md](14-development-goal.md) | 新对话 Goal mode 的完整开发结果、约束和完成定义 |
@@ -48,6 +48,8 @@ QQ Time Agent 是一个仅供项目所有者本人使用、以 QQ 为主要交�
 | [29-microsoft-todo-17d-verification.md](29-microsoft-todo-17d-verification.md) | To Do 完成回写、QQ 发送前门禁、租约取消和抑制记录的本地验证证据 |
 | [30-qq-ingress-turn-coalescing.md](30-qq-ingress-turn-coalescing.md) | QQ 连续消息合并、同会话串行、信任分段和默认时间策略 |
 | [31-qq-ingress-turn-verification.md](31-qq-ingress-turn-verification.md) | QQ 连续消息合并实现、迁移、恢复与本地验证证据 |
+| [32-go-migration.md](32-go-migration.md) | 保留全部功能和数据的 Go 分阶段迁移与验收 |
+| [33-go-foundation-verification.md](33-go-foundation-verification.md) | Go 基础验证、旧实现分支清理与 HP 停止保留记录 |
 | [adr/](adr/) | 已接受的关键架构决策（含 Microsoft To Do 外部投影、迁移链单基线） |
 
 ## 决策优先级
@@ -78,17 +80,21 @@ QQ Time Agent 是一个仅供项目所有者本人使用、以 QQ 为主要交�
 
 ## 当前已确定的运行条件
 
+2026-10-19 Go 迁移分支说明：当前仅 G1 基础层，G2–G10 尚待迁移。HP 上的旧 Python
+Web/Worker/QQ 容器已按所有者要求停止且保留，数据库和 Ollama 继续运行。下文既有阶段与版本
+记录属于 Python 历史验证，不能视为 Go 功能已实现。Go 默认 Compose 使用独立开发项目和卷。
+
 - Agent HTTP 入口：仅生产主机 `http://127.0.0.1:8000`，不提供公网入口
 - 腾讯云职责：仅托管 `hughsean.online` / `www.hughsean.online` 静态站点和 SSH 管理，不代理 Agent
 - 外部连接器：Microsoft Graph `Mail.Read` + `Tasks.ReadWrite` 与单一所有者 QQ 邮箱只读 IMAP
 - Microsoft OAuth 客户端：移动和桌面公共客户端，Authorization Code + PKCE，不使用客户端密码
 - Microsoft OAuth 回调：`http://localhost:8000/oauth/microsoft/callback`，只允许本机回环访问
-- 开发语言：Python 3.12（`qq-botpy 1.2.1` 在 Python 3.14 客户端初始化失败，已按兼容策略降级）
-- 项目与依赖管理：uv、项目内 `.venv`（开发）、提交 `uv.lock`
+- 新开发语言：Go 1.27.2（ADR-0017）；完整迁移按 [32-go-migration.md](32-go-migration.md) 推进
+- Go 依赖管理：Go Modules、`go.mod`、`go.sum`；本 Go 分支已按所有者要求移除 Python，原 `Main@c63eae1` 保留对照与回退依据
 - 部署：容器模式（ADR-0012），Docker Compose 承载 PostgreSQL + pgvector 与 Web/Worker/QQ
   容器，`APP_CONTAINER` 精确值门禁；Ollama 与应用同在 Compose 私有网络
-- Agent 编排：LangGraph，确定性流程为主、受限 Agent 节点为辅
-- QQ 接入：QQ 开放平台官方 Python SDK `qq-botpy`
+- Agent 编排目标：Go 显式可恢复状态机；保留原 LangGraph 的控制状态、预算、幂等和门禁语义
+- QQ 接入目标：官方 `tencent-connect/botgo v0.2.1`；没有公网服务器，保留出站 WebSocket，真实沙箱通过后才切换
 - AI Provider：DeepSeek API，通过独立适配器和 `.env` 注入配置
 - 日程存储：项目内部 PostgreSQL，不接入外部日历 Provider
 - 用户范围：仅项目所有者本人，拒绝其他 QQ 身份，不设计多租户

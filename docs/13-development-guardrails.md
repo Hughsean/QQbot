@@ -1,5 +1,14 @@
 # 开发分层与质量门禁
 
+## Go 迁移门禁（2026-10-18 起）
+
+ADR-0017 替代以下 Python 工具与目录选择，模块/安全/覆盖率要求保留。Go 使用
+`cmd/qq-time-agent`、`internal/bootstrap`、`internal/modules`、`internal/adapters`。
+运行 gofmt、go vet、静态分析、McCabe≤10、go test、架构与契约测试、隔离 PostgreSQL 集成和竞态检测；
+核心 Domain/Application 覆盖≥90%，总体≥80%。SDK 和 SQL 不进入 Domain/跨模块 DTO。
+手写生产 Go 文件同样受 300 行目标/500 行硬上限约束。测试不得读取真实 `.env`。
+以下 Python 门禁为 Main 历史基线；Go 分支通过历史测试清单逐项迁移行为回归，不以 Go 编译通过取代功能、数据库和外部沙箱验证。
+
 ## 1. 目的
 
 本文件把“模块清晰、分层明确、没有巨型单体文件”转换成可以由 CI 验证的完成条件。根目录 `AGENTS.md` 是执行规则，本文件记录设计依据和验收方式。

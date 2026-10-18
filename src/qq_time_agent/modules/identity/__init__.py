@@ -1,1 +1,0 @@
-"""Single-owner Identity module."""

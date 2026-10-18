@@ -1,1 +1,0 @@
-"""Normalization persistence adapters."""

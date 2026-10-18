@@ -1,1 +1,0 @@
-"""Pure Scheduling domain."""

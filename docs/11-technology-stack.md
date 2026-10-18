@@ -1,5 +1,27 @@
 # 技术栈与工程约束
 
+## 当前开发栈：Go 全功能迁移（2026-10-18）
+
+ADR-0017 和 [32-go-migration.md](32-go-migration.md) 替代本文件以下 Python 特定选型。
+以下原实现说明保留作行为、配置与历史验证对照；Python 源码和旧测试仅保留在原 Main 分支及历史提交，Go 分支已移除。
+
+| 类别 | 当前目标 | 边界 |
+|---|---|---|
+| 语言/依赖 | Go 1.27.2、Go Modules | go.mod/go.sum 固定依赖，更新须重新验证 |
+| HTTP/DTO | net/http、encoding/json、显式验证 | 拒绝未知字段和多余 JSON；API 契约不变 |
+| 持久化 | pgx/v5、版本化 SQL | 表归属不变，兼容当前基线，未知版本拒绝接管 |
+| 编排 | Go 显式持久化状态机 | 只保存有界控制状态和领域引用，不替代事实源 |
+| QQ | 官方 botgo v0.2.1 | SDK DTO 只在 Adapter；无公网，出站 WebSocket；必须实测收发/重连 |
+| AI/嵌入 | DeepSeek HTTP Adapter、Ollama /api/embed | 预算、超时、有限重试、模型和1024维契约不变 |
+| 配置 | Bootstrap 强类型加载 .env/环境变量 | godotenv 仅 Bootstrap 使用，不向业务传 Settings/秘密 |
+| 部署 | 多阶段 Go 容器、Compose PostgreSQL/pgvector/Ollama | 全部功能与副本验证通过后才替换原生产入口 |
+| 质量 | gofmt、vet、静态分析、复杂度、架构/契约/集成/竞态 | 保留覆盖与删除/幂等门禁，Python 测试作为行为对照 |
+
+新依赖采用当日最新稳定兼容版，go.sum 校验下载内容。botgo 依赖较旧，必须显式检查传递依赖漏洞；
+不得仅为使编译通过而删除安全门禁。原 IMAP、ICS、PDF、OCR、图片、会话摘要和 To Do 功能必须逐项迁移。
+
+## 以下为迁移前 Python 实现基线
+
 ## 1. 已接受技术选型
 
 | 类别 | 选择 | 边界 |

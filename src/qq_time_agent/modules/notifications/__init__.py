@@ -1,1 +1,0 @@
-"""Auditable QQ Notifications module."""

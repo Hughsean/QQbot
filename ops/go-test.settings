@@ -1,0 +1,2 @@
+# Intentionally empty synthetic environment for Docker Compose.
+# Pass --env-file ops/go-test.settings to avoid reading the real project .env.

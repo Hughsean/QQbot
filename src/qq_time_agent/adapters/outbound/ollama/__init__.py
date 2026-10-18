@@ -1,1 +1,0 @@
-"""Ollama embedding adapter."""

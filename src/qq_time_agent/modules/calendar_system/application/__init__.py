@@ -1,1 +1,0 @@
-"""Calendar System application services."""

@@ -1,0 +1,3012 @@
+{
+  "source_branch": "Main",
+  "source_commit": "c63eae17adf4fc2cf26c694ae8ba7e7f23c93470",
+  "static_test_count": 601,
+  "tests": [
+    {
+      "file": "tests/architecture/test_boundaries.py",
+      "test": "test_modules_only_import_other_modules_public_contracts",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/architecture/test_boundaries.py",
+      "test": "test_domain_is_framework_and_provider_free",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/architecture/test_boundaries.py",
+      "test": "test_provider_sdks_are_contained_in_matching_adapters",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/architecture/test_boundaries.py",
+      "test": "test_imap_and_mime_objects_are_contained_in_qq_mail_adapter",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/architecture/test_boundaries.py",
+      "test": "test_environment_reads_exist_only_in_bootstrap",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/architecture/test_boundaries.py",
+      "test": "test_module_tables_and_foreign_keys_stay_with_owner",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/architecture/test_boundaries.py",
+      "test": "test_read_only_modules_do_not_import_side_effect_capabilities",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/architecture/test_boundaries.py",
+      "test": "test_modules_do_not_use_text_sql_to_bypass_data_ownership",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/architecture/test_migration_chain.py",
+      "test": "test_migration_chain_has_a_single_head",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/architecture/test_migration_chain.py",
+      "test": "test_migration_chain_is_fully_connected",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/architecture/test_migration_chain.py",
+      "test": "test_every_migration_defines_upgrade_and_downgrade",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/architecture/test_operations_assets.py",
+      "test": "test_restore_preserves_current_tombstones_before_database_overwrite",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/architecture/test_operations_assets.py",
+      "test": "test_restore_and_backup_fail_closed_on_native_command_errors",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/architecture/test_operations_assets.py",
+      "test": "test_compose_keeps_host_and_container_port_contracts_consistent",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/architecture/test_operations_assets.py",
+      "test": "test_portable_bundle_scripts_do_not_package_dotenv",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/architecture/test_operations_assets.py",
+      "test": "test_ops_has_no_bare_metal_process_supervision_scripts",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/architecture/test_operations_assets.py",
+      "test": "test_tencent_caddy_serves_only_static_site",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/architecture/test_quality_gates.py",
+      "test": "test_handwritten_production_files_do_not_exceed_500_logical_lines",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/architecture/test_quality_gates.py",
+      "test": "test_real_environment_file_is_ignored",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/architecture/test_quality_gates.py",
+      "test": "test_no_unexpected_secret_files_or_private_keys",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/architecture/test_quality_gates.py",
+      "test": "test_no_high_confidence_tokens_or_literal_production_secrets",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/architecture/test_quality_gates.py",
+      "test": "test_runtime_is_pinned_to_python_312",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/contract/test_deepseek_adapter.py",
+      "test": "test_deepseek_json_contract_has_no_tools_and_maps_usage",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/contract/test_deepseek_adapter.py",
+      "test": "test_deepseek_agent_route_uses_agent_model_and_thinking_switch",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/contract/test_deepseek_adapter.py",
+      "test": "test_deepseek_agent_route_keeps_thinking_disabled_by_default",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/contract/test_deepseek_adapter.py",
+      "test": "test_deepseek_preflights_exact_serialized_request_before_network",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/contract/test_deepseek_adapter.py",
+      "test": "test_deepseek_sends_the_same_compact_utf8_bytes_used_by_preflight",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/contract/test_deepseek_adapter.py",
+      "test": "test_deepseek_retries_transient_and_rejects_invalid_output",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/contract/test_deepseek_adapter.py",
+      "test": "test_deepseek_retries_one_invalid_json_response",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/contract/test_deepseek_adapter.py",
+      "test": "test_deepseek_timeout_is_bounded_and_classified",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/contract/test_microsoft_connection_adapter.py",
+      "test": "test_adapter_keeps_pkce_nonce_and_provider_dto_inside_boundary",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/contract/test_microsoft_connection_adapter.py",
+      "test": "test_task_access_refresh_requests_only_task_capabilities",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/contract/test_microsoft_connection_adapter.py",
+      "test": "test_adapter_builds_public_client_without_client_credential",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/contract/test_microsoft_connection_adapter.py",
+      "test": "test_adapter_maps_oauth_error_without_exposing_description",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/contract/test_microsoft_connection_adapter.py",
+      "test": "test_graph_profile_maps_only_stable_fields",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/contract/test_microsoft_connection_adapter.py",
+      "test": "test_graph_401_is_authentication_failure",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/contract/test_microsoft_mail_adapter.py",
+      "test": "test_graph_mail_maps_delta_page_without_provider_dto_leak",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/contract/test_microsoft_mail_adapter.py",
+      "test": "test_graph_mail_rejects_untrusted_cursor_and_classifies_auth",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/contract/test_microsoft_mail_adapter.py",
+      "test": "test_graph_mail_honors_bounded_retry_after_with_jitter",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/contract/test_microsoft_mail_adapter.py",
+      "test": "test_graph_mail_accepts_documented_and_live_inbox_delta_paths_only",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/contract/test_microsoft_mail_adapter.py",
+      "test": "test_graph_mail_lists_then_selectively_fetches_bounded_attachment",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/contract/test_microsoft_mail_adapter.py",
+      "test": "test_access_handle_expires_and_cannot_be_serialized",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/contract/test_microsoft_todo_adapter.py",
+      "test": "test_lists_are_paginated_and_mapped_without_provider_dto_leak",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/contract/test_microsoft_todo_adapter.py",
+      "test": "test_untrusted_pagination_link_and_provider_errors_are_classified",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/contract/test_microsoft_todo_adapter.py",
+      "test": "test_upsert_creates_task_with_reminder_disabled",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/contract/test_microsoft_todo_adapter.py",
+      "test": "test_upsert_recovers_existing_marker_instead_of_creating_duplicate",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/contract/test_microsoft_todo_adapter.py",
+      "test": "test_ambiguous_create_recovers_by_marker_without_second_post",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/contract/test_microsoft_todo_adapter.py",
+      "test": "test_close_completes_or_deletes_and_missing_task_is_idempotent",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/contract/test_microsoft_todo_adapter.py",
+      "test": "test_strong_get_and_delta_are_provider_neutral",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/contract/test_microsoft_todo_adapter.py",
+      "test": "test_missing_task_and_untrusted_delta_cursor_are_safe",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/contract/test_microsoft_todo_adapter.py",
+      "test": "test_delta_accepts_graph_normalized_provider_id_path",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/contract/test_qq_mail_imap_adapter.py",
+      "test": "test_adapter_maps_metadata_then_selectively_fetches_attachment",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/contract/test_qq_mail_imap_adapter.py",
+      "test": "test_cursor_advances_and_uidvalidity_change_rescans_safely",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/contract/test_qq_mail_imap_adapter.py",
+      "test": "test_transient_failure_retries_only_within_bound",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/contract/test_qq_mail_imap_adapter.py",
+      "test": "test_provider_errors_and_repr_never_contain_authorization_code",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/contract/test_qq_mail_imap_adapter.py",
+      "test": "test_external_identifier_is_stable_and_mailbox_scoped",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/contract/test_qq_mail_imap_adapter.py",
+      "test": "test_singlepart_plain_text_and_html_body_are_mapped",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/contract/test_qq_media_adapter.py",
+      "test": "test_qq_media_download_is_https_allowlisted_and_bounded",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/contract/test_qq_media_adapter.py",
+      "test": "test_qq_media_download_rejects_ssrf_locators",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/contract/test_qq_media_adapter.py",
+      "test": "test_qq_media_download_rejects_redirect_and_declared_oversize",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/end_to_end/test_deepseek_understanding_sandbox.py",
+      "test": "test_fixed_understanding_eval_meets_accuracy_and_injection_gates",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/end_to_end/test_microsoft_authorization_sandbox.py",
+      "test": "test_live_microsoft_authorization_metadata_pkce_nonce_and_scopes",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/end_to_end/test_microsoft_mail_sync_sandbox.py",
+      "test": "test_live_mail_read_incremental_sync_is_restart_safe",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/end_to_end/test_microsoft_todo_sandbox.py",
+      "test": "test_live_todo_create_read_complete_and_delete",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/end_to_end/test_ollama_sandbox.py",
+      "test": "test_ollama_cold_or_warm_health_and_1024_dimension_contract",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/end_to_end/test_qq_mail_imap_sandbox.py",
+      "test": "test_real_qq_mail_tls_readonly_two_round_incremental_sync",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/end_to_end/test_qq_sandbox.py",
+      "test": "test_official_qq_gateway_login_and_active_c2c_message",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/end_to_end/test_qq_sandbox.py",
+      "test": "test_official_qq_owner_c2c_receive_and_reply",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/end_to_end/test_qq_sandbox.py",
+      "test": "test_official_qq_owner_image_download_and_offline_ocr",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/end_to_end/test_rag_retrieval_sandbox.py",
+      "test": "test_fixed_deidentified_hybrid_retrieval_recall_at_10",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/end_to_end/test_web_readiness.py",
+      "test": "test_uvicorn_live_and_ready_on_loopback",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/integration/test_actions_reminders_persistence.py",
+      "test": "test_action_agenda_reminder_are_idempotent_and_lease_recovers",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/integration/test_actions_reminders_persistence.py",
+      "test": "test_fixed_event_undo_cancels_agenda_and_old_reminder",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/integration/test_agenda_scheduling_persistence.py",
+      "test": "test_agenda_is_idempotent_fact_source_and_busy_query_is_overlap_safe",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/integration/test_agenda_scheduling_persistence.py",
+      "test": "test_proposal_insert_is_idempotent_and_restores_constraint_snapshot",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/integration/test_agent_turn_persistence.py",
+      "test": "test_new_message_supersedes_waiter_and_claim_preserves_order",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/integration/test_agent_turn_persistence.py",
+      "test": "test_later_batch_waits_until_same_conversation_turn_completes",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/integration/test_asset_deletion_replay.py",
+      "test": "test_asset_blob_and_derived_content_are_removed_before_tombstone_replay",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/integration/test_calendar_change_persistence.py",
+      "test": "test_calendar_versions_are_idempotent_ordered_and_restart_safe",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/integration/test_connections_persistence.py",
+      "test": "test_vault_database_never_contains_plaintext_and_rotation_keeps_reference",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/integration/test_connections_persistence.py",
+      "test": "test_qq_mail_connection_persists_only_encrypted_credential_reference",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/integration/test_connections_persistence.py",
+      "test": "test_oauth_transaction_claim_is_atomic_one_time_and_session_bound",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/integration/test_connections_persistence.py",
+      "test": "test_same_provider_connections_are_isolated_by_identity",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/integration/test_conversation_event_concurrency.py",
+      "test": "test_concurrent_append_allocates_unique_contiguous_sequences",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/integration/test_conversation_event_concurrency.py",
+      "test": "test_concurrent_same_idempotency_key_returns_one_event",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/integration/test_conversation_replay_summary_persistence.py",
+      "test": "test_replay_and_summary_are_isolated_idempotent_and_snapshot_safe",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/integration/test_conversation_replay_summary_persistence.py",
+      "test": "test_concurrent_overlapping_summaries_serialize_per_scope",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/integration/test_deletion_restore_replay.py",
+      "test": "test_tombstone_replay_removes_content_restored_from_old_backup",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/integration/test_foundation_persistence.py",
+      "test": "test_pgvector_extension_and_migration_are_active",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/integration/test_foundation_persistence.py",
+      "test": "test_conversation_timeline_append_is_idempotent_and_snapshot_bounded",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/integration/test_foundation_persistence.py",
+      "test": "test_job_enqueue_and_concurrent_lease_are_idempotent",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/integration/test_foundation_persistence.py",
+      "test": "test_qq_mail_jobs_retry_and_disconnect_cancellation",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/integration/test_foundation_persistence.py",
+      "test": "test_transient_dead_letters_can_be_requeued_explicitly",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/integration/test_foundation_persistence.py",
+      "test": "test_agent_run_claim_reclaims_expiry_and_fences_stale_owner",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/integration/test_foundation_persistence.py",
+      "test": "test_agent_run_can_fail_before_execution_without_leaving_pending_row",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/integration/test_foundation_persistence.py",
+      "test": "test_stale_job_attempt_cannot_settle_newer_lease",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/integration/test_foundation_persistence.py",
+      "test": "test_outbox_append_is_transactional_and_publish_is_idempotent",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/integration/test_foundation_persistence.py",
+      "test": "test_tombstone_repository_round_trip_and_idempotent_module_result",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/integration/test_inbox_persistence.py",
+      "test": "test_inbox_ingest_is_idempotent_traceable_and_cursor_is_owned",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/integration/test_inbox_persistence.py",
+      "test": "test_qq_mail_secondary_dedupe_attachment_metadata_and_cursor_delete",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/integration/test_inbox_persistence.py",
+      "test": "test_connection_fence_and_source_deletion_prevent_content_resurrection",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/integration/test_knowledge_retrieval_persistence.py",
+      "test": "test_versioned_hybrid_search_filters_and_delete_are_atomic",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/integration/test_notification_intents_persistence.py",
+      "test": "test_intent_upsert_lease_cooldown_and_expired_recovery",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/integration/test_notification_intents_persistence.py",
+      "test": "test_reminder_suppression_is_idempotently_persisted",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/integration/test_reminder_action_tokens_persistence.py",
+      "test": "test_action_tokens_are_owner_bound_typed_expiring_and_mutually_exclusive",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/integration/test_retention_persistence.py",
+      "test": "test_configured_expiry_adapters_delete_only_old_owned_rows",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/integration/test_schema_metadata_alignment.py",
+      "test": "test_migrations_reproduce_model_metadata_exactly",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/integration/test_source_assets_persistence.py",
+      "test": "test_asset_persistence_is_idempotent_and_parent_fenced",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/integration/test_task_projection_persistence.py",
+      "test": "test_target_is_connection_unique_idempotent_and_versioned",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/integration/test_task_projection_persistence.py",
+      "test": "test_mapping_is_agenda_unique_and_persists_projection_state",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/integration/test_task_projection_persistence.py",
+      "test": "test_delta_cursor_is_durable_versioned_and_resettable",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/integration/test_task_projection_persistence.py",
+      "test": "test_agenda_outbox_relays_once_to_durable_projection_job",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/integration/test_understanding_persistence.py",
+      "test": "test_stage4_owned_tables_are_idempotent_and_content_free",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/integration/test_worker_bootstrap.py",
+      "test": "test_worker_composition_builds_and_closes_without_polling_external_services",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_action_domain.py",
+      "test": "test_action_state_machine_rejects_invalid_states_and_identity",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_action_domain.py",
+      "test": "test_action_required_fields_and_failure_retry",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_action_service.py",
+      "test": "test_confirmed_action_is_idempotent_and_schedules_one_reminder",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_action_service.py",
+      "test": "test_undo_requires_separate_token_and_cancels_reminder",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_action_service.py",
+      "test": "test_action_policy_validation_failure_and_retry_recovery",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_action_service.py",
+      "test": "test_todo_completion_converges_and_cancels_reminders",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_agenda_domain.py",
+      "test": "test_agenda_entry_is_versioned_authoritative_fact",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_agenda_domain.py",
+      "test": "test_agenda_rejects_invalid_facts",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_agenda_mutation_domain.py",
+      "test": "test_agenda_draft_and_mutation_invariants",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_agenda_service.py",
+      "test": "test_agenda_service_maps_busy_view_and_idempotent_entry",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_agenda_service.py",
+      "test": "test_agenda_service_rejects_bad_ranges_and_empty_key",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_agenda_service.py",
+      "test": "test_agenda_revise_cancel_complete_and_stale_versions",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_agent_budget.py",
+      "test": "test_token_estimator_is_conservative_for_cjk_and_json",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_agent_budget.py",
+      "test": "test_budget_keeps_whole_blocks_by_priority_and_deduplicates_order",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_agent_budget.py",
+      "test": "test_budget_fails_closed_when_mandatory_context_does_not_fit",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_agent_budget.py",
+      "test": "test_budget_admission_reserves_fixed_request_components",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_agent_budget.py",
+      "test": "test_budget_rejects_mandatory_timeline_after_fixed_reservations",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_agent_budget.py",
+      "test": "test_budget_compression_threshold_is_validated",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_agent_context.py",
+      "test": "test_context_skips_retrieval_for_blank_message",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_agent_context.py",
+      "test": "test_context_rejects_history_limit_above_80",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_agent_context.py",
+      "test": "test_context_uses_prior_scope_only_and_includes_agent_calendar_facts",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_agent_context.py",
+      "test": "test_context_without_scope_ids_uses_conversation_fallback",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_agent_context.py",
+      "test": "test_context_empty_scope_uses_conversation_fallback",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_agent_context.py",
+      "test": "test_context_nonempty_scope_does_not_mix_conversation_fallback",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_agent_context.py",
+      "test": "test_context_propagates_scope_repository_failure",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_agent_loop.py",
+      "test": "test_short_acknowledgement_does_not_repeat_context_or_call_model",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_agent_loop.py",
+      "test": "test_explicit_multi_create_cannot_finalize_after_only_one_receipt",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_agent_loop.py",
+      "test": "test_agent_instruction_contains_injected_schedule_defaults_and_t2_boundary",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_agent_loop.py",
+      "test": "test_successful_agenda_list_survives_empty_model_final_output",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_agent_loop.py",
+      "test": "test_agent_loop_observes_tool_then_reports_final",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_agent_loop.py",
+      "test": "test_agent_loop_rejects_non_owner_and_step_limit",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_agent_loop.py",
+      "test": "test_agent_loop_uses_reserved_final_only_turn_after_last_tool",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_agent_loop.py",
+      "test": "test_agent_loop_recovered_at_limit_goes_directly_to_finalization",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_agent_loop.py",
+      "test": "test_agent_loop_rejects_tool_call_during_finalization_without_execution",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_agent_loop.py",
+      "test": "test_agent_loop_passes_owner_local_reference_time_to_model",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_agent_loop.py",
+      "test": "test_agent_loop_rejects_invalid_budget_relationships",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_agent_loop.py",
+      "test": "test_bound_observations_uses_token_budget_and_keeps_newest_suffix",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_agent_loop.py",
+      "test": "test_bound_observations_retains_newest_when_it_exceeds_budget",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_agent_loop.py",
+      "test": "test_bound_observations_accounts_for_cjk_token_cost",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_agent_loop.py",
+      "test": "test_tool_result_character_bound_is_independent_of_observation_budget",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_agent_loop.py",
+      "test": "test_observation_codec_preserves_canonical_json_and_legacy_strings",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_agent_loop.py",
+      "test": "test_observation_codec_replaces_unsupported_and_oversized_values",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_agent_loop.py",
+      "test": "test_agent_final_requires_exact_declared_shape",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_agent_loop.py",
+      "test": "test_agent_tool_call_requires_exact_declared_shape",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_agent_loop.py",
+      "test": "test_agent_instruction_contains_the_exact_response_shapes",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_agent_loop.py",
+      "test": "test_agent_instruction_declares_owner_timezone_and_reference_time",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_agent_loop.py",
+      "test": "test_agent_instruction_distinguishes_completed_records_from_active_agenda",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_agent_message_model.py",
+      "test": "test_agent_message_requires_content",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_agent_message_model.py",
+      "test": "test_agent_message_labels_must_not_be_blank",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_agent_message_model.py",
+      "test": "test_structured_request_carries_messages_and_defaults_empty",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_agent_message_model.py",
+      "test": "test_json_model_forwards_timeline_messages_to_structured_request",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_agent_message_model.py",
+      "test": "test_json_model_external_data_ends_with_the_live_user_message",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_agent_result_notifications.py",
+      "test": "test_mail_result_intent_preserves_provider_origin",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_agent_result_notifications.py",
+      "test": "test_direct_recovery_result_uses_dedicated_idempotent_intent",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_agent_run_notifications.py",
+      "test": "test_worker_reuses_persisted_snapshot_for_retry",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_agent_run_notifications.py",
+      "test": "test_mail_agent_hold_result_never_creates_unsolicited_notification",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_agent_run_notifications.py",
+      "test": "test_mail_agent_notification_is_anchored_to_its_subject",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_agent_run_notifications.py",
+      "test": "test_qq_direct_recovery_schedules_dedicated_notification",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_agent_run_notifications.py",
+      "test": "test_qq_direct_recovery_restores_turn_evidence_context",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_agent_run_notifications.py",
+      "test": "test_completed_qq_direct_run_without_recovery_marker_does_not_duplicate_reply",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_agent_run_notifications.py",
+      "test": "test_completed_qq_direct_recovery_replays_persisted_notification",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_agent_run_notifications.py",
+      "test": "test_missing_notification_source_is_permanent",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_agent_run_notifications.py",
+      "test": "test_notification_source_lookup_failure_is_retryable",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_agent_run_notifications.py",
+      "test": "test_invalid_agent_response_is_permanently_classified_without_notification",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_agent_run_notifications.py",
+      "test": "test_invalid_context_marks_run_failed_and_is_not_retried",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_agent_run_notifications.py",
+      "test": "test_completed_hold_short_circuits_before_source_content",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_agent_run_notifications.py",
+      "test": "test_completed_notify_replays_notification_without_agent_execution",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_agent_run_notifications.py",
+      "test": "test_model_failure_preserves_retry_taxonomy",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_agent_run_notifications.py",
+      "test": "test_notification_persistence_failure_is_retryable",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_agent_run_recovery.py",
+      "test": "test_recovery_reuses_checkpointed_tool_observation_without_repeating_call",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_agent_run_recovery.py",
+      "test": "test_snapshot_persistence_failure_stops_model_execution",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_agent_run_recovery.py",
+      "test": "test_retry_reuses_same_pinned_snapshot_hash",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_agent_run_recovery.py",
+      "test": "test_snapshot_is_persisted_before_execution_and_reused_on_retry",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_agent_turn_coordinator.py",
+      "test": "test_latest_callback_owns_one_coalesced_turn",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_ai_gateway.py",
+      "test": "test_structured_request_validates_provider_neutral_token_budget",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_ai_gateway.py",
+      "test": "test_gateway_records_non_content_success_metadata",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_ai_gateway.py",
+      "test": "test_gateway_records_classified_failure_without_payload",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_ai_gateway.py",
+      "test": "test_gateway_rejects_non_positive_concurrency",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_audit.py",
+      "test": "test_audit_accepts_minimized_append_only_event",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_audit.py",
+      "test": "test_audit_rejects_content_secrets_naive_time_and_invalid_references",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_calendar_change_ingestion.py",
+      "test": "test_calendar_upsert_uses_private_stable_keys_and_requires_confirmation",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_calendar_change_ingestion.py",
+      "test": "test_calendar_cancellation_matches_agenda_without_mutating_it",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_calendar_system_tools.py",
+      "test": "test_calendar_tool_requires_current_version_and_owner",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_calendar_system_tools.py",
+      "test": "test_calendar_time_with_offset_keeps_its_absolute_instant",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_calendar_system_tools.py",
+      "test": "test_calendar_time_without_offset_is_rejected",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_calendar_system_tools.py",
+      "test": "test_calendar_reads_are_displayed_in_owner_timezone",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_calendar_system_tools.py",
+      "test": "test_calendar_list_returns_authoritative_active_range",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_calendar_system_tools.py",
+      "test": "test_create_receipt_contains_user_visible_schedule_facts",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_calendar_system_tools.py",
+      "test": "test_create_uses_configured_default_reminder_and_all_turn_sources",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_calendar_system_tools.py",
+      "test": "test_reminder_update_uses_owner_timezone_normalization",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_clock.py",
+      "test": "test_system_clock_returns_canonical_utc_instant",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_connection_domain.py",
+      "test": "test_connection_requires_credential_deletion_before_disconnect",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_connection_domain.py",
+      "test": "test_connection_rejects_invalid_identity_and_activation_inputs",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_connection_domain.py",
+      "test": "test_connection_reauthorization_transitions_respect_terminal_states",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_connection_domain.py",
+      "test": "test_connection_identity_binding_is_stable_and_sync_is_explicit",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_connection_domain.py",
+      "test": "test_oauth_transaction_is_session_bound_expiring_and_one_time",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_connection_domain.py",
+      "test": "test_oauth_transaction_rejects_expired_and_naive_claim_times",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_connection_service.py",
+      "test": "test_authorization_activation_refresh_rotation_and_disconnect",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_connection_service.py",
+      "test": "test_oauth_callback_is_one_time_and_browser_bound",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_connection_service.py",
+      "test": "test_refresh_authentication_failure_enters_reauth_required",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_connection_service.py",
+      "test": "test_begin_adds_another_account_and_cleans_failed_transaction",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_connection_service.py",
+      "test": "test_reauthorization_begin_and_missing_callback_context",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_connection_service.py",
+      "test": "test_active_connection_incremental_consent_preserves_connection_and_rotates_token",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_connection_service.py",
+      "test": "test_completion_requires_refresh_token_and_cleans_failed_save",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_connection_service.py",
+      "test": "test_status_pending_disconnect_and_refresh_error_branches",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_connection_service.py",
+      "test": "test_mail_access_refreshes_rotates_and_returns_expiring_handle",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_connection_service.py",
+      "test": "test_mail_access_guards_state_and_marks_auth_failure",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_connection_service.py",
+      "test": "test_task_access_is_owner_bound_and_uses_task_scope_refresh",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_connection_service.py",
+      "test": "test_sync_completion_and_explicit_reauth_update_connection",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_connection_service.py",
+      "test": "test_completion_rejects_duplicate_microsoft_identity",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_connection_source_deletion.py",
+      "test": "test_connection_sources_are_paged_into_tombstones_and_cursor_removed",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_connection_status_tools.py",
+      "test": "test_provider_aliases_are_scoped",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_connection_status_tools.py",
+      "test": "test_generic_provider_phrases_are_ambiguous",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_connection_status_tools.py",
+      "test": "test_unknown_and_conflicting_provider_phrases_are_not_guessed",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_connection_status_tools.py",
+      "test": "test_email_address_is_redacted_from_requested_provider",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_connection_status_tools.py",
+      "test": "test_target_provider_is_queried_without_cross_provider_fallback",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_connection_status_tools.py",
+      "test": "test_unknown_or_ambiguous_provider_does_not_query_repository",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_connection_status_tools.py",
+      "test": "test_tool_returns_all_safe_persisted_connection_metadata",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_connection_status_tools.py",
+      "test": "test_all_persisted_connection_statuses_are_preserved",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_connection_status_tools.py",
+      "test": "test_tool_schema_and_arguments_are_strict",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_conversation_event_writes.py",
+      "test": "test_ensure_run_records_user_message_event_once_per_item",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_conversation_event_writes.py",
+      "test": "test_ensure_run_skips_user_message_without_content_or_scope",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_conversation_event_writes.py",
+      "test": "test_ensure_run_bounds_oversized_user_message_content",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_conversation_event_writes.py",
+      "test": "test_ensure_run_survives_timeline_failure",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_conversation_events.py",
+      "test": "test_event_derives_role_and_content_hash",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_conversation_events.py",
+      "test": "test_event_rejects_naive_datetime",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_conversation_events.py",
+      "test": "test_event_rejects_blank_user_idempotency_and_content",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_conversation_events.py",
+      "test": "test_event_rejects_oversized_content_and_reference",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_conversation_events.py",
+      "test": "test_event_rejects_oversized_or_blank_metadata",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_conversation_events.py",
+      "test": "test_user_message_requires_inbox_item",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_conversation_events.py",
+      "test": "test_run_events_require_run_id",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_conversation_events.py",
+      "test": "test_notification_event_requires_intent_and_delivery_status",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_conversation_events.py",
+      "test": "test_non_notification_event_cannot_carry_delivery_status",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_conversation_events.py",
+      "test": "test_system_result_event_may_carry_notification_delivery",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_conversation_events.py",
+      "test": "test_system_result_event_with_status_requires_intent",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_conversation_events.py",
+      "test": "test_event_scope_must_match_its_type",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_conversation_events.py",
+      "test": "test_owner_timeline_scope_id_is_stable_and_user_scoped",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_conversation_events.py",
+      "test": "test_notification_event_request_builds_owner_timeline_event",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_conversation_events.py",
+      "test": "test_notification_event_request_rejects_non_notification_type",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_conversation_events.py",
+      "test": "test_notification_event_request_accepts_system_notification_kind",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_conversation_events.py",
+      "test": "test_bounded_event_content_truncates_deterministically",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_conversation_events.py",
+      "test": "test_notification_event_request_rejects_naive_datetime",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_conversation_events.py",
+      "test": "test_notification_kinds_are_classified",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_conversation_replay.py",
+      "test": "test_replay_is_idempotent_and_returns_metadata_only",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_conversation_replay.py",
+      "test": "test_replay_rejects_sensitive_or_unknown_fields",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_conversation_replay.py",
+      "test": "test_replay_rejects_sequence_gaps_and_role_mismatch",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_conversation_replay.py",
+      "test": "test_replay_rejects_external_content_hash_mismatch",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_conversation_replay.py",
+      "test": "test_replay_accepts_redacted_csv",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_conversation_replay.py",
+      "test": "test_replay_requires_redaction_declaration",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_conversation_replay.py",
+      "test": "test_replay_rejects_nested_or_textual_sensitive_data",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_conversation_replay.py",
+      "test": "test_replay_rejects_missing_unsupported_and_empty_inputs",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_conversation_replay.py",
+      "test": "test_replay_rejects_invalid_json_structures",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_conversation_replay.py",
+      "test": "test_replay_rejects_invalid_event_values",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_conversation_replay.py",
+      "test": "test_replay_accepts_bounded_optional_fields",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_conversation_replay.py",
+      "test": "test_replay_rejects_csv_without_redaction",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_conversation_replay.py",
+      "test": "test_replay_classifies_append_failures_without_exposing_content",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_conversation_replay_bootstrap.py",
+      "test": "test_replay_bootstrap_accepts_loopback_hosts",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_conversation_replay_bootstrap.py",
+      "test": "test_replay_bootstrap_rejects_production",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_conversation_replay_bootstrap.py",
+      "test": "test_replay_bootstrap_rejects_non_loopback_database",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_conversation_replay_bootstrap.py",
+      "test": "test_replay_bootstrap_rejects_shared_database_name",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_conversation_summary.py",
+      "test": "test_summary_service_writes_complete_turn_idempotently",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_conversation_summary.py",
+      "test": "test_summary_service_rejects_incomplete_turn",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_conversation_summary.py",
+      "test": "test_summary_service_allows_global_sequence_gap_from_another_scope",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_conversation_summary.py",
+      "test": "test_summary_worker_classifies_payload_and_provider_failures",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_conversation_summary_schedule.py",
+      "test": "test_summary_scheduler_enqueues_deterministic_idempotent_jobs",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_conversation_summary_schedule.py",
+      "test": "test_summary_scheduler_rejects_invalid_protected_turns",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_credential_vault.py",
+      "test": "test_vault_encrypts_opens_rotates_and_deletes_secret",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_credential_vault.py",
+      "test": "test_vault_enforces_expiration_and_timezone",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_credential_vault.py",
+      "test": "test_vault_rejects_empty_or_missing_replacement",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_credential_vault.py",
+      "test": "test_cipher_rejects_invalid_key_and_tampered_aad",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_data_lifecycle.py",
+      "test": "test_deletion_is_recorded_then_purged_through_module_ports",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_data_lifecycle.py",
+      "test": "test_tombstone_rejects_naive_time",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_data_lifecycle.py",
+      "test": "test_tombstone_rejects_invalid_subject_and_completion_order",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_data_lifecycle.py",
+      "test": "test_completed_tombstone_ignores_replayed_module_result",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_data_lifecycle.py",
+      "test": "test_coordinator_validates_purge_window_and_batch_limit",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_data_lifecycle.py",
+      "test": "test_retention_uses_configured_cutoffs_and_source_tombstones",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_document_asset_parser.py",
+      "test": "test_pdf_extracts_native_text_without_ocr",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_document_asset_parser.py",
+      "test": "test_scanned_pdf_page_uses_bounded_ocr",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_document_asset_parser.py",
+      "test": "test_pdf_page_and_image_pixel_limits_are_enforced",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_document_asset_parser.py",
+      "test": "test_ics_uses_deterministic_calendar_parser",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_document_asset_parser.py",
+      "test": "test_real_offline_ocr_recognizes_synthetic_image",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_document_asset_parser.py",
+      "test": "test_ocr_process_is_terminated_at_hard_timeout",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_health.py",
+      "test": "test_live_does_not_depend_on_external_services",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_health.py",
+      "test": "test_ready_reports_only_dependency_classes",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_icalendar_parser.py",
+      "test": "test_parses_timezone_dst_participants_and_update_sequence",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_icalendar_parser.py",
+      "test": "test_parses_all_day_and_applies_exclusive_end",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_icalendar_parser.py",
+      "test": "test_preserves_bounded_recurrence_and_exception_sets",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_icalendar_parser.py",
+      "test": "test_cancel_is_parsed_without_time_and_never_becomes_create_candidate",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_icalendar_parser.py",
+      "test": "test_missing_end_uses_explicit_deterministic_defaults",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_icalendar_parser.py",
+      "test": "test_rejects_malformed_oversized_and_excess_event_content",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_icalendar_parser.py",
+      "test": "test_rejects_unknown_default_timezone_and_invalid_event_order",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_icalendar_parser.py",
+      "test": "test_embedded_non_iana_vtimezone_is_canonicalized_to_owner_zone",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_identity_preferences.py",
+      "test": "test_preferences_initialize_once_and_reject_other_users",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_identity_preferences.py",
+      "test": "test_preferences_validate_hard_constraints",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_inbox_domain.py",
+      "test": "test_mail_envelope_is_timezone_aware_and_required",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_inbox_domain.py",
+      "test": "test_inbox_state_machine_retry_normalize_complete",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_inbox_domain.py",
+      "test": "test_inbox_rejects_invalid_transitions_and_empty_failure",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_inbox_domain.py",
+      "test": "test_normalized_item_has_explicit_understanding_dispositions",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_job_runner.py",
+      "test": "test_runner_completes_successful_job",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_job_runner.py",
+      "test": "test_runner_schedules_bounded_retry",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_job_runner.py",
+      "test": "test_runner_calls_startup_gate_before_first_poll",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_job_runner.py",
+      "test": "test_runner_dead_letters_unknown_job_kind",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_job_runner.py",
+      "test": "test_runner_classifies_unexpected_handler_failure_as_retryable",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_job_runner.py",
+      "test": "test_runner_preserves_explicit_permanent_error_classification",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_knowledge_chunking.py",
+      "test": "test_cleaning_removes_html_hidden_controls_and_instruction_authority",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_knowledge_chunking.py",
+      "test": "test_chunking_is_deterministic_bounded_and_overlapping",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_knowledge_service.py",
+      "test": "test_index_service_preserves_traceability_and_model_contract",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_knowledge_service.py",
+      "test": "test_qq_mail_is_indexed_as_t2_read_only_source",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_knowledge_service.py",
+      "test": "test_index_service_rejects_untrusted_unsupported_and_dimension_drift",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_knowledge_worker.py",
+      "test": "test_worker_indexes_traceable_t2_normalized_source",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_knowledge_worker.py",
+      "test": "test_worker_propagates_delete_without_reindexing",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_knowledge_worker.py",
+      "test": "test_scheduler_uses_content_version_and_deleted_tombstone_key",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_knowledge_worker.py",
+      "test": "test_scheduler_bounds_idempotency_key_for_long_provider_identifiers",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_logging.py",
+      "test": "test_sanitize_redacts_nested_sensitive_fields_and_bearer_values",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_logging.py",
+      "test": "test_filter_redacts_mapping_arguments",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_logging.py",
+      "test": "test_exception_formatter_redacts_key_value_secrets",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_logging.py",
+      "test": "test_sanitize_redacts_oauth_callback_query_values",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_logging.py",
+      "test": "test_sanitize_redacts_graph_delta_and_skip_tokens",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_logging.py",
+      "test": "test_configure_logging_suppresses_http_client_request_urls",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_logging.py",
+      "test": "test_sanitize_redacts_business_content_and_payload_fields",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_logging.py",
+      "test": "test_formatter_outputs_only_allowlisted_safe_context",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_logging.py",
+      "test": "test_exception_formatter_redacts_business_content",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_mail_delivery_fixture.py",
+      "test": "test_mail_delivery_fixture_is_fixed_and_complete",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_mail_delivery_policy.py",
+      "test": "test_policy_matches_normalized_full_sender_and_subject",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_mail_delivery_policy.py",
+      "test": "test_specific_pattern_beats_broad_pattern",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_mail_delivery_policy.py",
+      "test": "test_sender_beats_subject_and_notify_beats_hold_on_ties",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_mail_delivery_policy.py",
+      "test": "test_policy_preserves_model_delivery_without_match",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_mail_schedule.py",
+      "test": "test_periodic_scheduler_enqueues_once_per_interval",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_mail_schedule.py",
+      "test": "test_periodic_scheduler_skips_unavailable_connection",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_mail_schedule.py",
+      "test": "test_scheduler_reuses_interval_for_qq_mail_job_kind",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_mail_schedule.py",
+      "test": "test_periodic_scheduler_rejects_too_small_interval",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_mail_schedule.py",
+      "test": "test_periodic_scheduler_enqueues_every_active_connection",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_mail_sync_http.py",
+      "test": "test_sync_http_requires_owner_and_enqueues_idempotently",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_mail_sync_http.py",
+      "test": "test_sync_rejects_disconnected_connection",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_mail_sync_http.py",
+      "test": "test_source_trace_view_never_returns_body_or_recipients",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_mail_sync_service.py",
+      "test": "test_qq_image_only_ingest_requires_asset_flag_and_is_idempotent",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_mail_sync_service.py",
+      "test": "test_sync_pages_ingest_normalize_dedupe_delete_and_advance_cursor",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_mail_sync_service.py",
+      "test": "test_authentication_failure_marks_connection_and_does_not_advance_cursor",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_mail_sync_service.py",
+      "test": "test_content_failure_does_not_create_item_or_advance_cursor",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_mail_sync_service.py",
+      "test": "test_normalization_failure_retries_existing_item_without_duplication",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_mail_sync_service.py",
+      "test": "test_sync_requires_positive_lookback",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_merged_forward_normalizer.py",
+      "test": "test_merged_forward_preserves_stable_depth_first_order",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_merged_forward_normalizer.py",
+      "test": "test_merged_forward_enforces_bounded_tree_limits",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_merged_forward_normalizer.py",
+      "test": "test_merged_forward_rejects_cycles",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_metrics.py",
+      "test": "test_metrics_are_stable_aggregates_without_content_labels",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_metrics.py",
+      "test": "test_metrics_ratio_is_safe_for_empty_trial_window",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_microsoft_oauth_http.py",
+      "test": "test_start_requires_owner_session_and_sets_loopback_flow_cookie",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_microsoft_oauth_http.py",
+      "test": "test_callback_maps_safe_result_and_does_not_return_provider_parameters",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_microsoft_oauth_http.py",
+      "test": "test_callback_resolves_managed_todo_list_after_authorization",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_microsoft_oauth_http.py",
+      "test": "test_disconnect_requires_owner_csrf_and_explicit_confirmation",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_microsoft_oauth_http.py",
+      "test": "test_explicit_todo_resolution_requires_owner_csrf",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_microsoft_oauth_http.py",
+      "test": "test_owner_bootstrap_redirects_without_url_secret",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_microsoft_oauth_http.py",
+      "test": "test_owner_bootstrap_canonicalizes_127_to_callback_cookie_host",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_microsoft_oauth_http.py",
+      "test": "test_all_oauth_and_connection_routes_reject_non_loopback_host",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_microsoft_oauth_http.py",
+      "test": "test_connection_list_returns_safe_multi_account_shape",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_normalization.py",
+      "test": "test_html_normalization_discards_active_and_hidden_markup",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_normalization.py",
+      "test": "test_text_normalization_is_bounded_and_prefers_text_body",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_normalization.py",
+      "test": "test_normalization_service_is_deterministic_and_requires_hash",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_notification_eligibility.py",
+      "test": "test_recovered_connection_invalidates_pending_reauth",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_notification_eligibility.py",
+      "test": "test_deleted_agenda_entry_invalidates_pending_digest",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_notification_eligibility.py",
+      "test": "test_direct_agent_recovery_result_is_delivery_eligible",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_notification_intents.py",
+      "test": "test_notification_intent_transitions_are_versioned_and_terminal",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_notification_intents.py",
+      "test": "test_quiet_hours_defer_overnight_and_allow_daytime",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_notification_intents.py",
+      "test": "test_quiet_hours_are_deterministic_across_dst_transitions",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_notification_intents.py",
+      "test": "test_delivery_leases_revalidates_and_sends_once",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_notification_intents.py",
+      "test": "test_delivery_cancels_stale_source_without_sending",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_notification_intents.py",
+      "test": "test_delivery_rechecks_quiet_hours_and_defers_lease",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_notification_intents.py",
+      "test": "test_eligibility_failure_retries_without_contacting_sender",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_notification_intents.py",
+      "test": "test_pre_send_failure_retries_then_dead_letters",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_notification_planning.py",
+      "test": "test_mail_digest_scopes_user_excludes_immediate_and_batches_titles",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_notification_planning.py",
+      "test": "test_planning_is_deterministic_and_version_keyed",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_notification_service.py",
+      "test": "test_reminder_delivery_is_idempotent_and_source_labelled",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_notification_service.py",
+      "test": "test_reminder_card_uses_opaque_complete_and_defer_buttons",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_notification_service.py",
+      "test": "test_reminder_version_gate_and_outbound_source_labels",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_notification_service.py",
+      "test": "test_verified_completion_is_persisted_and_never_sent",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_notification_timeline_events.py",
+      "test": "test_sent_notification_mirrors_delivered_snapshot_into_timeline",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_notification_timeline_events.py",
+      "test": "test_repeated_cycles_keep_a_single_idempotent_timeline_key",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_notification_timeline_events.py",
+      "test": "test_settled_content_snapshot_is_unchanged_when_draft_mutates",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_notification_timeline_events.py",
+      "test": "test_failed_event_never_becomes_delivered_on_retry_reconciliation",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_notification_timeline_events.py",
+      "test": "test_system_result_is_used_for_calendar_and_reauth_notifications",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_notification_timeline_events.py",
+      "test": "test_transient_failure_then_retry_success_records_delivered",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_notification_timeline_events.py",
+      "test": "test_permanent_failure_records_dead_letter_as_failed_event",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_notification_timeline_events.py",
+      "test": "test_ambiguous_and_cancelled_intents_do_not_claim_delivery",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_notification_timeline_events.py",
+      "test": "test_timeline_failure_does_not_break_delivery",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_notification_timeline_events.py",
+      "test": "test_delivery_without_timeline_port_is_unchanged",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_ollama_adapter.py",
+      "test": "test_embedding_adapter_returns_provider_neutral_valid_vector",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_ollama_adapter.py",
+      "test": "test_embedding_adapter_rejects_dimension_drift",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_ollama_adapter.py",
+      "test": "test_health_classifies_network_failure_without_provider_details",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_ollama_adapter.py",
+      "test": "test_embedding_contract_rejects_empty_text_and_wrong_model",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_owner_group_aliases.py",
+      "test": "test_owner_group_alias_is_normalized_and_idempotent",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_owner_group_aliases.py",
+      "test": "test_owner_group_alias_rejects_non_owner_and_invalid_tool_requests",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_owner_session.py",
+      "test": "test_owner_session_is_signed_expiring_and_tamper_evident",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_owner_session.py",
+      "test": "test_csrf_requires_matching_cookie_and_header",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_provider_readiness.py",
+      "test": "test_startup_gate_waits_until_embedding_provider_is_ready",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_provider_readiness.py",
+      "test": "test_startup_gate_rejects_invalid_retry_settings",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_qq_commands.py",
+      "test": "test_direct_message_passes_persisted_snapshot_to_execution",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_qq_commands.py",
+      "test": "test_direct_message_uses_one_persistent_agent_run",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_qq_commands.py",
+      "test": "test_coalesced_path_schedules_recovery_and_executes_one_run",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_qq_commands.py",
+      "test": "test_out_of_order_batch_replies_via_evidence_callback_with_command_anchor",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_qq_commands.py",
+      "test": "test_direct_context_failure_marks_pending_run_failed",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_qq_commands.py",
+      "test": "test_all_forwarded_markers_are_indexed_without_agent_run",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_qq_commands.py",
+      "test": "test_forward_marker_in_middle_is_ordinary_direct_message",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_qq_commands.py",
+      "test": "test_empty_forward_marker_is_rejected",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_qq_commands.py",
+      "test": "test_forwarded_content_is_t2_and_never_creates_agent_run",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_qq_commands.py",
+      "test": "test_owner_note_is_t2_index_source_without_agent_run",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_qq_commands.py",
+      "test": "test_duplicate_media_ingress_skips_asset_discovery_and_normalization",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_qq_commands.py",
+      "test": "test_image_only_ingress_forwards_blank_caption_with_asset_flag",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_qq_commands.py",
+      "test": "test_recovery_enqueue_failure_does_not_block_immediate_agent_execution",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_qq_commands.py",
+      "test": "test_in_progress_result_is_explicit_when_recovery_enqueue_fails",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_qq_commands.py",
+      "test": "test_media_caption_markers_do_not_enter_agent_path",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_qq_commands.py",
+      "test": "test_completed_duplicate_reuses_persisted_agent_reply",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_qq_commands.py",
+      "test": "test_media_caption_stays_out_of_the_agent_command_path",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_qq_gateway.py",
+      "test": "test_official_image_descriptor_reaches_owner_ingress",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_qq_gateway.py",
+      "test": "test_raw_event_summary_excludes_sensitive_scalar_values",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_qq_gateway.py",
+      "test": "test_raw_event_diagnostic_wraps_parser_once_and_preserves_dispatch",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_qq_gateway.py",
+      "test": "test_raw_event_diagnostic_disabled_does_not_wrap_parser",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_qq_gateway.py",
+      "test": "test_raw_event_summary_handles_missing_or_malformed_data",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_qq_gateway.py",
+      "test": "test_official_attachment_mapping_accepts_url_only_c2c_image",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_qq_gateway.py",
+      "test": "test_official_attachment_mapping_rejects_non_image_and_incomplete_values",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_qq_gateway.py",
+      "test": "test_callback_rejects_non_owner_before_attachment_capability_reply",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_qq_gateway.py",
+      "test": "test_callback_treats_none_attachments_as_ordinary_text",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_qq_gateway.py",
+      "test": "test_callback_keeps_valid_image_when_other_attachment_is_unsupported",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_qq_gateway.py",
+      "test": "test_callback_rejects_unsupported_only_input_without_ingress",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_qq_gateway.py",
+      "test": "test_callback_accepts_image_without_caption",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_qq_gateway.py",
+      "test": "test_callback_processes_text_when_only_attachment_is_unsupported",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_qq_gateway.py",
+      "test": "test_non_owner_is_rejected_before_ingress",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_qq_gateway.py",
+      "test": "test_owner_message_becomes_t1_provider_neutral_envelope",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_qq_gateway.py",
+      "test": "test_provider_order_and_reference_are_recorded_only_as_safe_metadata",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_qq_gateway.py",
+      "test": "test_owner_command_errors_are_safe_and_provider_details_are_hidden",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_qq_gateway.py",
+      "test": "test_agent_protocol_error_has_a_stable_user_facing_reply",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_qq_gateway.py",
+      "test": "test_gateway_supervisor_reconnects_after_disconnect",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_qq_gateway.py",
+      "test": "test_gateway_ready_send_and_cancel_close_client",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_qq_gateway.py",
+      "test": "test_qq_provider_response_mapping_is_contained",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_qq_gateway.py",
+      "test": "test_reminder_button_exposes_only_opaque_action_token",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_qq_gateway.py",
+      "test": "test_owner_interaction_is_acknowledged_then_dispatches_and_reports_result",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_qq_gateway.py",
+      "test": "test_interaction_action_failure_returns_state_neutral_safe_result",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_qq_gateway.py",
+      "test": "test_qq_timestamp_parser_requires_rfc3339_timezone",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_qq_mail_connection.py",
+      "test": "test_connect_stores_only_reference_and_redacts_command",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_qq_mail_connection.py",
+      "test": "test_non_owner_is_rejected_before_verification_or_storage",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_qq_mail_connection.py",
+      "test": "test_disconnect_cancels_jobs_deletes_sources_and_credential",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_qq_mail_connection.py",
+      "test": "test_reauthentication_replaces_old_credential",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_qq_mail_connection.py",
+      "test": "test_authentication_failure_moves_connection_to_reauth_required",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_qq_mail_connection.py",
+      "test": "test_sync_success_records_timezone_aware_completion",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_qq_mail_connection.py",
+      "test": "test_transient_failure_degrades_and_success_recovers_connection",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_qq_mail_connection.py",
+      "test": "test_connect_supports_multiple_qq_mail_accounts",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_qq_mail_http.py",
+      "test": "test_connect_requires_loopback_owner_and_csrf",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_qq_mail_http.py",
+      "test": "test_signed_non_owner_session_is_rejected",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_qq_mail_http.py",
+      "test": "test_routes_are_hidden_on_non_loopback_host",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_qq_mail_http.py",
+      "test": "test_disconnect_requires_explicit_confirmation",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_qq_mail_http.py",
+      "test": "test_owner_start_bootstraps_qq_mail_destination_without_url_secret",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_qq_mail_http.py",
+      "test": "test_connection_list_requires_owner_and_returns_safe_shape",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_qq_turn_context.py",
+      "test": "test_material_followed_by_short_command_becomes_one_safe_turn",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_qq_turn_context.py",
+      "test": "test_t2_text_cannot_authorize_an_operation",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_qq_turn_context.py",
+      "test": "test_multiple_explicit_direct_commands_remain_t1",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_qq_turn_context.py",
+      "test": "test_long_notice_containing_reminder_word_remains_t2_material",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_qq_turn_context.py",
+      "test": "test_turn_without_a_final_direct_message_is_not_executable",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_qq_turn_recovery.py",
+      "test": "test_recovery_creates_one_run_from_material_and_short_command",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_qq_turn_recovery.py",
+      "test": "test_superseded_recovery_job_does_nothing",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_qq_turn_recovery.py",
+      "test": "test_malformed_recovery_payload_is_permanent",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_reminder_actions.py",
+      "test": "test_complete_handler_uses_idempotent_actions_gate",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_reminder_actions.py",
+      "test": "test_defer_handler_passes_controlled_delay_and_occurrence",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_reminder_actions.py",
+      "test": "test_defer_handler_rejects_unknown_delay",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_reminder_actions.py",
+      "test": "test_dispatcher_does_not_consume_unknown_action",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_reminder_actions.py",
+      "test": "test_dispatcher_rejects_action_type_mismatch",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_reminder_actions.py",
+      "test": "test_dispatcher_maps_handler_state_error_to_idempotent_result",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_reminder_domain.py",
+      "test": "test_reminder_lease_expiry_retry_and_exactly_once_terminal_state",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_reminder_domain.py",
+      "test": "test_reminder_cancel_snooze_and_validation",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_reminder_domain.py",
+      "test": "test_reminder_rejects_invalid_creation_leases_delivery_and_dead_letter",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_reminder_service.py",
+      "test": "test_reminder_service_schedule_lease_fail_send_snooze_and_cancel",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_reminder_service.py",
+      "test": "test_reminder_service_validates_limit_missing_and_terminal_cancel",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_retrieval_service.py",
+      "test": "test_query_optimization_removes_duplicate_terms_and_bounds_length",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_retrieval_service.py",
+      "test": "test_punctuation_only_query_skips_embedding_and_search",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_retrieval_service.py",
+      "test": "test_hybrid_rrf_fuses_deduplicates_and_preserves_sources",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_retrieval_service.py",
+      "test": "test_retrieval_validates_query_limit_and_aware_filters",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_scheduling_confirmation.py",
+      "test": "test_revision_increments_version_and_invalidates_old_confirmation",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_scheduling_confirmation.py",
+      "test": "test_confirmation_rejects_wrong_owner_token_expiry_and_unknown_slot",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_scheduling_planner.py",
+      "test": "test_fixed_event_is_not_moved_and_conflict_blocks_recommendation",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_scheduling_planner.py",
+      "test": "test_task_slots_obey_work_lunch_busy_deadline_and_two_alternatives",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_scheduling_planner.py",
+      "test": "test_task_deadline_is_not_used_as_event_slot_and_missing_duration_is_explicit",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_scheduling_planner.py",
+      "test": "test_allowed_window_and_no_space_are_explained",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_scheduling_planner.py",
+      "test": "test_invalid_allowed_windows_are_rejected",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_scheduling_planner.py",
+      "test": "test_weekend_and_cross_day_duration_never_pass_work_hours",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_scheduling_planner.py",
+      "test": "test_no_deadline_search_horizon_is_bounded_to_fourteen_days",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_scheduling_planner.py",
+      "test": "test_proposal_rejects_invalid_aggregate_fields",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_scheduling_planner.py",
+      "test": "test_proposal_rejects_invalid_slots",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_scheduling_service.py",
+      "test": "test_service_creates_idempotent_side_effect_free_proposal",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_scheduling_service.py",
+      "test": "test_service_rejects_missing_candidate",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_scheduling_service.py",
+      "test": "test_service_plans_fixed_event_and_returns_missing_proposal",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_scheduling_service.py",
+      "test": "test_service_handles_expired_task_horizon_and_unknown_candidate_type",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_scheduling_service.py",
+      "test": "test_service_confirmation_revision_rejection_execution_and_queries",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_settings.py",
+      "test": "test_settings_accept_safe_loopback_configuration",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_settings.py",
+      "test": "test_settings_maps_optional_qq_mail_bootstrap_credentials",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_settings.py",
+      "test": "test_settings_requires_complete_qq_mail_bootstrap_pair",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_settings.py",
+      "test": "test_settings_diagnostic_flag_can_be_enabled",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_settings.py",
+      "test": "test_settings_reject_qq_quiet_window_longer_than_batch_deadline",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_settings.py",
+      "test": "test_microsoft_todo_requires_explicit_feature_enablement",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_settings.py",
+      "test": "test_settings_accept_200k_agent_context_profile",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_settings.py",
+      "test": "test_settings_reject_agent_context_above_200k",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_settings.py",
+      "test": "test_settings_reject_history_limit_above_80",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_settings.py",
+      "test": "test_settings_reject_per_request_output_above_total_budget",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_settings.py",
+      "test": "test_settings_require_output_and_margin_to_leave_input_context",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_settings.py",
+      "test": "test_settings_reject_non_loopback_database",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_settings.py",
+      "test": "test_settings_container_mode_accepts_exact_compose_values",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_settings.py",
+      "test": "test_settings_container_mode_rejects_non_zero_bind",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_settings.py",
+      "test": "test_settings_container_mode_rejects_non_compose_database_host",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_settings.py",
+      "test": "test_settings_container_mode_rejects_non_docker_ollama_url",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_settings.py",
+      "test": "test_settings_bare_metal_rejects_container_database_host",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_settings.py",
+      "test": "test_settings_reject_llm_payload_persistence",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_settings.py",
+      "test": "test_settings_reject_blank_qq_display_name",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_settings.py",
+      "test": "test_secret_string_does_not_render_value",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_settings.py",
+      "test": "test_settings_container_mode_rejects_unmounted_asset_path",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_source_asset_cleanup.py",
+      "test": "test_cleanup_deletes_blob_before_marking_asset_deleted",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_source_asset_cleanup.py",
+      "test": "test_cleanup_is_noop_before_expiry",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_source_asset_pipeline.py",
+      "test": "test_discovery_is_idempotent_and_recovers_pending_jobs",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_source_asset_pipeline.py",
+      "test": "test_fetch_stores_bounded_blob_and_schedules_parse",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_source_asset_pipeline.py",
+      "test": "test_parse_persists_text_marks_asset_and_schedules_knowledge",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_source_asset_pipeline.py",
+      "test": "test_fetch_rejects_mismatched_and_declared_oversized_assets",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_source_asset_pipeline.py",
+      "test": "test_fetch_marks_provider_auth_failure_and_keeps_asset_retryable",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_source_asset_pipeline.py",
+      "test": "test_fetch_deletes_blob_when_metadata_save_loses_race",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_source_asset_pipeline.py",
+      "test": "test_parse_marks_malformed_asset_terminal_without_scheduling",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_source_assets.py",
+      "test": "test_source_asset_lifecycle_is_t2_and_versioned",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_source_assets.py",
+      "test": "test_source_asset_rejects_unbounded_or_invalid_metadata",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_source_assets.py",
+      "test": "test_file_blob_store_uses_opaque_bounded_paths",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_stage6_workers.py",
+      "test": "test_reminder_worker_sends_stale_dead_letters_and_retries",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_stage6_workers.py",
+      "test": "test_reminder_worker_does_not_mark_suppressed_delivery_sent",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_task_completion.py",
+      "test": "test_completed_task_invokes_actions_and_suppresses",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_task_completion.py",
+      "test": "test_unknown_or_unfinished_state_always_sends",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_task_completion.py",
+      "test": "test_action_failure_and_missing_task_cannot_suppress",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_task_completion.py",
+      "test": "test_gate_timeout_degrades_to_send",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_task_completion.py",
+      "test": "test_delta_completion_advances_cursor_only_after_verified_action",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_task_projection.py",
+      "test": "test_resolve_managed_list_is_exact_owner_bound_and_idempotent",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_task_projection.py",
+      "test": "test_resolve_rejects_missing_ambiguous_or_non_private_list",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_task_projection.py",
+      "test": "test_projection_mapping_state_does_not_treat_detach_as_completion",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_task_projection_service.py",
+      "test": "test_active_entry_is_upserted_idempotently_to_same_mapping",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_task_projection_service.py",
+      "test": "test_provider_failure_keeps_agenda_unchanged_and_marks_retry",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_task_projection_service.py",
+      "test": "test_terminal_agenda_closes_existing_projection",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_task_projection_service.py",
+      "test": "test_terminal_projection_recovers_task_created_before_local_mapping_save",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_task_projection_service.py",
+      "test": "test_stale_event_never_calls_provider",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_task_projection_worker.py",
+      "test": "test_outbox_is_marked_only_after_projection_job_is_enqueued",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_task_projection_worker.py",
+      "test": "test_reconciliation_backfills_active_entries_once_per_time_bucket",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_task_projection_worker.py",
+      "test": "test_delta_scheduler_enqueues_each_ready_target_once_per_minute",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_task_projection_worker.py",
+      "test": "test_job_handler_preserves_retry_classification",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_task_projection_worker.py",
+      "test": "test_disabled_projection_does_not_schedule_or_call_provider_handlers",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_task_projection_worker.py",
+      "test": "test_enabled_projection_schedules_and_routes_provider_jobs",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_timeline_context.py",
+      "test": "test_regions_are_ordered_summaries_older_turns_notifications",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_timeline_context.py",
+      "test": "test_summary_coverage_removes_duplicate_older_events",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_timeline_context.py",
+      "test": "test_current_turn_events_are_excluded",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_timeline_context.py",
+      "test": "test_protected_zone_covers_only_recent_turns",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_timeline_context.py",
+      "test": "test_notification_events_render_as_external_tool_messages",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_timeline_context.py",
+      "test": "test_empty_timeline_yields_no_messages_with_zero_snapshot",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_timeline_context.py",
+      "test": "test_hard_limit_truncates_oldest_turns_and_records_diagnostics",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_timeline_context.py",
+      "test": "test_duplicate_events_across_scope_reads_are_deduplicated",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_timeline_context.py",
+      "test": "test_protected_turns_bounds_are_enforced",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_timeline_context.py",
+      "test": "test_cross_source_events_keep_global_sequence_order",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_timeline_context.py",
+      "test": "test_daily_digest_precedes_following_conversation_turn",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_timeline_context.py",
+      "test": "test_owner_timeline_isolated_by_user",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_timeline_context.py",
+      "test": "test_summary_write_rejects_duplicate_source_sequence",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_timeline_context.py",
+      "test": "test_summary_write_uses_immutable_source_hash",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_timeline_context.py",
+      "test": "test_timeline_budget_records_compression_preparation_without_content",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_timeline_context.py",
+      "test": "test_pinned_snapshot_excludes_events_arriving_during_execution",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_timeline_context.py",
+      "test": "test_older_events_beyond_limit_record_diagnostics",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_timeline_context.py",
+      "test": "test_selection_diagnostics_are_bounded_and_do_not_include_content",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_understanding_domain.py",
+      "test": "test_event_and_task_invariants_are_distinct",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_understanding_domain.py",
+      "test": "test_task_deadline_cannot_become_execution_slot",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_understanding_domain.py",
+      "test": "test_candidate_rejects_naive_time_invalid_zone_and_confidence",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_understanding_domain.py",
+      "test": "test_candidate_rejects_invalid_kind_specific_fields_and_duration",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_understanding_schemas.py",
+      "test": "test_classification_normalizes_string_kind_only",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_understanding_schemas.py",
+      "test": "test_extraction_rejects_kind_field_confusion",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_understanding_schemas.py",
+      "test": "test_non_string_optional_enum_is_rejected",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_understanding_service.py",
+      "test": "test_task_uses_source_time_and_injection_is_only_external_data",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_understanding_service.py",
+      "test": "test_failures_and_untrusted_extra_fields_degrade_to_review",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_understanding_service.py",
+      "test": "test_model_enum_casing_is_normalized_but_unknown_values_are_rejected",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_understanding_service.py",
+      "test": "test_missing_event_duration_uses_explicit_configured_default",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_understanding_service.py",
+      "test": "test_high_confidence_irrelevant_is_ignored_without_extraction",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_understanding_service.py",
+      "test": "test_existing_candidate_is_returned_without_model_call",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_understanding_service.py",
+      "test": "test_missing_active_content_is_rejected_before_model",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_understanding_service.py",
+      "test": "test_temporal_context_rejects_invalid_default_duration",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_understanding_workflow.py",
+      "test": "test_staged_graph_applies_only_inbox_disposition",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_understanding_workflow.py",
+      "test": "test_graph_resumes_after_classification_without_second_classification",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_understanding_workflow.py",
+      "test": "test_existing_candidate_skips_extraction_and_validation",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_understanding_workflow.py",
+      "test": "test_graph_resumes_after_decision_without_model_or_validation_call",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_understanding_workflow.py",
+      "test": "test_invalid_extraction_routes_to_review_without_validation",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_understanding_workflow.py",
+      "test": "test_complete_graph_is_idempotent_and_has_no_side_effect_tools",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_web_entrypoint.py",
+      "test": "test_web_entrypoint_preserves_windows_selector_policy_for_psycopg",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_worker_connections.py",
+      "test": "test_bootstrap_skips_without_config",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_worker_connections.py",
+      "test": "test_bootstrap_skips_existing_active_connection",
+      "status": "pending_go_mapping"
+    },
+    {
+      "file": "tests/unit/test_worker_connections.py",
+      "test": "test_bootstrap_connects_once_with_secret",
+      "status": "pending_go_mapping"
+    }
+  ]
+}

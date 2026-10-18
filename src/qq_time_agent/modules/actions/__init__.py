@@ -1,1 +1,0 @@
-"""Confirmed side-effect gate."""
