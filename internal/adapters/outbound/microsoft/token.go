@@ -56,9 +56,11 @@ func (c *Client) Refresh(ctx context.Context, refresh secret.Value, tasks bool) 
 	if !refresh.Present() {
 		return application.Tokens{}, failure("Authentication")
 	}
-	scope := "User.Read Mail.Read email"
+	// MSAL added these OIDC scopes automatically in the Python implementation.
+	// email requires openid; offline_access preserves refresh-token rotation.
+	scope := "openid profile offline_access User.Read Mail.Read email"
 	if tasks {
-		scope = "User.Read Tasks.ReadWrite"
+		scope = "openid profile offline_access User.Read Tasks.ReadWrite"
 	}
 	response, err := c.exchange(ctx, url.Values{"grant_type": {"refresh_token"}, "refresh_token": {refresh.Reveal()}, "scope": {scope}})
 	if err != nil {

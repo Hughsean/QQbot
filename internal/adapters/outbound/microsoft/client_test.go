@@ -139,10 +139,10 @@ func TestPKCEExchangeIDTokenAndRefreshScopes(t *testing.T) {
 				if r.Form.Get("grant_type") != "refresh_token" || r.Form.Get("refresh_token") != "synthetic-refresh" {
 					t.Fatal("refresh grant mismatch")
 				}
-				if mode == "mail" && r.Form.Get("scope") != "User.Read Mail.Read email" {
+				if mode == "mail" && r.Form.Get("scope") != "openid profile offline_access User.Read Mail.Read email" {
 					t.Fatal("mail scope expanded")
 				}
-				if mode == "tasks" && r.Form.Get("scope") != "User.Read Tasks.ReadWrite" {
+				if mode == "tasks" && r.Form.Get("scope") != "openid profile offline_access User.Read Tasks.ReadWrite" {
 					t.Fatal("task scope expanded")
 				}
 			}

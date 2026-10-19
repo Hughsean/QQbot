@@ -93,8 +93,13 @@ AGENTS.md 第 5 节要求真实账号沙箱明确授权。所有者于本次会�
 2026-10-19 20:16（Asia/Shanghai）QQ 邮箱探针成功退出，输出仅为
 `tls=true login=true read_only_inbox=true`；未读取邮件正文或写入业务数据库。
 首次 Microsoft 入口因未完成授权而超时；20:37 重启后收到浏览器回调，返回 PermanentProvider，
-没有保存凭据。现已增加白名单错误码、HTTP 状态与固定步骤诊断，并验证未知异常不会泄漏秘密；
-具体失败原因仍需重新授权后确认。在真实回调验证成功前，不能将合成 Provider 测试视为外部通过。
+没有保存凭据。20:41 的分步诊断确认：授权码兑换、OIDC 和首次 Graph profile 已通过，
+邮件 refresh 返回 HTTP 400 / invalid_scope。Go 迁移只复制了原 MSAL 的业务 scopes，
+遗漏 MSAL `_decorate_scope` 自动附加的 `openid profile offline_access`；邮件单独请求 email 缺少 openid。
+现按原实际请求补齐两类刷新所需 OIDC 范围，保持邮件与任务 Graph 权限各自最小化。
+依据为 [Microsoft OIDC scopes](https://learn.microsoft.com/en-us/entra/identity-platform/scopes-oidc)
+和 [MSAL scope 装饰实现](https://github.com/AzureAD/microsoft-authentication-library-for-python/blob/dev/msal/application.py)。
+已增加缺少 openid 则拒绝的合成 Provider 回归；修复后的真实回调仍待验证，不能以合成测试代替。
 
 当前 `web` 仍只装配 G1 健康入口。G2 HTTP/用例通过明确测试端口验证；Sources、Jobs、Audit
 必须在 G3/G8/G10 接入真实实现后才可启用业务路由和完整端到端验收，不能注入空实现。

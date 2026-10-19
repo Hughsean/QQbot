@@ -33,6 +33,10 @@ disconnect()
 - 权限类型：委托权限。
 - Graph 委托权限：`User.Read`、`Mail.Read`、`Tasks.ReadWrite`。
 - OAuth scopes：`openid profile email offline_access User.Read Mail.Read Tasks.ReadWrite`。
+- 刷新请求保留旧 MSAL 自动补齐的 `openid profile offline_access`：邮件使用
+  `openid profile offline_access User.Read Mail.Read email`，任务使用
+  `openid profile offline_access User.Read Tasks.ReadWrite`。`email` 必须随 `openid` 请求；
+  `offline_access` 保持 refresh rotation。两条路径分别限制 Graph 邮件/任务权限，不使用 `.default`。
 
 ### 授权流程
 
