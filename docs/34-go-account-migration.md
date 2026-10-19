@@ -2,8 +2,8 @@
 
 本阶段以 ADR-0010、ADR-0011、ADR-0017、文档 04/05/06/07 和 Main 原实现为行为基线。
 当前状态（2026-10-19）：本地实现与自动化门禁通过；所有者已授权两个只读账号沙箱，
-QQ 邮箱真实验证通过，Microsoft 探针已启动并等待浏览器授权回调；
-G2 未满足全部门禁，不能进入 G3 或宣称账号迁移完成。
+QQ 邮箱与 Microsoft 真实只读验证均通过；G2 账号内核门禁通过，可以进入 G3。
+账号业务路由仍须等待来源删除与审计真实实现后装配，完整迁移与生产切换尚未完成。
 
 ## 实施顺序与验收
 
@@ -101,11 +101,17 @@ AGENTS.md 第 5 节要求真实账号沙箱明确授权。所有者于本次会�
 和 [MSAL scope 装饰实现](https://github.com/AzureAD/microsoft-authentication-library-for-python/blob/dev/msal/application.py)。
 已增加缺少 openid 则拒绝的合成 Provider 回归；修复后的真实回调仍待验证，不能以合成测试代替。
 
+修复版本 `9e4c03d` 于 20:43 启动新探针，所有者随后反馈页面明确显示：
+`Microsoft sandbox passed: PKCE, OIDC, profile, mail refresh and task refresh. No credentials were saved.`
+该页面仅在全部验证及两次刷新后的账号一致性校验成功后返回。23:03 记录此反馈时，原工具进程
+会话已被回收，无法补取退出码；真实成功证据为所有者反馈的固定成功页，不宣称取得 CLI 退出码。
+修复后全量 Go 单元/契约/架构、Docker PostgreSQL 集成、vet、staticcheck 再次通过；
+项目覆盖 91.6%，各核心包均达到 90% 门槛。此前 Linux 全量竞态已通过，后续新增模块继续检查竞态。
+
 当前 `web` 仍只装配 G1 健康入口。G2 HTTP/用例通过明确测试端口验证；Sources、Jobs、Audit
 必须在 G3/G8/G10 接入真实实现后才可启用业务路由和完整端到端验收，不能注入空实现。
 Microsoft To Do 列表解析/完成回写属于 G9；Agent 工具请求映射属于 G6，相关历史用例保持待映射。
 失效授权流的密文记录继续受到期检查，物理保留清理由 G8 接入。
 
 本次再次只读复核 HP：旧 Python Web/Worker/QQ 三容器均为 exited，PostgreSQL/Ollama 为 running；
-容器、镜像、卷均保留，未推送、未在 HP 部署 Go。下一步是完成 Microsoft 只读 Provider 沙箱，
-如出现兼容差异则先修复 G2，不越过门禁进入 G3。
+容器、镜像、卷均保留，未推送、未在 HP 部署 Go。下一步为 G3 来源、规范化与受限解析迁移。

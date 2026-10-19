@@ -25,8 +25,7 @@ The default Compose project is `qq-time-agent-go-dev`, with separate Go developm
 volumes. Only the `development` profile starts the health Web process. The `migrate`
 operation initializes empty databases; it refuses to adopt an unverified existing
 Python database. Account modules and loopback HTTP contracts have passed local
-tests. Both read-only probes are now owner-authorized: QQ Mail passed, while
-Microsoft awaits the interactive browser callback;
+tests. Both owner-authorized read-only probes, QQ Mail and Microsoft, passed;
 see `docs/34-go-account-migration.md`. Their business HTTP routes are not yet
 wired into the health-only process: source deletion and audit must use the real
 modules as they migrate. Worker, business QQ processing, mail synchronization,

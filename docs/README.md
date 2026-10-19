@@ -50,7 +50,7 @@ QQ Time Agent 是一个仅供项目所有者本人使用、以 QQ 为主要交�
 | [31-qq-ingress-turn-verification.md](31-qq-ingress-turn-verification.md) | QQ 连续消息合并实现、迁移、恢复与本地验证证据 |
 | [32-go-migration.md](32-go-migration.md) | 保留全部功能和数据的 Go 分阶段迁移与验收 |
 | [33-go-foundation-verification.md](33-go-foundation-verification.md) | Go 基础验证、旧实现分支清理与 HP 停止保留记录 |
-| [34-go-account-migration.md](34-go-account-migration.md) | Go 账号、凭据、邮箱授权的本地验证和待完成沙箱门禁 |
+| [34-go-account-migration.md](34-go-account-migration.md) | Go 账号、凭据、邮箱授权的本地验证和真实沙箱证据 |
 | [adr/](adr/) | 已接受的关键架构决策（含 Microsoft To Do 外部投影、迁移链单基线） |
 
 ## 决策优先级
@@ -82,7 +82,7 @@ QQ Time Agent 是一个仅供项目所有者本人使用、以 QQ 为主要交�
 ## 当前已确定的运行条件
 
 2026-10-19 Go 迁移分支说明：G1 基础层已通过；G2 的账号、凭据、邮箱授权和 HTTP 契约已完成
-本地实现与自动化验证，真实 QQ 邮箱沙箱已通过，Microsoft 沙箱已获授权并等待浏览器回调；
+本地实现与自动化验证，真实 QQ 邮箱及 Microsoft 只读沙箱均已通过；
 G3–G10 尚待迁移。HP 上的旧 Python
 Web/Worker/QQ 容器已按所有者要求停止且保留，数据库和 Ollama 继续运行。下文既有阶段与版本
 记录属于 Python 历史验证，不能视为 Go 功能已实现。Go 默认 Compose 使用独立开发项目和卷。
