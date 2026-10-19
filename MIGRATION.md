@@ -29,8 +29,9 @@ tests. Both owner-authorized read-only probes, QQ Mail and Microsoft, passed;
 see `docs/34-go-account-migration.md`. Their business HTTP routes are not yet
 wired into the health-only process: source deletion and audit must use the real
 modules as they migrate. Worker, business QQ processing, mail synchronization,
-Agenda, RAG and To Do remain scheduled migration work. G3a tests passed; source persistence,
-mail delta/UID synchronization and bounded asset parsing remain in G3. See `docs/35-go-source-migration.md`.
+Agenda, RAG and To Do remain scheduled migration work. G3a/G3b tests passed for source state,
+text normalization and Inbox persistence. Mail delta/UID synchronization and bounded asset
+parsing remain in G3. See `docs/35-go-source-migration.md`.
 Do not mount production volumes into this
 stack or deploy it as the production replacement.
 

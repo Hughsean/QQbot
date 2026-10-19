@@ -496,7 +496,12 @@
     {
       "file": "tests/integration/test_inbox_persistence.py",
       "test": "test_inbox_ingest_is_idempotent_traceable_and_cursor_is_owned",
-      "status": "pending_go_mapping"
+      "status": "mapped_go_regression",
+      "go_tests": [
+        "tests/gosources/inbox_test.go:TestInboxConcurrentIngestIsImmutableTraceableAndConnectionScoped",
+        "tests/gosources/inbox_test.go:TestInboxDeletionAndConnectionFencePreventResurrection",
+        "tests/gosources/inbox_failure_test.go:TestInboxRollbackAndInvalidCursorWritesFailClosed"
+      ]
     },
     {
       "file": "tests/integration/test_inbox_persistence.py",

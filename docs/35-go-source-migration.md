@@ -40,5 +40,27 @@ G3a 已完成：
   govulncheck 未发现漏洞。总体覆盖 92.2%，新增 Inbox Domain、Normalization Domain/Application 均为 100%。
 - 601 条历史测试场景中 55 条已映射 Go 回归、546 条仍待迁移，架构测试验证每个引用存在。
 
-源表与 normalization_contents 基线没有改写。G3b–G3d 仍待完成，本轮没有真实邮件读取、
+源表与 normalization_contents 基线没有改写。G3c–G3d 仍待完成，本轮没有真实邮件读取、
 没有在 HP 部署服务，也未启用任何账号业务 HTTP 路由。
+
+## G3b 实施边界
+
+Inbox 自有事务按 connection UUID 获取与旧实现兼容的 advisory lock，串行去重、状态更新、
+游标写入、来源删除与连接围栏；不同连接独立。两个唯一键仍为 (connection_id, external_id)
+和 (connection_id, dedupe_key)，重复输入不覆盖原文或来源。只在新建记录时写原始正文。
+标记删除立即使正文查询不可见，保留脱敏来源视图和删除身份，后续同外部 ID 或 dedupe key
+不得复活；连接重新允许不清空来源删除记录。物理删除和跨模块传播仍属于 G3d/G8。
+游标只用不可日志化的 opaque secret.Value，经连接围栏检查后保存，不进入公开 HTTP。
+此阶段提供真实 Inbox 数据端口，但不会用仅删除 Inbox 的局部操作假装整个连接清理成功。
+
+G3b 已完成上述 Inbox 内核：typed mail/metadata、事务内原文新建、外部键/Message-ID 次级键
+去重、乐观版本更新、secret.Value 游标、删除身份围栏和脱敏来源视图。
+验证包括 16 路并发去重只产生一组 Inbox/Raw、20 轮删除/摄入竞态、UID 改变后去重、
+连接隔离、重复输入原文不变、删除前/后/重新允许连接的复活拒绝、迟到状态写入拒绝、
+游标非法/围栏拒绝、原文插入失败后事务回滚无孤儿，以及 nullable 元数据 JSON 的历史兼容。
+两个唯一键分别匹配不同旧记录时明确报 Conflict，不任选一条。
+
+Go 全量单元/架构/数据库集成、Linux 全量竞态、gofmt/vet/staticcheck 与秘密扫描通过。
+总体覆盖 92.5%，Inbox Application/Domain 和 Normalization Application/Domain 均为 100%。
+现有依赖版本不变。历史映射为 56/601，545 条待迁移；包含物理清理的原测试仍保持 pending，
+不以局部围栏测试代替完整删除传播。完整 G3 尚未验收。
