@@ -99,7 +99,7 @@ AGENTS.md 第 5 节要求真实账号沙箱明确授权。所有者于本次会�
 现按原实际请求补齐两类刷新所需 OIDC 范围，保持邮件与任务 Graph 权限各自最小化。
 依据为 [Microsoft OIDC scopes](https://learn.microsoft.com/en-us/entra/identity-platform/scopes-oidc)
 和 [MSAL scope 装饰实现](https://github.com/AzureAD/microsoft-authentication-library-for-python/blob/dev/msal/application.py)。
-已增加缺少 openid 则拒绝的合成 Provider 回归；修复后的真实回调仍待验证，不能以合成测试代替。
+随后增加缺少 openid 则拒绝的合成 Provider 回归，并启动修复后的真实验证。
 
 修复版本 `9e4c03d` 于 20:43 启动新探针，所有者随后反馈页面明确显示：
 `Microsoft sandbox passed: PKCE, OIDC, profile, mail refresh and task refresh. No credentials were saved.`

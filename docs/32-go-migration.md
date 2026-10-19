@@ -19,7 +19,7 @@ HP 旧应用容器已按所有者授权停止但未删除。以下“待验收�
 | G0 决策 | 开发栈、模块、SDK、无公网约束 | ADR、依赖版本、迁移清单一致 | 已冻结 |
 | G1 基础 | Bootstrap、配置、脱敏、Clock、健康、SQL 基线、Job、botgo 边界 | 构建、静态分析、单元/架构、空库建表与拒绝未核验接管、Ollama 契约、QQ 沙箱收发/重连 | 已通过；证据见文档 33 |
 | G2 账号 | Identity、Connections、Credential Vault、Microsoft PKCE/OIDC、QQ IMAP 授权 | AES-GCM 双向互通、OAuth state/nonce/CSRF、刷新/断开、多连接隔离 | 已通过本地自动化及两个真实只读账号沙箱；证据与运行时边界见文档 34 |
-| G3 来源 | Inbox、Normalization、邮件 delta/UID、资产、ICS/PDF/图片/OCR/转发 | 幂等、只读、解析资源上限、TLS、DST、删除传播、容器解析 | 待迁移 |
+| G3 来源 | Inbox、Normalization、邮件 delta/UID、资产、ICS/PDF/图片/OCR/转发 | 幂等、只读、解析资源上限、TLS、DST、删除传播、容器解析 | 进行中；G3a 起步与剩余门禁见文档 35 |
 | G4 理解 | AI Gateway、DeepSeek、Understanding、Workflow | 结构化输出拒绝未知字段、注入隔离、预算、checkpoint 恢复与固定评估 | 待迁移 |
 | G5 日程 | Agenda、Scheduling、Calendar System、Actions、确认/撤销 | 版本冲突、硬约束、并发幂等、审计、Outbox、部分成功恢复 | 待迁移 |
 | G6 交互 | Agent 会话、快照/分层摘要、turn 合并、QQ 文本/按钮、Reminder、Notifications | 同会话串行、T1/T2 分离、到期租约、推迟/完成、静默窗、未知投递不重发 | 待迁移 |

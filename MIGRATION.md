@@ -1,7 +1,7 @@
 # Go migration branch
 
 This branch contains the Go foundation, account/credential modules, email authorization
-adapters and the frozen PostgreSQL schema, not a
+adapters, Inbox processing domain, deterministic text normalization and the frozen PostgreSQL schema, not a
 complete replacement for the existing application. Track G1–G10 in
 `docs/32-go-migration.md`. The original implementation and tests remain at
 `Main@c63eae17adf4fc2cf26c694ae8ba7e7f23c93470`; historical test scenarios are
@@ -29,7 +29,9 @@ tests. Both owner-authorized read-only probes, QQ Mail and Microsoft, passed;
 see `docs/34-go-account-migration.md`. Their business HTTP routes are not yet
 wired into the health-only process: source deletion and audit must use the real
 modules as they migrate. Worker, business QQ processing, mail synchronization,
-Agenda, RAG and To Do remain scheduled migration work. Do not mount production volumes into this
+Agenda, RAG and To Do remain scheduled migration work. G3a tests passed; source persistence,
+mail delta/UID synchronization and bounded asset parsing remain in G3. See `docs/35-go-source-migration.md`.
+Do not mount production volumes into this
 stack or deploy it as the production replacement.
 
 ## HP deployment retained in stopped state

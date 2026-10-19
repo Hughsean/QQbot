@@ -1631,22 +1631,34 @@
     {
       "file": "tests/unit/test_inbox_domain.py",
       "test": "test_mail_envelope_is_timezone_aware_and_required",
-      "status": "pending_go_mapping"
+      "status": "mapped_go_regression",
+      "go_tests": [
+        "internal/modules/inbox/domain/item_test.go:TestEnvelopeRequiresValidFieldsAndZonedInstants"
+      ]
     },
     {
       "file": "tests/unit/test_inbox_domain.py",
       "test": "test_inbox_state_machine_retry_normalize_complete",
-      "status": "pending_go_mapping"
+      "status": "mapped_go_regression",
+      "go_tests": [
+        "internal/modules/inbox/domain/item_test.go:TestInboxRetryNormalizeComplete"
+      ]
     },
     {
       "file": "tests/unit/test_inbox_domain.py",
       "test": "test_inbox_rejects_invalid_transitions_and_empty_failure",
-      "status": "pending_go_mapping"
+      "status": "mapped_go_regression",
+      "go_tests": [
+        "internal/modules/inbox/domain/item_test.go:TestInboxAllTransitionsAndTerminalFailureBranches"
+      ]
     },
     {
       "file": "tests/unit/test_inbox_domain.py",
       "test": "test_normalized_item_has_explicit_understanding_dispositions",
-      "status": "pending_go_mapping"
+      "status": "mapped_go_regression",
+      "go_tests": [
+        "internal/modules/inbox/domain/item_test.go:TestInboxAllTransitionsAndTerminalFailureBranches"
+      ]
     },
     {
       "file": "tests/unit/test_job_runner.py",
@@ -1957,17 +1969,27 @@
     {
       "file": "tests/unit/test_normalization.py",
       "test": "test_html_normalization_discards_active_and_hidden_markup",
-      "status": "pending_go_mapping"
+      "status": "mapped_go_regression",
+      "go_tests": [
+        "internal/modules/normalization/infrastructure/html_test.go:TestHTMLNormalizationDiscardsActiveAndHiddenMarkup"
+      ]
     },
     {
       "file": "tests/unit/test_normalization.py",
       "test": "test_text_normalization_is_bounded_and_prefers_text_body",
-      "status": "pending_go_mapping"
+      "status": "mapped_go_regression",
+      "go_tests": [
+        "internal/modules/normalization/domain/text_test.go:TestNormalizationCapsUnicodeCharactersWithoutBreakingUTF8",
+        "internal/modules/normalization/application/service_test.go:TestNormalizationDeterministicPrefersTextAndRequiresHash"
+      ]
     },
     {
       "file": "tests/unit/test_normalization.py",
       "test": "test_normalization_service_is_deterministic_and_requires_hash",
-      "status": "pending_go_mapping"
+      "status": "mapped_go_regression",
+      "go_tests": [
+        "internal/modules/normalization/application/service_test.go:TestNormalizationDeterministicPrefersTextAndRequiresHash"
+      ]
     },
     {
       "file": "tests/unit/test_notification_eligibility.py",
