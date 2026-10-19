@@ -1,0 +1,11 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>连接 QQ 邮箱</title></head><body>
+<h1>连接 QQ 邮箱</h1><p>请输入完整 QQ 邮箱地址及在 QQ 邮箱生成的 IMAP 授权码。</p>
+<form><label>QQ 邮箱 <input name="address" type="email" autocomplete="username" required></label>
+<label>IMAP 授权码 <input name="code" type="password" autocomplete="off" required></label>
+<button>验证并连接</button></form><p id="result" aria-live="polite"></p>
+<script nonce="{{.Nonce}}">
+document.forms[0].onsubmit=async function(e){e.preventDefault();const form=e.target;const button=form.querySelector('button');button.disabled=true;
+try{const reply=await fetch('/api/v1/connections/qq-mail',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':{{.CSRF}}},body:JSON.stringify({address:form.address.value,authorization_code:form.code.value})});
+document.getElementById('result').textContent=reply.ok?'连接成功，可以关闭此页面。':'连接失败，请检查邮箱地址和授权码。';}
+catch{document.getElementById('result').textContent='连接失败，请稍后重试。';}finally{form.code.value='';button.disabled=false;}};
+</script></body></html>

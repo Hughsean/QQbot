@@ -26,8 +26,8 @@ func Run(ctx context.Context, args []string) error {
 	if role == "check-config" {
 		return nil
 	}
-	if role == "qq-sandbox" {
-		return runQQSandbox(ctx, cfg)
+	if handled, err := runSandbox(ctx, cfg, role); handled {
+		return err
 	}
 	if role == "healthcheck" {
 		return checkLiveness(ctx, cfg.ListenPort)
@@ -49,11 +49,14 @@ func Run(ctx context.Context, args []string) error {
 }
 
 func parseRole(args []string) (string, error) {
+	if len(args) == 2 && args[1] == "--allow-account-read" && (args[0] == "microsoft-sandbox" || args[0] == "qq-mail-sandbox") {
+		return args[0], nil
+	}
 	if len(args) == 2 && args[0] == "qq-sandbox" && args[1] == "--allow-send" {
 		return "qq-sandbox", nil
 	}
 	if len(args) != 1 {
-		return "", errors.New("usage: qq-time-agent <web|migrate|check-config|healthcheck|qq-sandbox --allow-send>")
+		return "", errors.New("usage: qq-time-agent <web|migrate|check-config|healthcheck|qq-sandbox --allow-send|microsoft-sandbox --allow-account-read|qq-mail-sandbox --allow-account-read>")
 	}
 	switch args[0] {
 	case "web", "migrate", "check-config", "healthcheck":

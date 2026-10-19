@@ -29,6 +29,8 @@ type Config struct {
 	SigningKey    secret.Value
 	EncryptionKey secret.Value
 	QQ            QQConfig
+	Microsoft     MicrosoftConfig
+	MailSandbox   MailSandboxConfig
 }
 
 type DatabaseConfig struct {
@@ -89,6 +91,8 @@ func ParseConfig(values map[string]string) (Config, error) {
 			Owner:     secret.New(r.text("OWNER_QQ_OPENID", "")),
 			Sandbox:   r.boolean("QQ_BOT_SANDBOX", true),
 		},
+		Microsoft:   MicrosoftConfig{ClientID: secret.New(r.text("MICROSOFT_CLIENT_ID", "")), Tenant: r.text("MICROSOFT_TENANT", "common")},
+		MailSandbox: MailSandboxConfig{Address: secret.New(r.text("QQ_MAIL_BOOTSTRAP_ADDRESS", "")), Code: secret.New(r.text("QQ_MAIL_BOOTSTRAP_AUTH_CODE", ""))},
 	}
 	if r.err != nil {
 		return Config{}, r.err

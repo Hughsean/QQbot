@@ -1,6 +1,7 @@
 # Go migration branch
 
-This branch contains the Go foundation and the frozen PostgreSQL schema, not a
+This branch contains the Go foundation, account/credential modules, email authorization
+adapters and the frozen PostgreSQL schema, not a
 complete replacement for the existing application. Track G1–G10 in
 `docs/32-go-migration.md`. The original implementation and tests remain at
 `Main@c63eae17adf4fc2cf26c694ae8ba7e7f23c93470`; historical test scenarios are
@@ -16,14 +17,19 @@ For synthetic integration tests, start the dedicated infrastructure:
 
 ```sh
 docker compose --project-name qqtimeagent-go-test --env-file ops/go-test.settings -f compose.go-test.yaml up -d --wait
-go test -tags=integration ./...
+go test -tags=integration '-coverpkg=qqtimeagent/...' '-coverprofile=coverage.out' ./...
+pwsh -File ops/Test-GoCoverage.ps1 -CoveragePath coverage.out
 ```
 
 The default Compose project is `qq-time-agent-go-dev`, with separate Go development
 volumes. Only the `development` profile starts the health Web process. The `migrate`
 operation initializes empty databases; it refuses to adopt an unverified existing
-Python database. Worker, business QQ processing, OAuth, mailbox, Agenda, RAG and
-To Do are still scheduled migration work. Do not mount production volumes into this
+Python database. Account modules and loopback HTTP contracts have passed local
+tests, while real Microsoft/QQ Mail probes await separate owner authorization;
+see `docs/34-go-account-migration.md`. Their business HTTP routes are not yet
+wired into the health-only process: source deletion and audit must use the real
+modules as they migrate. Worker, business QQ processing, mail synchronization,
+Agenda, RAG and To Do remain scheduled migration work. Do not mount production volumes into this
 stack or deploy it as the production replacement.
 
 ## HP deployment retained in stopped state

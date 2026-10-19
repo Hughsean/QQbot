@@ -61,7 +61,7 @@ func TestSourceSecretScanExcludesRealEnvironmentAndCaches(t *testing.T) {
 		regexp.MustCompile(`\bgh[pousr]_` + `[A-Za-z0-9]{20,}\b`),
 		regexp.MustCompile(`-----BEGIN (?:RSA |EC |OPENSSH )?` + `PRIVATE KEY-----`),
 	}
-	for _, directory := range []string{"cmd", "internal", "tests/goarchitecture", "docs", "ops", ".github"} {
+	for _, directory := range []string{"cmd", "internal", "tests", "docs", "ops", ".github"} {
 		err := filepath.WalkDir(filepath.Join(root, directory), func(path string, d fs.DirEntry, err error) error {
 			if err != nil {
 				return err

@@ -8,7 +8,7 @@ COPY internal/ ./internal/
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /qq-time-agent ./cmd/qq-time-agent
 
 FROM build AS verify
-COPY tests/goarchitecture/ ./tests/goarchitecture/
+COPY tests/ ./tests/
 COPY docs/go-legacy-test-inventory.json ./docs/go-legacy-test-inventory.json
 COPY ops/ ./ops/
 COPY .github/ ./.github/

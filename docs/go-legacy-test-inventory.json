@@ -1031,82 +1031,139 @@
     {
       "file": "tests/unit/test_connection_domain.py",
       "test": "test_connection_requires_credential_deletion_before_disconnect",
-      "status": "pending_go_mapping"
+      "status": "mapped_go_regression",
+      "go_tests": [
+        "internal/modules/connections/domain/connection_test.go:TestConnectionLifecycleAndReauthEpisodes",
+        "internal/modules/connections/domain/connection_test.go:TestIdentityAndActivationValidation"
+      ]
     },
     {
       "file": "tests/unit/test_connection_domain.py",
       "test": "test_connection_rejects_invalid_identity_and_activation_inputs",
-      "status": "pending_go_mapping"
+      "status": "mapped_go_regression",
+      "go_tests": [
+        "internal/modules/connections/domain/connection_test.go:TestIdentityAndActivationValidation"
+      ]
     },
     {
       "file": "tests/unit/test_connection_domain.py",
       "test": "test_connection_reauthorization_transitions_respect_terminal_states",
-      "status": "pending_go_mapping"
+      "status": "mapped_go_regression",
+      "go_tests": [
+        "internal/modules/connections/domain/connection_test.go:TestConnectionLifecycleAndReauthEpisodes",
+        "internal/modules/connections/domain/connection_test.go:TestIdentityAndActivationValidation"
+      ]
     },
     {
       "file": "tests/unit/test_connection_domain.py",
       "test": "test_connection_identity_binding_is_stable_and_sync_is_explicit",
-      "status": "pending_go_mapping"
+      "status": "mapped_go_regression",
+      "go_tests": [
+        "internal/modules/connections/domain/connection_test.go:TestConnectionLifecycleAndReauthEpisodes",
+        "internal/modules/connections/domain/connection_test.go:TestIdentityAndActivationValidation"
+      ]
     },
     {
       "file": "tests/unit/test_connection_domain.py",
       "test": "test_oauth_transaction_is_session_bound_expiring_and_one_time",
-      "status": "pending_go_mapping"
+      "status": "mapped_go_regression",
+      "go_tests": [
+        "internal/modules/connections/domain/connection_test.go:TestOAuthClaimBrowserExpiryAndReplay",
+        "tests/goaccounts/connections_test.go:TestOAuthAtomicClaimAndAuthorizationRollback"
+      ]
     },
     {
       "file": "tests/unit/test_connection_domain.py",
       "test": "test_oauth_transaction_rejects_expired_and_naive_claim_times",
-      "status": "pending_go_mapping"
+      "status": "mapped_go_regression",
+      "go_tests": [
+        "internal/modules/connections/domain/connection_test.go:TestOAuthClaimBrowserExpiryAndReplay",
+        "tests/goaccounts/connections_test.go:TestOAuthAtomicClaimAndAuthorizationRollback"
+      ]
     },
     {
       "file": "tests/unit/test_connection_service.py",
       "test": "test_authorization_activation_refresh_rotation_and_disconnect",
-      "status": "pending_go_mapping"
+      "status": "mapped_go_regression",
+      "go_tests": [
+        "internal/modules/connections/application/oauth_test.go:TestMicrosoftAuthorizationRefreshAndDisconnect"
+      ]
     },
     {
       "file": "tests/unit/test_connection_service.py",
       "test": "test_oauth_callback_is_one_time_and_browser_bound",
-      "status": "pending_go_mapping"
+      "status": "mapped_go_regression",
+      "go_tests": [
+        "internal/modules/connections/application/oauth_test.go:TestMicrosoftAuthorizationRefreshAndDisconnect"
+      ]
     },
     {
       "file": "tests/unit/test_connection_service.py",
       "test": "test_refresh_authentication_failure_enters_reauth_required",
-      "status": "pending_go_mapping"
+      "status": "mapped_go_regression",
+      "go_tests": [
+        "internal/modules/connections/application/oauth_test.go:TestRefreshErrorClassificationAndVersionFences",
+        "internal/modules/connections/application/service_test.go:TestDisconnectFailuresRemainVisibleAndRetryable"
+      ]
     },
     {
       "file": "tests/unit/test_connection_service.py",
       "test": "test_begin_adds_another_account_and_cleans_failed_transaction",
-      "status": "pending_go_mapping"
+      "status": "mapped_go_regression",
+      "go_tests": [
+        "internal/modules/connections/application/oauth_test.go:TestMicrosoftFailuresCompensateAndScopeAccounts"
+      ]
     },
     {
       "file": "tests/unit/test_connection_service.py",
       "test": "test_reauthorization_begin_and_missing_callback_context",
-      "status": "pending_go_mapping"
+      "status": "mapped_go_regression",
+      "go_tests": [
+        "internal/modules/connections/application/oauth_test.go:TestMicrosoftFailuresCompensateAndScopeAccounts"
+      ]
     },
     {
       "file": "tests/unit/test_connection_service.py",
       "test": "test_active_connection_incremental_consent_preserves_connection_and_rotates_token",
-      "status": "pending_go_mapping"
+      "status": "mapped_go_regression",
+      "go_tests": [
+        "internal/modules/connections/application/oauth_test.go:TestIncrementalAuthorizationPreservesActiveConnectionOnFailure"
+      ]
     },
     {
       "file": "tests/unit/test_connection_service.py",
       "test": "test_completion_requires_refresh_token_and_cleans_failed_save",
-      "status": "pending_go_mapping"
+      "status": "mapped_go_regression",
+      "go_tests": [
+        "internal/modules/connections/application/service_test.go:TestOAuthErrorAndCredentialEdges",
+        "internal/modules/connections/application/oauth_test.go:TestMicrosoftFailuresCompensateAndScopeAccounts"
+      ]
     },
     {
       "file": "tests/unit/test_connection_service.py",
       "test": "test_status_pending_disconnect_and_refresh_error_branches",
-      "status": "pending_go_mapping"
+      "status": "mapped_go_regression",
+      "go_tests": [
+        "internal/modules/connections/application/oauth_test.go:TestRefreshErrorClassificationAndVersionFences",
+        "internal/modules/connections/application/service_test.go:TestDisconnectFailuresRemainVisibleAndRetryable"
+      ]
     },
     {
       "file": "tests/unit/test_connection_service.py",
       "test": "test_mail_access_refreshes_rotates_and_returns_expiring_handle",
-      "status": "pending_go_mapping"
+      "status": "mapped_go_regression",
+      "go_tests": [
+        "internal/modules/connections/application/oauth_test.go:TestMicrosoftAuthorizationRefreshAndDisconnect"
+      ]
     },
     {
       "file": "tests/unit/test_connection_service.py",
       "test": "test_mail_access_guards_state_and_marks_auth_failure",
-      "status": "pending_go_mapping"
+      "status": "mapped_go_regression",
+      "go_tests": [
+        "internal/modules/connections/application/oauth_test.go:TestRefreshErrorClassificationAndVersionFences",
+        "internal/modules/connections/application/service_test.go:TestDisconnectFailuresRemainVisibleAndRetryable"
+      ]
     },
     {
       "file": "tests/unit/test_connection_service.py",
@@ -1116,12 +1173,18 @@
     {
       "file": "tests/unit/test_connection_service.py",
       "test": "test_sync_completion_and_explicit_reauth_update_connection",
-      "status": "pending_go_mapping"
+      "status": "mapped_go_regression",
+      "go_tests": [
+        "internal/modules/connections/application/sync_test.go:TestSyncLifecycleRestoresHealthAndFencesDisconnectedAccounts"
+      ]
     },
     {
       "file": "tests/unit/test_connection_service.py",
       "test": "test_completion_rejects_duplicate_microsoft_identity",
-      "status": "pending_go_mapping"
+      "status": "mapped_go_regression",
+      "go_tests": [
+        "internal/modules/connections/application/oauth_test.go:TestMicrosoftFailuresCompensateAndScopeAccounts"
+      ]
     },
     {
       "file": "tests/unit/test_connection_source_deletion.py",
@@ -1406,22 +1469,37 @@
     {
       "file": "tests/unit/test_credential_vault.py",
       "test": "test_vault_encrypts_opens_rotates_and_deletes_secret",
-      "status": "pending_go_mapping"
+      "status": "mapped_go_regression",
+      "go_tests": [
+        "internal/modules/credentials/application/vault_test.go:TestVaultEncryptRotateExpireDelete",
+        "internal/modules/credentials/application/handle_test.go:TestLongLivedRecordProducesBoundedHandleWithoutChangingStorageExpiry"
+      ]
     },
     {
       "file": "tests/unit/test_credential_vault.py",
       "test": "test_vault_enforces_expiration_and_timezone",
-      "status": "pending_go_mapping"
+      "status": "mapped_go_regression",
+      "go_tests": [
+        "internal/modules/credentials/application/vault_test.go:TestVaultEncryptRotateExpireDelete",
+        "internal/modules/credentials/application/handle_test.go:TestLongLivedRecordProducesBoundedHandleWithoutChangingStorageExpiry"
+      ]
     },
     {
       "file": "tests/unit/test_credential_vault.py",
       "test": "test_vault_rejects_empty_or_missing_replacement",
-      "status": "pending_go_mapping"
+      "status": "mapped_go_regression",
+      "go_tests": [
+        "internal/modules/credentials/application/vault_test.go:TestVaultRejectsInvalidAndPropagatesFailures"
+      ]
     },
     {
       "file": "tests/unit/test_credential_vault.py",
       "test": "test_cipher_rejects_invalid_key_and_tampered_aad",
-      "status": "pending_go_mapping"
+      "status": "mapped_go_regression",
+      "go_tests": [
+        "internal/modules/credentials/infrastructure/cipher_test.go:TestPythonAESGCMCompatibilityAndTamperRejection",
+        "internal/modules/credentials/infrastructure/cipher_test.go:TestCipherKeyEncodingsAndInputValidation"
+      ]
     },
     {
       "file": "tests/unit/test_data_lifecycle.py",
@@ -1536,12 +1614,19 @@
     {
       "file": "tests/unit/test_identity_preferences.py",
       "test": "test_preferences_initialize_once_and_reject_other_users",
-      "status": "pending_go_mapping"
+      "status": "mapped_go_regression",
+      "go_tests": [
+        "internal/modules/identity/application/identity_test.go:TestOwnerPreferencesAliasesAndMailRules",
+        "tests/goaccounts/identity_test.go:TestIdentityPersistenceConcurrentDefaultsAndUnicodeRules"
+      ]
     },
     {
       "file": "tests/unit/test_identity_preferences.py",
       "test": "test_preferences_validate_hard_constraints",
-      "status": "pending_go_mapping"
+      "status": "mapped_go_regression",
+      "go_tests": [
+        "internal/modules/identity/application/identity_test.go:TestPreferenceValidationBranches"
+      ]
     },
     {
       "file": "tests/unit/test_inbox_domain.py",
@@ -1806,12 +1891,18 @@
     {
       "file": "tests/unit/test_microsoft_oauth_http.py",
       "test": "test_start_requires_owner_session_and_sets_loopback_flow_cookie",
-      "status": "pending_go_mapping"
+      "status": "mapped_go_regression",
+      "go_tests": [
+        "internal/adapters/inbound/httpaccounts/handler_test.go:TestLoopbackOwnerCookiesAndIncrementalAuthorization"
+      ]
     },
     {
       "file": "tests/unit/test_microsoft_oauth_http.py",
       "test": "test_callback_maps_safe_result_and_does_not_return_provider_parameters",
-      "status": "pending_go_mapping"
+      "status": "mapped_go_regression",
+      "go_tests": [
+        "internal/adapters/inbound/httpaccounts/handler_test.go:TestCallbackNeverReflectsCodeOrProviderErrors"
+      ]
     },
     {
       "file": "tests/unit/test_microsoft_oauth_http.py",
@@ -1821,7 +1912,10 @@
     {
       "file": "tests/unit/test_microsoft_oauth_http.py",
       "test": "test_disconnect_requires_owner_csrf_and_explicit_confirmation",
-      "status": "pending_go_mapping"
+      "status": "mapped_go_regression",
+      "go_tests": [
+        "internal/adapters/inbound/httpaccounts/handler_test.go:TestSecurityAndStrictRequestValidation"
+      ]
     },
     {
       "file": "tests/unit/test_microsoft_oauth_http.py",
@@ -1831,22 +1925,34 @@
     {
       "file": "tests/unit/test_microsoft_oauth_http.py",
       "test": "test_owner_bootstrap_redirects_without_url_secret",
-      "status": "pending_go_mapping"
+      "status": "mapped_go_regression",
+      "go_tests": [
+        "internal/adapters/inbound/httpaccounts/handler_test.go:TestLoopbackOwnerCookiesAndIncrementalAuthorization"
+      ]
     },
     {
       "file": "tests/unit/test_microsoft_oauth_http.py",
       "test": "test_owner_bootstrap_canonicalizes_127_to_callback_cookie_host",
-      "status": "pending_go_mapping"
+      "status": "mapped_go_regression",
+      "go_tests": [
+        "internal/adapters/inbound/httpaccounts/handler_test.go:TestLoopbackOwnerCookiesAndIncrementalAuthorization"
+      ]
     },
     {
       "file": "tests/unit/test_microsoft_oauth_http.py",
       "test": "test_all_oauth_and_connection_routes_reject_non_loopback_host",
-      "status": "pending_go_mapping"
+      "status": "mapped_go_regression",
+      "go_tests": [
+        "internal/adapters/inbound/httpaccounts/handler_test.go:TestSecurityAndStrictRequestValidation"
+      ]
     },
     {
       "file": "tests/unit/test_microsoft_oauth_http.py",
       "test": "test_connection_list_returns_safe_multi_account_shape",
-      "status": "pending_go_mapping"
+      "status": "mapped_go_regression",
+      "go_tests": [
+        "internal/adapters/inbound/httpaccounts/handler_test.go:TestConnectionsJSONContractsAndMailForm"
+      ]
     },
     {
       "file": "tests/unit/test_normalization.py",
@@ -2021,7 +2127,10 @@
     {
       "file": "tests/unit/test_owner_group_aliases.py",
       "test": "test_owner_group_alias_is_normalized_and_idempotent",
-      "status": "pending_go_mapping"
+      "status": "mapped_go_regression",
+      "go_tests": [
+        "internal/modules/identity/application/identity_test.go:TestOwnerPreferencesAliasesAndMailRules"
+      ]
     },
     {
       "file": "tests/unit/test_owner_group_aliases.py",
@@ -2031,12 +2140,18 @@
     {
       "file": "tests/unit/test_owner_session.py",
       "test": "test_owner_session_is_signed_expiring_and_tamper_evident",
-      "status": "pending_go_mapping"
+      "status": "mapped_go_regression",
+      "go_tests": [
+        "internal/modules/identity/application/identity_test.go:TestOwnerSessionSignVerifyExpiryAndTamper"
+      ]
     },
     {
       "file": "tests/unit/test_owner_session.py",
       "test": "test_csrf_requires_matching_cookie_and_header",
-      "status": "pending_go_mapping"
+      "status": "mapped_go_regression",
+      "go_tests": [
+        "internal/adapters/inbound/httpaccounts/handler_test.go:TestSecurityAndStrictRequestValidation"
+      ]
     },
     {
       "file": "tests/unit/test_provider_readiness.py",
@@ -2261,72 +2376,124 @@
     {
       "file": "tests/unit/test_qq_mail_connection.py",
       "test": "test_connect_stores_only_reference_and_redacts_command",
-      "status": "pending_go_mapping"
+      "status": "mapped_go_regression",
+      "go_tests": [
+        "internal/modules/connections/application/qq_mail_test.go:TestQQMailConnectionReauthenticationAndIsolation",
+        "internal/modules/connections/application/oauth_test.go:TestMicrosoftAuthorizationRefreshAndDisconnect",
+        "internal/adapters/inbound/httpaccounts/handler_test.go:TestConnectionsJSONContractsAndMailForm",
+        "internal/adapters/inbound/httpaccounts/redaction_test.go:TestConnectDTOFormattingRedactsSubmittedCredential"
+      ]
     },
     {
       "file": "tests/unit/test_qq_mail_connection.py",
       "test": "test_non_owner_is_rejected_before_verification_or_storage",
-      "status": "pending_go_mapping"
+      "status": "mapped_go_regression",
+      "go_tests": [
+        "internal/modules/connections/application/qq_mail_test.go:TestQQMailValidationAndCompensation"
+      ]
     },
     {
       "file": "tests/unit/test_qq_mail_connection.py",
       "test": "test_disconnect_cancels_jobs_deletes_sources_and_credential",
-      "status": "pending_go_mapping"
+      "status": "mapped_go_regression",
+      "go_tests": [
+        "internal/modules/connections/application/qq_mail_test.go:TestQQMailConnectionReauthenticationAndIsolation",
+        "internal/modules/connections/application/oauth_test.go:TestMicrosoftAuthorizationRefreshAndDisconnect",
+        "internal/adapters/inbound/httpaccounts/handler_test.go:TestConnectionsJSONContractsAndMailForm"
+      ]
     },
     {
       "file": "tests/unit/test_qq_mail_connection.py",
       "test": "test_reauthentication_replaces_old_credential",
-      "status": "pending_go_mapping"
+      "status": "mapped_go_regression",
+      "go_tests": [
+        "internal/modules/connections/application/qq_mail_test.go:TestQQMailConnectionReauthenticationAndIsolation",
+        "internal/modules/connections/application/oauth_test.go:TestMicrosoftAuthorizationRefreshAndDisconnect",
+        "internal/adapters/inbound/httpaccounts/handler_test.go:TestConnectionsJSONContractsAndMailForm"
+      ]
     },
     {
       "file": "tests/unit/test_qq_mail_connection.py",
       "test": "test_authentication_failure_moves_connection_to_reauth_required",
-      "status": "pending_go_mapping"
+      "status": "mapped_go_regression",
+      "go_tests": [
+        "internal/modules/connections/application/sync_test.go:TestSyncLifecycleRestoresHealthAndFencesDisconnectedAccounts"
+      ]
     },
     {
       "file": "tests/unit/test_qq_mail_connection.py",
       "test": "test_sync_success_records_timezone_aware_completion",
-      "status": "pending_go_mapping"
+      "status": "mapped_go_regression",
+      "go_tests": [
+        "internal/modules/connections/application/sync_test.go:TestSyncLifecycleRestoresHealthAndFencesDisconnectedAccounts"
+      ]
     },
     {
       "file": "tests/unit/test_qq_mail_connection.py",
       "test": "test_transient_failure_degrades_and_success_recovers_connection",
-      "status": "pending_go_mapping"
+      "status": "mapped_go_regression",
+      "go_tests": [
+        "internal/modules/connections/application/sync_test.go:TestSyncLifecycleRestoresHealthAndFencesDisconnectedAccounts"
+      ]
     },
     {
       "file": "tests/unit/test_qq_mail_connection.py",
       "test": "test_connect_supports_multiple_qq_mail_accounts",
-      "status": "pending_go_mapping"
+      "status": "mapped_go_regression",
+      "go_tests": [
+        "internal/modules/connections/application/qq_mail_test.go:TestQQMailConnectionReauthenticationAndIsolation",
+        "internal/modules/connections/application/oauth_test.go:TestMicrosoftAuthorizationRefreshAndDisconnect",
+        "internal/adapters/inbound/httpaccounts/handler_test.go:TestConnectionsJSONContractsAndMailForm"
+      ]
     },
     {
       "file": "tests/unit/test_qq_mail_http.py",
       "test": "test_connect_requires_loopback_owner_and_csrf",
-      "status": "pending_go_mapping"
+      "status": "mapped_go_regression",
+      "go_tests": [
+        "internal/adapters/inbound/httpaccounts/handler_test.go:TestSecurityAndStrictRequestValidation"
+      ]
     },
     {
       "file": "tests/unit/test_qq_mail_http.py",
       "test": "test_signed_non_owner_session_is_rejected",
-      "status": "pending_go_mapping"
+      "status": "mapped_go_regression",
+      "go_tests": [
+        "internal/adapters/inbound/httpaccounts/redaction_test.go:TestValidSignedNonOwnerReturnsForbidden"
+      ]
     },
     {
       "file": "tests/unit/test_qq_mail_http.py",
       "test": "test_routes_are_hidden_on_non_loopback_host",
-      "status": "pending_go_mapping"
+      "status": "mapped_go_regression",
+      "go_tests": [
+        "internal/adapters/inbound/httpaccounts/handler_test.go:TestSecurityAndStrictRequestValidation"
+      ]
     },
     {
       "file": "tests/unit/test_qq_mail_http.py",
       "test": "test_disconnect_requires_explicit_confirmation",
-      "status": "pending_go_mapping"
+      "status": "mapped_go_regression",
+      "go_tests": [
+        "internal/adapters/inbound/httpaccounts/handler_test.go:TestSecurityAndStrictRequestValidation"
+      ]
     },
     {
       "file": "tests/unit/test_qq_mail_http.py",
       "test": "test_owner_start_bootstraps_qq_mail_destination_without_url_secret",
-      "status": "pending_go_mapping"
+      "status": "mapped_go_regression",
+      "go_tests": [
+        "internal/adapters/inbound/httpaccounts/handler_test.go:TestLoopbackOwnerCookiesAndIncrementalAuthorization"
+      ]
     },
     {
       "file": "tests/unit/test_qq_mail_http.py",
       "test": "test_connection_list_requires_owner_and_returns_safe_shape",
-      "status": "pending_go_mapping"
+      "status": "mapped_go_regression",
+      "go_tests": [
+        "internal/adapters/inbound/httpaccounts/handler_test.go:TestConnectionsJSONContractsAndMailForm",
+        "internal/adapters/inbound/httpaccounts/handler_test.go:TestSecurityAndStrictRequestValidation"
+      ]
     },
     {
       "file": "tests/unit/test_qq_turn_context.py",

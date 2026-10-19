@@ -18,7 +18,7 @@ HP 旧应用容器已按所有者授权停止但未删除。以下“待验收�
 |---|---|---|---|
 | G0 决策 | 开发栈、模块、SDK、无公网约束 | ADR、依赖版本、迁移清单一致 | 已冻结 |
 | G1 基础 | Bootstrap、配置、脱敏、Clock、健康、SQL 基线、Job、botgo 边界 | 构建、静态分析、单元/架构、空库建表与拒绝未核验接管、Ollama 契约、QQ 沙箱收发/重连 | 已通过；证据见文档 33 |
-| G2 账号 | Identity、Connections、Credential Vault、Microsoft PKCE/OIDC、QQ IMAP 授权 | AES-GCM 双向互通、OAuth state/nonce/CSRF、刷新/断开、多连接隔离 | 待迁移 |
+| G2 账号 | Identity、Connections、Credential Vault、Microsoft PKCE/OIDC、QQ IMAP 授权 | AES-GCM 双向互通、OAuth state/nonce/CSRF、刷新/断开、多连接隔离 | 本地实现与自动化门禁已通过；真实账号沙箱待授权，见文档 34 |
 | G3 来源 | Inbox、Normalization、邮件 delta/UID、资产、ICS/PDF/图片/OCR/转发 | 幂等、只读、解析资源上限、TLS、DST、删除传播、容器解析 | 待迁移 |
 | G4 理解 | AI Gateway、DeepSeek、Understanding、Workflow | 结构化输出拒绝未知字段、注入隔离、预算、checkpoint 恢复与固定评估 | 待迁移 |
 | G5 日程 | Agenda、Scheduling、Calendar System、Actions、确认/撤销 | 版本冲突、硬约束、并发幂等、审计、Outbox、部分成功恢复 | 待迁移 |
@@ -39,6 +39,7 @@ G1 的 QQ 发送只可用于显式授权的沙箱，不能在普通单元测试�
 - 时间沿用 timestamptz 与 IANA 时区；当前时间通过 Clock 注入，测试使用固定时间。
 - 原 AES-GCM 使用 12 字节 nonce、32 字节 key、`<credential UUID>:<kind>:1` AAD；Go 必须能解密 Python fixture，Python 必须能解密 Go fixture。
 - 原 HTTP 路由、状态码、所有者会话、CSRF、回环 Host 和脱敏行为作为契约。G10 在实际数据库副本上核对全部表/列/约束/默认值/索引与向量索引；此前迁移工具拒绝接管未核验的原库。
+- G2 提供账号内核与 HTTP Adapter；G3 来源删除、G8 审计/恢复等端口先做契约验证，实际 Bootstrap 装配必须等待对应真实模块，禁止生产 no-op。G2 真实 Provider 探针独立且不持久化凭据。
 - PDF、OCR、图片和 ICS 的依赖选型在 G3 记录；不可临时降为“仅文本”后声称完整迁移。
 - 所有原 unit、contract、integration、end_to_end 场景必须在迁移报告中映射到 Go 测试或明确的外部验收，不能只按文件数计完成率。
 
