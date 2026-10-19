@@ -85,13 +85,16 @@ Microsoft 仅监听 `127.0.0.1:8000`，入口为 `http://localhost:8000`，需�
 只做 PKCE/OIDC、Graph 账号读取和两种最小范围 refresh；不调用邮件正文或 To Do 写接口。
 QQ 邮箱仅读取 Bootstrap 提供的邮箱地址和授权码，在固定 TLS 端点登录并只读检查 INBOX。
 两者不访问业务数据库、不持久化凭据；错误和报告不带账号、授权码、token 或 Provider 原文。
+沙箱失败诊断仅记录固定验证步骤、HTTP 状态和白名单错误码；未知错误码统一为 unknown，
+不得记录错误描述、请求 URL、响应体或 OAuth 回调参数。
 
 AGENTS.md 第 5 节要求真实账号沙箱明确授权。所有者于本次会话选择“允许两项只读沙箱”，
 授权覆盖 Microsoft 账号读取/刷新及 QQ 邮箱 TLS 登录/只读 INBOX 检查。
 2026-10-19 20:16（Asia/Shanghai）QQ 邮箱探针成功退出，输出仅为
 `tls=true login=true read_only_inbox=true`；未读取邮件正文或写入业务数据库。
-同一时间 Microsoft 探针启动于本机回环入口，等待所有者浏览器授权；在真实回调验证成功前，
-不能将合成 Provider 测试视为外部通过。
+首次 Microsoft 入口因未完成授权而超时；20:37 重启后收到浏览器回调，返回 PermanentProvider，
+没有保存凭据。现已增加白名单错误码、HTTP 状态与固定步骤诊断，并验证未知异常不会泄漏秘密；
+具体失败原因仍需重新授权后确认。在真实回调验证成功前，不能将合成 Provider 测试视为外部通过。
 
 当前 `web` 仍只装配 G1 健康入口。G2 HTTP/用例通过明确测试端口验证；Sources、Jobs、Audit
 必须在 G3/G8/G10 接入真实实现后才可启用业务路由和完整端到端验收，不能注入空实现。

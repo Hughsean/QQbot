@@ -140,8 +140,34 @@ func TestProbeFailuresAreRedacted(t *testing.T) {
 		if w.Code < 400 || strings.Contains(w.Body.String(), "synthetic-private") {
 			t.Fatal("probe failure leaked secret")
 		}
-		if err := <-p.Done(); err == nil {
+		if err := <-p.Done(); err == nil || strings.Contains(err.Error(), "synthetic-private") {
 			t.Fatal("probe failure hidden")
 		}
+	}
+}
+
+func TestProbeReportsFixedFailureStageAndClass(t *testing.T) {
+	for _, input := range []struct {
+		stage  string
+		inject func(*provider)
+	}{
+		{"authorization_start", func(p *provider) { p.beginErr = contracts.ProviderError{Class: "TransientProvider"} }},
+		{"code_exchange_and_oidc", func(p *provider) { p.exchangeErr = contracts.ProviderError{Class: "TransientProvider"} }},
+		{"initial_profile", func(p *provider) { p.profileErr = contracts.ProviderError{Class: "TransientProvider"} }},
+		{"mail_refresh", func(p *provider) { p.refreshErr = contracts.ProviderError{Class: "TransientProvider"} }},
+	} {
+		p, provider, _ := setup(t)
+		input.inject(provider)
+		if serve(p, "/").Code == 302 {
+			serve(p, "/oauth/microsoft/callback?state="+p.state.Reveal()+"&code=synthetic")
+		}
+		err := <-p.Done()
+		var classified contracts.ProviderError
+		if !strings.Contains(err.Error(), input.stage) || !errors.As(err, &classified) || classified.Class != "TransientProvider" {
+			t.Fatal("fixed stage/class missing", err)
+		}
+	}
+	if err := stageFailure("test", contracts.ProviderError{Class: "synthetic-private"}); strings.Contains(err.Error(), "synthetic-private") {
+		t.Fatal("unrecognized provider class leaked")
 	}
 }

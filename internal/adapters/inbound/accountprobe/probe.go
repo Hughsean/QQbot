@@ -78,7 +78,7 @@ func (p *Probe) begin(w http.ResponseWriter, r *http.Request) {
 	p.state, p.browser = random(), random()
 	start, err := p.provider.Begin(r.Context(), p.state)
 	if err != nil {
-		p.done <- err
+		p.done <- stageFailure("authorization_start", err)
 		w.WriteHeader(http.StatusBadGateway)
 		return
 	}
@@ -118,27 +118,39 @@ func (p *Probe) validCallback(r *http.Request, browser string) bool {
 func (p *Probe) verify(ctx context.Context, callback contracts.Callback) error {
 	tokens, err := p.provider.Complete(ctx, p.flow, callback)
 	if err != nil {
-		return err
+		return stageFailure("code_exchange_and_oidc", err)
 	}
 	profile, err := p.provider.Profile(ctx, tokens.AccessToken)
 	if err != nil {
-		return err
+		return stageFailure("initial_profile", err)
 	}
 	for _, tasks := range []bool{false, true} {
-		refreshed, err := p.provider.Refresh(ctx, tokens.RefreshToken, tasks)
+		refreshed, err := p.verifyRefresh(ctx, tokens.RefreshToken, profile, tasks)
 		if err != nil {
 			return err
-		}
-		current, err := p.provider.Profile(ctx, refreshed.AccessToken)
-		if err != nil {
-			return err
-		}
-		if !strings.EqualFold(profile.AccountID.Reveal(), current.AccountID.Reveal()) {
-			return contracts.ErrSecurity
 		}
 		if refreshed.RefreshToken.Present() {
 			tokens.RefreshToken = refreshed.RefreshToken
 		}
 	}
 	return nil
+}
+
+func (p *Probe) verifyRefresh(ctx context.Context, refresh secret.Value, profile application.Profile, tasks bool) (application.Tokens, error) {
+	stage := "mail_refresh"
+	if tasks {
+		stage = "task_refresh"
+	}
+	tokens, err := p.provider.Refresh(ctx, refresh, tasks)
+	if err != nil {
+		return application.Tokens{}, stageFailure(stage, err)
+	}
+	current, err := p.provider.Profile(ctx, tokens.AccessToken)
+	if err != nil {
+		return application.Tokens{}, stageFailure(stage+"_profile", err)
+	}
+	if !strings.EqualFold(profile.AccountID.Reveal(), current.AccountID.Reveal()) {
+		return application.Tokens{}, stageFailure(stage+"_identity", contracts.ErrSecurity)
+	}
+	return tokens, nil
 }

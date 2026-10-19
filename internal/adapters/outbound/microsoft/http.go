@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -35,6 +36,7 @@ func (c *Client) request(req *http.Request, attempts int) ([]byte, error) {
 		}
 		class := classify(response.StatusCode, data)
 		if class != "TransientProvider" {
+			slog.Warn("Microsoft request rejected", "status", response.StatusCode, "code", safeProviderCode(data))
 			return nil, failure(class)
 		}
 	}
